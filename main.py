@@ -35,6 +35,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Ensure we have Benton County, WA sample data in the database
+from add_benton_county_sample import main as add_sample_data
+with app.app_context():
+    add_sample_data()
+
 # Import ETL components
 from etl.mls_scraper import MLSScraper
 from etl.narrpr_scraper import NARRPRScraper

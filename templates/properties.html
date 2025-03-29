@@ -48,9 +48,16 @@
         <div class="row">
             <div class="col-12">
                 <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h2>Properties</h2>
-                        <a href="/search" class="btn btn-primary">Search Properties</a>
+                    <div class="card-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h2>Properties</h2>
+                            <a href="/search" class="btn btn-primary">Search Properties</a>
+                        </div>
+                        {% if location_focus %}
+                        <div class="alert alert-info mt-2">
+                            Showing properties in {{ location_focus }} only
+                        </div>
+                        {% endif %}
                     </div>
                     <div class="card-body">
                         {% if count > 0 %}

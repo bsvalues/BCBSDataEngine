@@ -220,18 +220,26 @@ class Database:
         
         return new_priority >= existing_priority
     
-    def get_all_properties(self):
+    def get_all_properties(self, benton_county_only=True):
         """
         Get all properties from the database.
         
+        Args:
+            benton_county_only (bool, optional): Whether to filter results to only Benton County, WA
+            
         Returns:
             pd.DataFrame: DataFrame containing all properties
         """
         logger.info("Retrieving all properties from database")
         
         try:
-            # Execute query to get all properties
-            query = "SELECT * FROM properties"
+            # Execute query to get all properties, with optional Benton County filter
+            if benton_county_only:
+                query = "SELECT * FROM properties WHERE county = 'Benton' AND state = 'WA'"
+                logger.info("Filtering to only Benton County, WA properties")
+            else:
+                query = "SELECT * FROM properties"
+            
             df = pd.read_sql(query, self.engine)
             
             logger.info(f"Retrieved {len(df)} properties from database")
@@ -241,18 +249,19 @@ class Database:
             logger.error(f"Error retrieving properties: {str(e)}", exc_info=True)
             return pd.DataFrame()
     
-    def get_properties_by_criteria(self, criteria=None):
+    def get_properties_by_criteria(self, criteria=None, benton_county_only=True):
         """
         Get properties from the database based on criteria.
         
         Args:
             criteria (dict, optional): Dictionary of criteria to filter properties
+            benton_county_only (bool, optional): Whether to filter results to only Benton County, WA
             
         Returns:
             pd.DataFrame: DataFrame containing filtered properties
         """
         if not criteria:
-            return self.get_all_properties()
+            return self.get_all_properties(benton_county_only=benton_county_only)
         
         logger.info(f"Retrieving properties with criteria: {criteria}")
         
@@ -261,6 +270,13 @@ class Database:
             query = "SELECT * FROM properties WHERE "
             conditions = []
             params = {}
+            
+            # Add Benton County, WA filter if specified
+            if benton_county_only:
+                conditions.append("county = :county AND state = :state")
+                params["county"] = "Benton"
+                params["state"] = "WA"
+                logger.info("Filtering to only Benton County, WA properties")
             
             for key, value in criteria.items():
                 if key == "min_price":

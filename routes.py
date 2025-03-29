@@ -19,7 +19,8 @@ def register_routes(app):
         """Render the properties page with data from the database."""
         try:
             db = Database()
-            property_data = db.get_all_properties()
+            # Get only Benton County, WA properties by default
+            property_data = db.get_all_properties(benton_county_only=True)
             db.close()
             
             # Convert to list of dictionaries for template
@@ -27,11 +28,12 @@ def register_routes(app):
             
             return render_template('properties.html', 
                                   properties=properties_list, 
-                                  count=len(properties_list))
+                                  count=len(properties_list),
+                                  location_focus="Benton County, Washington")
         except Exception as e:
             logger.error(f"Error loading properties: {str(e)}", exc_info=True)
             flash(f"Error loading properties: {str(e)}", "danger")
-            return render_template('properties.html', properties=[], count=0)
+            return render_template('properties.html', properties=[], count=0, location_focus="Benton County, Washington")
     
     @app.route('/validation')
     def validation():
@@ -77,7 +79,7 @@ def register_routes(app):
             # Query database with criteria
             try:
                 db = Database()
-                property_data = db.get_properties_by_criteria(criteria)
+                property_data = db.get_properties_by_criteria(criteria, benton_county_only=True)
                 db.close()
                 
                 # Convert to list of dictionaries for template
@@ -86,11 +88,13 @@ def register_routes(app):
                 return render_template('search_results.html', 
                                       properties=properties_list, 
                                       count=len(properties_list),
-                                      criteria=criteria)
+                                      criteria=criteria,
+                                      location_focus="Benton County, Washington")
             except Exception as e:
                 logger.error(f"Error searching properties: {str(e)}", exc_info=True)
                 flash(f"Error searching properties: {str(e)}", "danger")
-                return render_template('search_results.html', properties=[], count=0, criteria=criteria)
+                return render_template('search_results.html', properties=[], count=0, criteria=criteria, 
+                                       location_focus="Benton County, Washington")
         else:
             # GET request - show search form
             return render_template('search.html')
@@ -100,7 +104,8 @@ def register_routes(app):
         """API endpoint to get properties."""
         try:
             db = Database()
-            property_data = db.get_all_properties()
+            # Get only Benton County, WA properties by default
+            property_data = db.get_all_properties(benton_county_only=True)
             db.close()
             
             # Convert to list of dictionaries for API
@@ -109,6 +114,7 @@ def register_routes(app):
             return jsonify({
                 'status': 'success',
                 'count': len(properties_list),
+                'location_focus': 'Benton County, Washington',
                 'properties': properties_list
             })
         except Exception as e:
