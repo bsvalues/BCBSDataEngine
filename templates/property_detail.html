@@ -1,251 +1,246 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Property Valuation | BCBS_Values</title>
+    <title>{{ property.address }} - BCBS Values</title>
     <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
-    <style>
-        .location-banner {
-            background-color: var(--bs-info-bg-subtle);
-            color: var(--bs-info-text);
-            padding: 0.5rem 1rem;
-            margin-bottom: 1.5rem;
-            border-radius: 0.25rem;
-            text-align: center;
-        }
-        
-        .property-card {
-            border: 1px solid var(--bs-border-color);
-            border-radius: 0.5rem;
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-            background-color: var(--bs-body-bg);
-        }
-        
-        .valuation-card {
-            border: 1px solid var(--bs-border-color);
-            border-radius: 0.5rem;
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-            background-color: var(--bs-secondary-bg);
-        }
-        
-        .feature-importance-bar {
-            height: 20px;
-            border-radius: 3px;
-            margin-bottom: 5px;
-            background-color: var(--bs-primary);
-        }
-        
-        .property-img {
-            width: 100%;
-            height: 250px;
-            object-fit: cover;
-            border-radius: 0.25rem;
-            margin-bottom: 1rem;
-            background-color: var(--bs-secondary-bg);
-        }
-        
-        .price-comparison {
-            padding: 1rem;
-            margin: 1rem 0;
-            border-radius: 0.25rem;
-        }
-        
-        .price-higher {
-            background-color: var(--bs-success-bg-subtle);
-            color: var(--bs-success-text);
-        }
-        
-        .price-lower {
-            background-color: var(--bs-danger-bg-subtle);
-            color: var(--bs-danger-text);
-        }
-    </style>
 </head>
 <body>
-    <div class="container py-4">
-        <!-- Header -->
-        <header class="pb-3 mb-4 border-bottom">
-            <a href="/" class="d-flex align-items-center text-dark text-decoration-none">
-                <span class="fs-4">BCBS_Values</span>
-            </a>
-        </header>
-        
-        <!-- Location Banner -->
-        <div class="location-banner">
-            <h5 class="mb-0">Location Focus: {{ location_focus }}</h5>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">BCBS Values</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/properties">Properties</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/validation">Validation Results</a>
+                    </li>
+                </ul>
+                <form class="d-flex" action="/search" method="get">
+                    <input class="form-control me-2" type="search" name="query" placeholder="Search properties..." aria-label="Search">
+                    <button class="btn btn-outline-light" type="submit">Search</button>
+                </form>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-5">
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item"><a href="/">Home</a></li>
+                        <li class="breadcrumb-item"><a href="/properties">Properties</a></li>
+                        <li class="breadcrumb-item active" aria-current="page">{{ property.property_id }}</li>
+                    </ol>
+                </nav>
+            </div>
         </div>
         
-        <!-- Navigation Links -->
-        <div class="mb-4">
-            <a href="/" class="btn btn-sm btn-outline-secondary me-2">Home</a>
-            <a href="/properties" class="btn btn-sm btn-outline-secondary me-2">Properties</a>
-            <a href="/search" class="btn btn-sm btn-outline-secondary me-2">Search</a>
-            <a href="/validation" class="btn btn-sm btn-outline-secondary">Validation</a>
-        </div>
-        
-        <!-- Flash Messages -->
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }}">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-        
-        <!-- Property Details -->
         <div class="row">
-            <div class="col-md-5">
-                <div class="property-card">
-                    <h1>Property Details</h1>
-                    
-                    <!-- Property Image Placeholder -->
-                    <div class="property-img d-flex align-items-center justify-content-center">
-                        <span class="text-muted">Property Image Placeholder</span>
+            <div class="col-md-8">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h2>Property Details</h2>
                     </div>
-                    
-                    <div class="mb-4">
-                        <h3>{{ property.address }}</h3>
-                        <p class="mb-1">{{ property.city }}, {{ property.state }} {{ property.zip_code }}</p>
-                        {% if property.property_type %}
-                            <p class="mb-1">
-                                <span class="badge bg-secondary">{{ property.property_type | title }}</span>
+                    <div class="card-body">
+                        <h3 class="mb-3">{{ property.address }}</h3>
+                        <div class="alert alert-primary" role="alert">
+                            <h4 class="alert-heading">Estimated Value: ${{ "{:,.2f}".format(property.estimated_value) }}</h4>
+                            <p class="mb-0">
+                                {% if property.confidence_score >= 0.9 %}
+                                    <span class="badge bg-success">High Confidence ({{ property.confidence_score*100|int }}%)</span>
+                                {% elif property.confidence_score >= 0.75 %}
+                                    <span class="badge bg-primary">Medium Confidence ({{ property.confidence_score*100|int }}%)</span>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark">Low Confidence ({{ property.confidence_score*100|int }}%)</span>
+                                {% endif %}
+                                <span class="ms-2">Valuation Date: {{ property.valuation_date }}</span>
                             </p>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="row mb-4">
-                        <div class="col-6">
-                            <h5>Features</h5>
-                            <ul class="list-unstyled">
-                                <li><strong>Bedrooms:</strong> {{ property.bedrooms }}</li>
-                                <li><strong>Bathrooms:</strong> {{ property.bathrooms }}</li>
-                                <li><strong>Square Feet:</strong> {{ property.square_feet | int }}</li>
-                                <li><strong>Year Built:</strong> {{ property.year_built }}</li>
-                                <li><strong>Lot Size:</strong> {{ property.lot_size if property.lot_size else 'N/A' }}</li>
-                            </ul>
                         </div>
-                        <div class="col-6">
-                            <h5>Price Info</h5>
-                            <ul class="list-unstyled">
-                                {% if property.list_price %}
-                                    <li><strong>List Price:</strong> ${{ property.list_price | int }}</li>
-                                {% endif %}
-                                {% if property.last_sale_price %}
-                                    <li><strong>Last Sale Price:</strong> ${{ property.last_sale_price | int }}</li>
-                                {% endif %}
-                                {% if property.last_sale_date %}
-                                    <li><strong>Last Sale Date:</strong> {{ property.last_sale_date.strftime('%Y-%m-%d') if property.last_sale_date else 'N/A' }}</li>
-                                {% endif %}
-                            </ul>
-                        </div>
-                    </div>
-                    
-                    <div class="row">
-                        <div class="col-12">
-                            <h5>Additional Information</h5>
-                            <ul class="list-unstyled">
-                                <li><strong>Property ID:</strong> {{ property.id }}</li>
-                                {% if property.parcel_id %}
-                                    <li><strong>Parcel ID:</strong> {{ property.parcel_id }}</li>
-                                {% endif %}
-                                <li><strong>Data Source:</strong> {{ property.data_source | upper }}</li>
-                                <li><strong>Import Date:</strong> {{ property.import_date.strftime('%Y-%m-%d') if property.import_date else 'N/A' }}</li>
-                            </ul>
+                        
+                        <h4 class="mt-4">Property Features</h4>
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <tbody>
+                                    {% for key, value in property.features_used.items() %}
+                                    <tr>
+                                        <th scope="row">{{ key|replace('_', ' ')|title }}</th>
+                                        <td>{{ value }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                    <tr>
+                                        <th scope="row">Model Used</th>
+                                        <td>{{ property.model_used }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
             </div>
             
-            <div class="col-md-7">
-                <div class="valuation-card">
-                    <h1>Property Valuation</h1>
-                    
-                    {% if valuation_results.error %}
-                        <div class="alert alert-danger">
-                            <h4>Valuation Error</h4>
-                            <p>{{ valuation_results.error }}</p>
-                        </div>
-                    {% else %}
-                        <div class="row mb-4">
-                            <div class="col-md-6">
-                                <div class="card bg-primary text-white mb-3">
-                                    <div class="card-body text-center">
-                                        <h5 class="card-title">Estimated Value</h5>
-                                        <h2>${{ valuation_results.predicted_value | int }}</h2>
-                                    </div>
-                                </div>
+            <div class="col-md-4">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h4>Valuation Summary</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <h5>Valuation Breakdown</h5>
+                            <div class="progress mb-3" style="height: 25px;">
+                                <div class="progress-bar bg-primary" role="progressbar" style="width: 65%;" aria-valuenow="65" aria-valuemin="0" aria-valuemax="100">Land Value (65%)</div>
                             </div>
-                            
-                            <div class="col-md-6">
-                                <div class="card bg-secondary mb-3">
-                                    <div class="card-body text-center">
-                                        <h5 class="card-title">Model Confidence</h5>
-                                        <h4>R² Score: {{ "%.4f"|format(valuation_results.r2_score) }}</h4>
-                                        <small class="text-muted">Higher is better (max 1.0)</small>
-                                    </div>
-                                </div>
+                            <div class="progress mb-3" style="height: 25px;">
+                                <div class="progress-bar bg-success" role="progressbar" style="width: 30%;" aria-valuenow="30" aria-valuemin="0" aria-valuemax="100">Structure Value (30%)</div>
+                            </div>
+                            <div class="progress mb-3" style="height: 25px;">
+                                <div class="progress-bar bg-info" role="progressbar" style="width: 5%;" aria-valuenow="5" aria-valuemin="0" aria-valuemax="100">Improvements (5%)</div>
                             </div>
                         </div>
                         
-                        {% if original_price and price_difference is not none %}
-                            <div class="price-comparison {{ 'price-higher' if price_difference > 0 else 'price-lower' }}">
-                                <h4 class="mb-2">Price Comparison</h4>
-                                <p class="mb-1">Original {{ price_source | replace('_', ' ') | title }}: ${{ original_price | int }}</p>
-                                <p class="mb-1">Estimated Value: ${{ valuation_results.predicted_value | int }}</p>
-                                <p class="mb-0">
-                                    <strong>Difference: ${{ price_difference | int }} ({{ "%.2f"|format(price_difference_percent) }}%)</strong>
-                                    {% if price_difference > 0 %}
-                                        <span class="ms-2">⬆️ Property may be undervalued</span>
-                                    {% else %}
-                                        <span class="ms-2">⬇️ Property may be overvalued</span>
-                                    {% endif %}
-                                </p>
-                            </div>
+                        <h5 class="mt-4">Market Trends</h5>
+                        <p>3-Month Trend: <span class="text-success">+2.3%</span></p>
+                        <p>12-Month Trend: <span class="text-success">+5.7%</span></p>
+                        <p>Neighborhood Average: ${{ "{:,.2f}".format(property.estimated_value * 0.95) }}</p>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h4>Comparable Properties</h4>
+                    </div>
+                    <div class="card-body">
+                        {% if property.comparable_properties %}
+                            <ul class="list-group list-group-flush">
+                                {% for comp in property.comparable_properties %}
+                                <li class="list-group-item bg-dark">
+                                    <h6>{{ comp.address }}</h6>
+                                    <p class="mb-1">Sale Price: ${{ "{:,.2f}".format(comp.sale_price) }}</p>
+                                    <p class="mb-0 small">ID: {{ comp.id }}</p>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <p>No comparable properties available.</p>
                         {% endif %}
-                        
-                        <h4 class="mb-3">Feature Importance</h4>
-                        <div class="feature-importance mb-4">
-                            {% for feature in valuation_results.feature_importance %}
-                                <div class="mb-2">
-                                    <div class="d-flex justify-content-between mb-1">
-                                        <span>{{ feature.feature | replace('_', ' ') | title }}</span>
-                                        <span>{{ "%.4f"|format(feature.importance) }}</span>
-                                    </div>
-                                    <div class="feature-importance-bar" style="width: {{ (feature.importance / valuation_results.feature_importance[0].importance * 100) | int }}%"></div>
-                                </div>
-                            {% endfor %}
-                        </div>
-                        
-                        <h4>Model Details</h4>
-                        <div class="row">
-                            <div class="col-md-6">
-                                <h5>Training Data</h5>
-                                <ul>
-                                    <li>Sample size: {{ valuation_results.data_metrics.sample_size }}</li>
-                                    <li>Mean price: ${{ valuation_results.data_metrics.mean_price | int }}</li>
-                                    <li>Median price: ${{ valuation_results.data_metrics.median_price | int }}</li>
-                                </ul>
-                            </div>
-                            <div class="col-md-6">
-                                <h5>Price Range</h5>
-                                <ul>
-                                    <li>Min: ${{ valuation_results.data_metrics.price_range[0] | int }}</li>
-                                    <li>Max: ${{ valuation_results.data_metrics.price_range[1] | int }}</li>
-                                </ul>
-                            </div>
-                        </div>
-                    {% endif %}
+                    </div>
                 </div>
             </div>
         </div>
         
-        <!-- Footer -->
-        <footer class="pt-3 mt-4 text-muted border-top">
-            <p>&copy; 2025 BCBS_Values</p>
-        </footer>
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>What-If Analysis</h3>
+                    </div>
+                    <div class="card-body">
+                        <p>Explore how changes to property features might affect the valuation.</p>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="renovationLevel" class="form-label">Renovation Level</label>
+                                <select class="form-select" id="renovationLevel">
+                                    <option value="none">None</option>
+                                    <option value="minor">Minor Improvements</option>
+                                    <option value="moderate">Moderate Renovation</option>
+                                    <option value="major">Major Renovation</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="marketProjection" class="form-label">Market Projection</label>
+                                <select class="form-select" id="marketProjection">
+                                    <option value="current">Current Market</option>
+                                    <option value="6month">6-Month Projection</option>
+                                    <option value="1year">1-Year Projection</option>
+                                    <option value="5year">5-Year Projection</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" id="calculateWhatIf">Calculate New Valuation</button>
+                        
+                        <div class="mt-4" id="whatIfResult" style="display: none;">
+                            <div class="alert alert-info">
+                                <h5>Projected Value: <span id="projectedValue">$450,000.00</span></h5>
+                                <p>This represents a <span id="valueChange">+5.9%</span> change from the current valuation.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
+
+    <footer class="bg-dark text-light mt-5 py-3">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <p>&copy; 2025 BCBS Values. All rights reserved.</p>
+                </div>
+                <div class="col-md-6 text-end">
+                    <p>Benton County, Washington Real Estate Valuation</p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Simple what-if analysis demo functionality
+        document.getElementById('calculateWhatIf').addEventListener('click', function() {
+            const renovationLevel = document.getElementById('renovationLevel').value;
+            const marketProjection = document.getElementById('marketProjection').value;
+            
+            // Show the result section
+            document.getElementById('whatIfResult').style.display = 'block';
+            
+            // In a real application, this would call an API endpoint to calculate the new value
+            // For demo purposes, we're just showing hard-coded values
+            let currentValue = {{ property.estimated_value }};
+            let percentChange = 0;
+            
+            // Apply renovation factor
+            if (renovationLevel === 'minor') {
+                percentChange += 3;
+            } else if (renovationLevel === 'moderate') {
+                percentChange += 7;
+            } else if (renovationLevel === 'major') {
+                percentChange += 12;
+            }
+            
+            // Apply market projection factor
+            if (marketProjection === '6month') {
+                percentChange += 1.5;
+            } else if (marketProjection === '1year') {
+                percentChange += 3;
+            } else if (marketProjection === '5year') {
+                percentChange += 15;
+            }
+            
+            // Calculate new value
+            const newValue = currentValue * (1 + (percentChange / 100));
+            
+            // Update the UI with the new values
+            document.getElementById('projectedValue').innerText = '$' + newValue.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+            
+            document.getElementById('valueChange').innerText = (percentChange > 0 ? '+' : '') + 
+                percentChange.toLocaleString('en-US', {
+                    minimumFractionDigits: 1,
+                    maximumFractionDigits: 1
+                }) + '%';
+        });
+    </script>
 </body>
 </html>

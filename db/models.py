@@ -1,8 +1,9 @@
 """
 Database models for the property valuation system.
 """
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, Text, ForeignKey, JSON
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
 
 Base = declarative_base()
 
@@ -14,6 +15,9 @@ class Property(Base):
     
     # Primary key
     id = Column(Integer, primary_key=True)
+    
+    # Relationships
+    valuations = relationship("PropertyValuation", backref="property", cascade="all, delete-orphan")
     
     # Identifiers
     mls_id = Column(String(50))
@@ -94,3 +98,50 @@ class ValidationResult(Base):
     def __repr__(self):
         """String representation of a ValidationResult object."""
         return f"<ValidationResult(id={self.id}, timestamp='{self.timestamp}', status='{self.status}')>"
+
+
+class PropertyValuation(Base):
+    """
+    Property valuation model for storing valuation results from the various models.
+    """
+    __tablename__ = 'property_valuations'
+    
+    # Primary key
+    id = Column(Integer, primary_key=True)
+    
+    # Foreign key to Property
+    property_id = Column(Integer, ForeignKey('properties.id'))
+    
+    # Valuation timestamp
+    valuation_date = Column(DateTime)
+    
+    # Core valuation data
+    estimated_value = Column(Float)
+    confidence_score = Column(Float)
+    prediction_interval_low = Column(Float)
+    prediction_interval_high = Column(Float)
+    
+    # Model metadata
+    model_name = Column(String(100))
+    model_version = Column(String(50))
+    model_r2_score = Column(Float)
+    
+    # Feature importance and contribution data
+    feature_importance = Column(JSON)  # Stores feature importance as JSON
+    top_features = Column(Text)        # Comma-separated list of top features
+    
+    # Comparables used
+    comparable_properties = Column(JSON)  # IDs of comparable properties used in valuation
+    
+    # Valuation factors
+    location_factor = Column(Float)    # How much location contributed to value
+    size_factor = Column(Float)        # How much size contributed to value
+    condition_factor = Column(Float)   # How much condition contributed to value
+    market_factor = Column(Float)      # How much market trends contributed to value
+    
+    # Raw model outputs
+    raw_model_outputs = Column(JSON)   # Additional model-specific outputs
+    
+    def __repr__(self):
+        """String representation of a PropertyValuation object."""
+        return f"<PropertyValuation(id={self.id}, property_id={self.property_id}, value=${self.estimated_value:,.2f}, date='{self.valuation_date}')>"

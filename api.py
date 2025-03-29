@@ -12,6 +12,10 @@ from fastapi import FastAPI, HTTPException, Query, Path, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+# Import database and models
+from db.database import Database
+from db.models import PropertyValuation, Property, ValidationResult
+
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -31,6 +35,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Database dependency
+def get_db():
+    """
+    Dependency to get database connection.
+    Creates a new Database instance for each request and ensures it's properly closed.
+    """
+    db = Database()
+    try:
+        yield db
+    finally:
+        db.close()
 
 # --- Pydantic Models for Request/Response ---
 
@@ -89,182 +105,364 @@ async def get_valuations(
     limit: int = Query(10, description="Maximum number of results to return"),
     min_value: Optional[float] = Query(None, description="Minimum property value filter"),
     max_value: Optional[float] = Query(None, description="Maximum property value filter"),
-    property_type: Optional[str] = Query(None, description="Property type filter")
+    property_type: Optional[str] = Query(None, description="Property type filter"),
+    db: Database = Depends(get_db)
 ):
     """
     Get property valuations based on specified criteria.
     
-    This endpoint will eventually connect to the valuation module to:
+    This endpoint connects to the database to:
     1. Query database for properties matching criteria
-    2. Apply valuation models to each property
+    2. Get the most recent property valuations for each property
     3. Filter results based on request parameters
     4. Return formatted valuation results
     """
     logger.info(f"Valuation request received with limit={limit}, min_value={min_value}, max_value={max_value}")
     
-    # Dummy data for now - in production this will come from the valuation module
-    dummy_valuations = [
-        {
-            "property_id": "PROP-1001",
-            "address": "123 Cherry Lane, Richland, WA 99352",
-            "estimated_value": 425000.00,
-            "confidence_score": 0.92,
-            "model_used": "advanced_regression",
-            "valuation_date": datetime.datetime.now(),
-            "features_used": {
-                "square_feet": 2450,
-                "bedrooms": 4,
-                "bathrooms": 2.5,
-                "year_built": 1998,
-                "lot_size": 12000
-            },
-            "comparable_properties": [
-                {"id": "COMP-101", "address": "125 Cherry Lane", "sale_price": 415000},
-                {"id": "COMP-102", "address": "130 Cherry Lane", "sale_price": 432000}
-            ]
-        },
-        {
-            "property_id": "PROP-1002",
-            "address": "456 Oak Street, Kennewick, WA 99336",
-            "estimated_value": 375000.00,
-            "confidence_score": 0.88,
-            "model_used": "hedonic_price_model",
-            "valuation_date": datetime.datetime.now(),
-            "features_used": {
-                "square_feet": 2100,
-                "bedrooms": 3,
-                "bathrooms": 2.0,
-                "year_built": 2005,
-                "lot_size": 9500
-            },
-            "comparable_properties": [
-                {"id": "COMP-201", "address": "460 Oak Street", "sale_price": 368000},
-                {"id": "COMP-202", "address": "470 Oak Street", "sale_price": 382500}
-            ]
-        },
-        {
-            "property_id": "PROP-1003",
-            "address": "789 Maple Avenue, Richland, WA 99352",
-            "estimated_value": 525000.00,
-            "confidence_score": 0.95,
-            "model_used": "ensemble_model",
-            "valuation_date": datetime.datetime.now(),
-            "features_used": {
-                "square_feet": 3200,
-                "bedrooms": 4,
-                "bathrooms": 3.5,
-                "year_built": 2015,
-                "lot_size": 15000
-            },
-            "comparable_properties": [
-                {"id": "COMP-301", "address": "791 Maple Avenue", "sale_price": 520000},
-                {"id": "COMP-302", "address": "795 Maple Avenue", "sale_price": 535000}
-            ]
-        }
-    ]
-    
-    # Apply filters (this would be done in the database query in production)
-    result = dummy_valuations[:limit]
-    if min_value:
-        result = [v for v in result if v["estimated_value"] >= min_value]
-    if max_value:
-        result = [v for v in result if v["estimated_value"] <= max_value]
-    if property_type:
-        # In the real implementation, this would filter by property_type
-        pass
+    try:
+        # Create a database session
+        session = db.Session()
+
+        # Query the latest property valuations from the database
+        query = session.query(
+            PropertyValuation, Property
+        ).join(
+            Property, PropertyValuation.property_id == Property.id
+        )
+
+        # Apply filters
+        if min_value is not None:
+            query = query.filter(PropertyValuation.estimated_value >= min_value)
+        if max_value is not None:
+            query = query.filter(PropertyValuation.estimated_value <= max_value)
+        if property_type is not None:
+            query = query.filter(Property.property_type == property_type)
+            
+        # Get the latest valuation for each property
+        # Subquery to get the maximum valuation_date for each property
+        subquery = session.query(
+            PropertyValuation.property_id,
+            PropertyValuation.valuation_date.label('max_date')
+        ).group_by(
+            PropertyValuation.property_id
+        ).subquery()
         
-    return result
+        # Join with the subquery to get only the latest valuation for each property
+        query = query.join(
+            subquery,
+            (PropertyValuation.property_id == subquery.c.property_id) &
+            (PropertyValuation.valuation_date == subquery.c.max_date)
+        )
+        
+        # Order by estimated value descending (highest value first)
+        query = query.order_by(PropertyValuation.estimated_value.desc())
+        
+        # Apply limit
+        query = query.limit(limit)
+        
+        # Execute query
+        results = query.all()
+        
+        # Format the results for the response
+        valuations = []
+        for valuation, property in results:
+            # Extract feature importance
+            feature_importance = {}
+            if valuation.feature_importance:
+                # Convert from JSON if needed
+                if isinstance(valuation.feature_importance, str):
+                    features = json.loads(valuation.feature_importance)
+                else:
+                    features = valuation.feature_importance
+                    
+                # If it's a list of [feature, importance] pairs
+                if isinstance(features, list) and features and isinstance(features[0], list):
+                    feature_importance = {f[0]: f[1] for f in features}
+                else:
+                    feature_importance = features
+            
+            # Extract comparable properties
+            comparables = []
+            if valuation.comparable_properties:
+                # Convert from JSON if needed
+                if isinstance(valuation.comparable_properties, str):
+                    comparables = json.loads(valuation.comparable_properties)
+                else:
+                    comparables = valuation.comparable_properties
+            
+            # Build features_used dictionary based on property attributes and feature importance
+            features_used = {
+                "square_feet": property.square_feet,
+                "bedrooms": property.bedrooms,
+                "bathrooms": property.bathrooms,
+                "year_built": property.year_built,
+                "lot_size": property.lot_size
+            }
+            
+            # Add any additional features from feature_importance
+            for feature, importance in feature_importance.items():
+                if feature not in features_used:
+                    # Try to get the feature from the property object
+                    if hasattr(property, feature):
+                        features_used[feature] = getattr(property, feature)
+            
+            # Build the response object
+            valuations.append({
+                "property_id": str(property.id),
+                "address": f"{property.address}, {property.city}, {property.state} {property.zip_code}",
+                "estimated_value": valuation.estimated_value,
+                "confidence_score": valuation.confidence_score or 0.85,  # Default if None
+                "model_used": valuation.model_name or "advanced_property_valuation",
+                "valuation_date": valuation.valuation_date,
+                "features_used": features_used,
+                "comparable_properties": comparables
+            })
+        
+        return valuations
+    
+    except Exception as e:
+        logger.error(f"Error retrieving property valuations: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    
+    finally:
+        # Always close the session
+        if 'session' in locals():
+            session.close()
 
 @app.get("/api/valuations/{property_id}", response_model=PropertyValue)
 async def get_valuation_by_id(
-    property_id: str = Path(..., description="Property ID to get valuation for")
+    property_id: str = Path(..., description="Property ID to get valuation for"),
+    db: Database = Depends(get_db)
 ):
     """
     Get valuation for a specific property by ID.
     
-    This endpoint will eventually:
-    1. Query the database for the specific property
-    2. Run property through advanced valuation model
-    3. Return detailed valuation with confidence metrics
+    This endpoint:
+    1. Queries the database for the specific property
+    2. Retrieves the latest valuation for that property
+    3. Returns detailed valuation with confidence metrics
     """
     logger.info(f"Valuation request for property ID: {property_id}")
     
-    # In production, we would look up this property in the database
-    # If the property exists, we would run it through the valuation model
-    
-    # Dummy data - in production this comes from src.valuation module
-    if property_id == "PROP-1001":
-        return {
-            "property_id": "PROP-1001",
-            "address": "123 Cherry Lane, Richland, WA 99352",
-            "estimated_value": 425000.00,
-            "confidence_score": 0.92,
-            "model_used": "advanced_regression",
-            "valuation_date": datetime.datetime.now(),
-            "features_used": {
-                "square_feet": 2450,
-                "bedrooms": 4,
-                "bathrooms": 2.5,
-                "year_built": 1998,
-                "lot_size": 12000
-            },
-            "comparable_properties": [
-                {"id": "COMP-101", "address": "125 Cherry Lane", "sale_price": 415000},
-                {"id": "COMP-102", "address": "130 Cherry Lane", "sale_price": 432000}
-            ]
+    try:
+        # Create a database session
+        session = db.Session()
+        
+        # Try to find the property
+        property_query = None
+        
+        # Check if property_id is numeric (database ID)
+        if property_id.isdigit():
+            property_query = session.query(Property).filter(Property.id == int(property_id))
+        else:
+            # Try to find by property_id field
+            property_query = session.query(Property).filter(
+                (Property.property_id == property_id) |
+                (Property.parcel_id == property_id) |
+                (Property.mls_id == property_id)
+            )
+        
+        property = property_query.first()
+        
+        if not property:
+            raise HTTPException(status_code=404, detail=f"Property {property_id} not found")
+        
+        # Get the most recent valuation for this property
+        valuation = session.query(PropertyValuation).filter(
+            PropertyValuation.property_id == property.id
+        ).order_by(
+            PropertyValuation.valuation_date.desc()
+        ).first()
+        
+        # If no valuation exists, return a 404
+        if not valuation:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No valuation found for property {property_id}"
+            )
+        
+        # Extract feature importance
+        feature_importance = {}
+        if valuation.feature_importance:
+            # Convert from JSON if needed
+            if isinstance(valuation.feature_importance, str):
+                features = json.loads(valuation.feature_importance)
+            else:
+                features = valuation.feature_importance
+                
+            # If it's a list of [feature, importance] pairs
+            if isinstance(features, list) and features and isinstance(features[0], list):
+                feature_importance = {f[0]: f[1] for f in features}
+            else:
+                feature_importance = features
+        
+        # Extract comparable properties
+        comparables = []
+        if valuation.comparable_properties:
+            # Convert from JSON if needed
+            if isinstance(valuation.comparable_properties, str):
+                comparables = json.loads(valuation.comparable_properties)
+            else:
+                comparables = valuation.comparable_properties
+        
+        # Build features_used dictionary based on property attributes and feature importance
+        features_used = {
+            "square_feet": property.square_feet,
+            "bedrooms": property.bedrooms,
+            "bathrooms": property.bathrooms,
+            "year_built": property.year_built,
+            "lot_size": property.lot_size
         }
-    else:
-        # In production, this would return a 404 if property not found
-        raise HTTPException(status_code=404, detail=f"Property {property_id} not found")
+        
+        # Add any additional features from feature_importance
+        for feature, importance in feature_importance.items():
+            if feature not in features_used:
+                # Try to get the feature from the property object
+                if hasattr(property, feature):
+                    features_used[feature] = getattr(property, feature)
+        
+        # Build the response object
+        result = {
+            "property_id": str(property.id),
+            "address": f"{property.address}, {property.city}, {property.state} {property.zip_code}",
+            "estimated_value": valuation.estimated_value,
+            "confidence_score": valuation.confidence_score or 0.85,  # Default if None
+            "model_used": valuation.model_name or "advanced_property_valuation",
+            "valuation_date": valuation.valuation_date,
+            "features_used": features_used,
+            "comparable_properties": comparables
+        }
+        
+        return result
+    
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving property valuation: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    
+    finally:
+        # Always close the session
+        if 'session' in locals():
+            session.close()
 
 @app.get("/api/etl-status", response_model=ETLStatus)
-async def get_etl_status():
+async def get_etl_status(db: Database = Depends(get_db)):
     """
     Get the current status of the ETL process.
     
-    This endpoint will eventually:
-    1. Query the database for the most recent validation results
-    2. Get ETL runtime statistics from logs
-    3. Return formatted ETL status information
+    This endpoint:
+    1. Queries the database for the most recent validation results
+    2. Gets property counts by data source
+    3. Returns formatted ETL status information
     """
     logger.info("ETL status request received")
     
-    # Dummy data - in production this will come from the database and ETL logs
-    etl_status = {
-        "status": "completed",
-        "last_run": datetime.datetime.now() - datetime.timedelta(hours=2),
-        "sources_processed": [
-            {"name": "MLS", "status": "success", "records": 1250},
-            {"name": "NARRPR", "status": "success", "records": 875},
-            {"name": "PACS", "status": "warning", "records": 432}
-        ],
-        "records_processed": 2557,
-        "validation_status": "passed_with_warnings",
-        "validation_details": {
-            "completeness": {"status": "passed", "score": 98.2},
-            "data_types": {"status": "passed", "score": 100.0},
-            "numeric_ranges": {"status": "warning", "issues": 17},
-            "dates": {"status": "passed", "score": 99.5},
-            "duplicates": {"status": "warning", "issues": 5},
-            "cross_source": {"status": "passed", "score": 97.8}
-        },
-        "errors": [
-            {
-                "source": "PACS",
-                "error_type": "validation_warning",
-                "message": "15 properties have lot_size outside expected range",
-                "severity": "warning"
-            },
-            {
-                "source": "MLS",
-                "error_type": "validation_warning",
-                "message": "5 properties have duplicate parcel IDs",
-                "severity": "warning"
-            }
-        ]
-    }
+    try:
+        # Create a database session
+        session = db.Session()
+        
+        # Get the most recent validation result
+        validation_result = session.query(ValidationResult).order_by(
+            ValidationResult.timestamp.desc()
+        ).first()
+        
+        # Default values if no validation results are found
+        status = "unknown"
+        last_run = datetime.datetime.now()
+        validation_status = "unknown"
+        validation_details = {}
+        errors = []
+        
+        if validation_result:
+            # Parse the validation results JSON
+            try:
+                validation_data = json.loads(validation_result.results)
+                status = validation_result.status
+                last_run = validation_result.timestamp
+                validation_status = validation_data.get("status", "unknown")
+                validation_details = validation_data.get("details", {})
+                
+                # Extract errors from validation details
+                errors = []
+                if "issues" in validation_data:
+                    for issue in validation_data["issues"]:
+                        errors.append({
+                            "source": issue.get("source", "unknown"),
+                            "error_type": issue.get("type", "validation_warning"),
+                            "message": issue.get("message", "Unknown issue"),
+                            "severity": issue.get("severity", "warning")
+                        })
+            except json.JSONDecodeError:
+                logger.error("Failed to parse validation results JSON")
+                
+        # Query the database for property counts by source
+        source_counts = {}
+        try:
+            # Get count of properties by data source
+            query = """
+                SELECT data_source, COUNT(*) as record_count
+                FROM properties
+                GROUP BY data_source
+            """
+            result = session.execute(query)
+            for row in result:
+                data_source = row[0]  # data_source column
+                count = row[1]        # count column
+                
+                # Handle combined sources (e.g., "MLS,PACS")
+                if "," in data_source:
+                    sources = data_source.split(",")
+                    for src in sources:
+                        source_counts[src] = source_counts.get(src, 0) + count
+                else:
+                    source_counts[data_source] = source_counts.get(data_source, 0) + count
+                    
+        except Exception as e:
+            logger.error(f"Error querying property counts: {str(e)}")
+            
+        # Format sources processed
+        sources_processed = []
+        for source, count in source_counts.items():
+            sources_processed.append({
+                "name": source,
+                "status": "success",  # Assuming success if data exists
+                "records": count
+            })
+            
+        # If no sources found, add placeholder
+        if not sources_processed:
+            sources_processed = [
+                {"name": "MLS", "status": "pending", "records": 0},
+                {"name": "NARRPR", "status": "pending", "records": 0},
+                {"name": "PACS", "status": "pending", "records": 0}
+            ]
+            
+        # Calculate total records processed
+        total_records = sum(source["records"] for source in sources_processed)
+        
+        # Build the ETL status response
+        etl_status = {
+            "status": status,
+            "last_run": last_run,
+            "sources_processed": sources_processed,
+            "records_processed": total_records,
+            "validation_status": validation_status,
+            "validation_details": validation_details,
+            "errors": errors
+        }
+        
+        return etl_status
     
-    return etl_status
+    except Exception as e:
+        logger.error(f"Error retrieving ETL status: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    
+    finally:
+        # Always close the session
+        if 'session' in locals():
+            session.close()
 
 @app.get("/api/agent-status", response_model=AgentStatusList)
 async def get_agent_status():

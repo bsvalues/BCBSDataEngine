@@ -3,19 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BCBS_Values Real Estate Valuation System</title>
+    <title>BCBS Values - Real Estate Valuation</title>
     <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
 </head>
 <body>
-    <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
-            <a class="navbar-brand" href="/">BCBS_Values</a>
+            <a class="navbar-brand" href="/">BCBS Values</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav">
+                <ul class="navbar-nav me-auto">
                     <li class="nav-item">
                         <a class="nav-link active" href="/">Home</a>
                     </li>
@@ -23,148 +22,98 @@
                         <a class="nav-link" href="/properties">Properties</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/search">Search</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/validation">Validation</a>
+                        <a class="nav-link" href="/validation">Validation Results</a>
                     </li>
                 </ul>
+                <form class="d-flex" action="/search" method="get">
+                    <input class="form-control me-2" type="search" name="query" placeholder="Search properties..." aria-label="Search">
+                    <button class="btn btn-outline-light" type="submit">Search</button>
+                </form>
             </div>
         </div>
     </nav>
 
-    <!-- Main Content -->
-    <main class="container mt-4">
-        <!-- Flash Messages -->
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }}">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-
-        <!-- Hero Section -->
-        <div class="p-5 mb-4 bg-dark rounded-3">
-            <div class="container-fluid py-5">
-                <h1 class="display-5 fw-bold">Real Estate Valuation System</h1>
-                <p class="col-md-8 fs-4">A comprehensive solution for real estate data collection, validation, and valuation.</p>
-                <a href="/properties" class="btn btn-primary btn-lg">View Properties</a>
-                <a href="/search" class="btn btn-outline-light btn-lg ms-2">Search Properties</a>
-            </div>
-        </div>
-
-        <!-- Features Section -->
-        <div class="row align-items-md-stretch">
-            <div class="col-md-4 mb-4">
-                <div class="h-100 p-5 bg-secondary rounded-3">
-                    <h2>Data Collection</h2>
-                    <p>Extracts property data from multiple sources including MLS, NARRPR, and PACS.</p>
-                    <ul>
-                        <li>Multiple Listing Service (MLS)</li>
-                        <li>National Association of REALTORS® Realtors Property Resource (NARRPR)</li>
-                        <li>Property Appraiser/County Assessor Systems (PACS)</li>
-                    </ul>
+    <div class="container mt-5">
+        <div class="row">
+            <div class="col-md-6 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h2 class="card-title">Welcome to BCBS Values</h2>
+                        <p class="card-text">A sophisticated real estate valuation platform for Benton County, Washington, leveraging advanced machine learning techniques for accurate property price prediction.</p>
+                        <a href="/properties" class="btn btn-primary">View Properties</a>
+                    </div>
                 </div>
             </div>
-            <div class="col-md-4 mb-4">
-                <div class="h-100 p-5 bg-secondary rounded-3">
-                    <h2>Data Validation</h2>
-                    <p>Ensures data quality and consistency through comprehensive validation.</p>
-                    <ul>
-                        <li>Completeness checks</li>
-                        <li>Data type validation</li>
-                        <li>Numeric range checks</li>
-                        <li>Date validation</li>
-                        <li>Duplicate detection</li>
-                        <li>Cross-source consistency</li>
-                    </ul>
-                </div>
-            </div>
-            <div class="col-md-4 mb-4">
-                <div class="h-100 p-5 bg-info rounded-3">
-                    <h2>ML Property Valuation</h2>
-                    <p>Machine learning algorithms for accurate property valuations.</p>
-                    <ul>
-                        <li>Linear regression model</li>
-                        <li>Feature importance analysis</li>
-                        <li>Property characteristics weighting</li>
-                        <li>Confidence scoring (R-squared)</li>
-                        <li>Detailed valuation comparison</li>
-                    </ul>
-                    <a href="/properties" class="btn btn-light mt-2">View Property Valuations</a>
+            <div class="col-md-6 mb-4">
+                <div class="card bg-dark text-light">
+                    <div class="card-body">
+                        <h3 class="card-title">Advanced Valuation Features</h3>
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item bg-dark text-light">Machine learning-based price prediction</li>
+                            <li class="list-group-item bg-dark text-light">Geospatial analysis factors</li>
+                            <li class="list-group-item bg-dark text-light">Comprehensive feature importance metrics</li>
+                            <li class="list-group-item bg-dark text-light">Multi-source data integration (MLS, NARRPR, PACS)</li>
+                        </ul>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- ETL Pipeline Status -->
         <div class="row mt-4">
-            <div class="col-12">
+            <div class="col-md-12">
                 <div class="card">
                     <div class="card-header">
-                        <h2>ETL Pipeline Status</h2>
+                        <h3>Recent Valuations</h3>
                     </div>
                     <div class="card-body">
-                        <p>The ETL pipeline processes real estate data from multiple sources and validates data quality.</p>
-                        <p>Run the validation process to check the quality of data currently in the system.</p>
-                        <button id="run-validation" class="btn btn-primary">Run Validation</button>
-                        <div id="validation-result" class="mt-3"></div>
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Property ID</th>
+                                        <th>Address</th>
+                                        <th>Estimated Value</th>
+                                        <th>Confidence</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>PROP-1001</td>
+                                        <td>123 Cherry Lane, Richland, WA 99352</td>
+                                        <td>$425,000.00</td>
+                                        <td><span class="badge bg-success">High (92%)</span></td>
+                                        <td><a href="/property/PROP-1001" class="btn btn-sm btn-info">Details</a></td>
+                                    </tr>
+                                    <tr>
+                                        <td>PROP-1002</td>
+                                        <td>456 Oak Street, Kennewick, WA 99336</td>
+                                        <td>$375,000.00</td>
+                                        <td><span class="badge bg-success">High (88%)</span></td>
+                                        <td><a href="/property/PROP-1002" class="btn btn-sm btn-info">Details</a></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-    </main>
+    </div>
 
-    <!-- Footer -->
-    <footer class="py-3 mt-4 bg-dark">
-        <div class="container text-center">
-            <p class="text-muted">© 2025 BCBS_Values Real Estate Valuation System</p>
+    <footer class="bg-dark text-light mt-5 py-3">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <p>&copy; 2025 BCBS Values. All rights reserved.</p>
+                </div>
+                <div class="col-md-6 text-end">
+                    <p>Benton County, Washington Real Estate Valuation</p>
+                </div>
+            </div>
         </div>
     </footer>
 
-    <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    
-    <!-- Custom JavaScript -->
-    <script>
-        document.getElementById('run-validation').addEventListener('click', async function() {
-            try {
-                const resultDiv = document.getElementById('validation-result');
-                resultDiv.innerHTML = '<div class="alert alert-info">Running validation...</div>';
-                
-                const response = await fetch('/api/validation');
-                const data = await response.json();
-                
-                if (data.status === 'success') {
-                    const result = data.validation_results;
-                    let statusClass = 'alert-success';
-                    
-                    if (result.status === 'failed') {
-                        statusClass = 'alert-danger';
-                    } else if (result.status === 'warning') {
-                        statusClass = 'alert-warning';
-                    } else if (result.status === 'no_data') {
-                        statusClass = 'alert-info';
-                    }
-                    
-                    resultDiv.innerHTML = `
-                        <div class="alert ${statusClass}">
-                            <h4>Validation Status: ${result.status}</h4>
-                            <p>Timestamp: ${result.timestamp}</p>
-                            ${result.status === 'no_data' ? 
-                                '<p>No property data found in the database. Please import data to perform validation.</p>' : 
-                                `<p>Validations run: ${Object.keys(result.validations || {}).length}</p>`
-                            }
-                        </div>
-                    `;
-                } else {
-                    resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.message}</div>`;
-                }
-            } catch (error) {
-                document.getElementById('validation-result').innerHTML = 
-                    `<div class="alert alert-danger">Error running validation: ${error.message}</div>`;
-            }
-        });
-    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

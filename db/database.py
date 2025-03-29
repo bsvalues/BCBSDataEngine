@@ -10,7 +10,7 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
-from db.models import Base, Property, ValidationResult
+from db.models import Base, Property, ValidationResult, PropertyValuation
 
 logger = logging.getLogger(__name__)
 
@@ -369,6 +369,143 @@ class Database:
         except Exception as e:
             session.rollback()
             logger.error(f"Error storing validation results: {str(e)}", exc_info=True)
+        finally:
+            session.close()
+    
+    def store_property_valuations(self, valuations):
+        """
+        Store property valuation results in the database.
+        
+        Args:
+            valuations (list/dict): Valuation results to store.
+                If a list, each item should be a dictionary with valuation data.
+                If a dict, should be a mapping of property_id -> valuation data.
+            
+        Returns:
+            int: Number of valuation records stored
+        """
+        logger.info("Storing property valuation results")
+        
+        # If valuations is empty, return early
+        if not valuations:
+            logger.warning("No valuation results to store")
+            return 0
+            
+        # Convert dict format to list if needed
+        if isinstance(valuations, dict):
+            # Check if it's property_id -> valuation mapping
+            if list(valuations.keys())[0] in ["property_id", "id", "parcel_id"]:
+                # It's a single valuation result
+                valuations = [valuations]
+            else:
+                # It's a mapping of property_id -> valuation data
+                valuations = [
+                    {"property_id": prop_id, **val_data} 
+                    for prop_id, val_data in valuations.items()
+                ]
+        
+        session = self.Session()
+        try:
+            records_stored = 0
+            current_timestamp = datetime.now()
+            
+            # Process each valuation item
+            for valuation_data in valuations:
+                # Skip if no property identifier is provided
+                if not any(key in valuation_data for key in ["property_id", "id", "parcel_id"]):
+                    logger.warning(f"Skipping valuation that lacks property identifier: {valuation_data}")
+                    continue
+                
+                # Find the associated property
+                target_property = None
+                
+                # Try to find by database ID first
+                if "property_id" in valuation_data and isinstance(valuation_data["property_id"], int):
+                    target_property = session.query(Property).filter_by(
+                        id=valuation_data["property_id"]
+                    ).first()
+                
+                # Try by property_id field if not found by database ID
+                if not target_property and "property_id" in valuation_data and valuation_data["property_id"]:
+                    # If it's not an integer, it's a property_id field not a database ID
+                    if not isinstance(valuation_data["property_id"], int):
+                        target_property = session.query(Property).filter_by(
+                            property_id=valuation_data["property_id"]
+                        ).first()
+                
+                # Try by parcel_id if provided
+                if not target_property and "parcel_id" in valuation_data and valuation_data["parcel_id"]:
+                    target_property = session.query(Property).filter_by(
+                        parcel_id=valuation_data["parcel_id"]
+                    ).first()
+                
+                # Skip if property not found
+                if not target_property:
+                    logger.warning(f"Property not found for valuation: {valuation_data}")
+                    continue
+                
+                # Extract core valuation data
+                valuation_obj = PropertyValuation(
+                    property_id=target_property.id,
+                    valuation_date=valuation_data.get("valuation_date", current_timestamp),
+                    estimated_value=valuation_data.get("estimated_value"),
+                    confidence_score=valuation_data.get("confidence_score"),
+                    prediction_interval_low=valuation_data.get("prediction_interval_low"),
+                    prediction_interval_high=valuation_data.get("prediction_interval_high"),
+                    model_name=valuation_data.get("model_name", "advanced_property_valuation"),
+                    model_version=valuation_data.get("model_version", "1.0"),
+                    model_r2_score=valuation_data.get("model_r2_score")
+                )
+                
+                # Store feature importance if available
+                if "feature_importance" in valuation_data:
+                    # Convert to serializable format if needed
+                    feature_imp = valuation_data["feature_importance"]
+                    if hasattr(feature_imp, "tolist"):
+                        feature_imp = feature_imp.tolist()
+                    valuation_obj.feature_importance = feature_imp
+                    
+                    # Generate top features string
+                    if isinstance(feature_imp, list) and feature_imp:
+                        # If it's a list of [feature, importance] pairs
+                        if isinstance(feature_imp[0], list) and len(feature_imp[0]) == 2:
+                            # Take top 5 features
+                            top_features = [f"{f[0]}" for f in feature_imp[:5]]
+                            valuation_obj.top_features = ", ".join(top_features)
+                
+                # Store comparable properties if available
+                if "comparable_properties" in valuation_data:
+                    valuation_obj.comparable_properties = valuation_data["comparable_properties"]
+                
+                # Store contribution factors if available
+                valuation_obj.location_factor = valuation_data.get("location_factor")
+                valuation_obj.size_factor = valuation_data.get("size_factor")
+                valuation_obj.condition_factor = valuation_data.get("condition_factor")
+                valuation_obj.market_factor = valuation_data.get("market_factor")
+                
+                # Store raw model outputs if available
+                if "raw_model_outputs" in valuation_data:
+                    # Convert to serializable format if needed
+                    raw_outputs = valuation_data["raw_model_outputs"]
+                    valuation_obj.raw_model_outputs = raw_outputs
+                
+                # Add to session and count
+                session.add(valuation_obj)
+                records_stored += 1
+                
+                # Also update the property's estimated_value if available
+                if "estimated_value" in valuation_data and valuation_data["estimated_value"]:
+                    target_property.estimated_value = valuation_data["estimated_value"]
+            
+            # Commit all changes
+            session.commit()
+            logger.info(f"Successfully stored {records_stored} property valuations")
+            return records_stored
+            
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error storing property valuations: {str(e)}", exc_info=True)
+            return 0
         finally:
             session.close()
     

@@ -3,19 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>500 - Server Error</title>
+    <title>Server Error - BCBS Values</title>
     <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
 </head>
 <body>
-    <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
-            <a class="navbar-brand" href="/">BCBS_Values</a>
+            <a class="navbar-brand" href="/">BCBS Values</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav">
+                <ul class="navbar-nav me-auto">
                     <li class="nav-item">
                         <a class="nav-link" href="/">Home</a>
                     </li>
@@ -23,41 +22,46 @@
                         <a class="nav-link" href="/properties">Properties</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/search">Search</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/validation">Validation</a>
+                        <a class="nav-link" href="/validation">Validation Results</a>
                     </li>
                 </ul>
+                <form class="d-flex" action="/search" method="get">
+                    <input class="form-control me-2" type="search" name="query" placeholder="Search properties..." aria-label="Search">
+                    <button class="btn btn-outline-light" type="submit">Search</button>
+                </form>
             </div>
         </div>
     </nav>
 
-    <!-- Main Content -->
-    <main class="container mt-4">
+    <div class="container mt-5 text-center">
         <div class="row">
-            <div class="col-md-6 offset-md-3 text-center">
+            <div class="col-md-8 offset-md-2">
                 <div class="card">
                     <div class="card-body">
-                        <h1 class="display-1">500</h1>
-                        <h2>Server Error</h2>
+                        <h1 class="display-1 text-danger">500</h1>
+                        <h2 class="mb-4">Server Error</h2>
                         <p class="lead">Oops! Something went wrong on our end.</p>
-                        <p>We're working to fix the issue. Please try again later or contact support if the problem persists.</p>
-                        <a href="/" class="btn btn-primary mt-3">Go to Homepage</a>
+                        <p>Our team has been notified and is working to fix the issue. Please try again later.</p>
+                        <a href="/" class="btn btn-primary mt-3">Return to Home</a>
                     </div>
                 </div>
             </div>
         </div>
-    </main>
+    </div>
 
-    <!-- Footer -->
-    <footer class="py-3 mt-4 bg-dark">
-        <div class="container text-center">
-            <p class="text-muted">© 2025 BCBS_Values Real Estate Valuation System</p>
+    <footer class="bg-dark text-light mt-5 py-3 fixed-bottom">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <p>&copy; 2025 BCBS Values. All rights reserved.</p>
+                </div>
+                <div class="col-md-6 text-end">
+                    <p>Benton County, Washington Real Estate Valuation</p>
+                </div>
+            </div>
         </div>
     </footer>
 
-    <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
