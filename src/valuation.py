@@ -1,6 +1,7 @@
 """
 Property valuation module for the BCBS_Values system.
-Implements valuation models for estimating property values based on features.
+Implements valuation models for estimating property values based on features,
+including advanced GIS data integration for spatial analysis and location-based valuation.
 """
 import logging
 import numpy as np
@@ -14,6 +15,7 @@ from sklearn.pipeline import Pipeline
 import statsmodels.api as sm
 from scipy import stats
 import warnings
+import math
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -21,6 +23,218 @@ logger = logging.getLogger(__name__)
 # Suppress specific warnings for cleaner output
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+def calculate_gis_features(properties_df, gis_data=None, ref_points=None, neighborhood_ratings=None):
+    """
+    Calculate GIS-related features for property valuation.
+    
+    This function integrates GIS spatial data with property information to create
+    location-based features that influence property values. These features include
+    distance to key reference points, neighborhood quality scores, and proximity
+    to amenities.
+    
+    Args:
+        properties_df (pd.DataFrame): DataFrame containing property data with latitude/longitude
+        gis_data (pd.DataFrame, optional): DataFrame containing GIS-specific data like
+            flood zones, school districts, etc.
+        ref_points (dict, optional): Dictionary of reference points with latitude/longitude
+            and importance weights. Example: {'city_center': {'lat': 46.2804, 'lon': -119.2752, 'weight': 1.0}}
+        neighborhood_ratings (dict, optional): Dictionary mapping neighborhood names/IDs to
+            quality ratings. Example: {'West Richland': 0.85, 'Kennewick': 0.78}
+            
+    Returns:
+        pd.DataFrame: Original DataFrame with added GIS-based features
+        
+    Example:
+        >>> ref_pts = {'downtown': {'lat': 46.2804, 'lon': -119.2752, 'weight': 1.0},
+        ...           'school': {'lat': 46.2698, 'lon': -119.2720, 'weight': 0.7}}
+        >>> neighborhood_ratings = {'West Richland': 0.9, 'Kennewick': 0.8, 'Richland': 0.85}
+        >>> df = calculate_gis_features(properties, ref_points=ref_pts, 
+        ...                             neighborhood_ratings=neighborhood_ratings)
+    """
+    try:
+        # Make a copy to avoid modifying the original DataFrame
+        df = properties_df.copy()
+        
+        # ======== 1. Basic coordinate validation ========
+        if 'latitude' not in df.columns or 'longitude' not in df.columns:
+            logger.warning("GIS feature calculation requires latitude and longitude coordinates")
+            return df
+            
+        # Ensure coordinates are numeric and within reasonable ranges
+        # (valid latitude: -90 to 90, valid longitude: -180 to 180)
+        valid_coords = (
+            df['latitude'].between(-90, 90, inclusive='both') & 
+            df['longitude'].between(-180, 180, inclusive='both')
+        )
+        
+        if not valid_coords.any():
+            logger.warning("No valid coordinates found in data. GIS features not calculated.")
+            return df
+            
+        # Filter to only valid coordinates for GIS calculations
+        coord_df = df[valid_coords].copy()
+        logger.info(f"Found {len(coord_df)}/{len(df)} properties with valid coordinates")
+
+        # ======== 2. Calculate basic location features ========
+        
+        # 2.1 Calculate centrality score (distance from center of the dataset)
+        # This indicates how central a property is relative to other properties
+        center_lat, center_lon = coord_df['latitude'].mean(), coord_df['longitude'].mean()
+        
+        # Haversine formula for accurate Earth distance calculation
+        def haversine_distance(lat1, lon1, lat2, lon2):
+            """Calculate the great circle distance between two points on Earth."""
+            # Convert decimal degrees to radians
+            lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
+            
+            # Haversine formula
+            dlon = lon2 - lon1
+            dlat = lat2 - lat1
+            a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+            c = 2 * math.asin(math.sqrt(a))
+            r = 6371  # Earth radius in kilometers
+            return c * r
+            
+        # Apply to all valid coordinates and normalize
+        df.loc[valid_coords, 'centrality_km'] = df.loc[valid_coords].apply(
+            lambda row: haversine_distance(row['latitude'], row['longitude'], center_lat, center_lon),
+            axis=1
+        )
+        
+        # 2.2 Calculate median property value by grid cell
+        # Divide area into grid cells and calculate median property value in each cell
+        if 'list_price' in df.columns or 'estimated_value' in df.columns or 'last_sale_price' in df.columns:
+            # Determine which price column to use
+            if 'list_price' in df.columns:
+                price_col = 'list_price'
+            elif 'estimated_value' in df.columns:
+                price_col = 'estimated_value'
+            else:
+                price_col = 'last_sale_price'
+                
+            # Create grid cells (0.01 degree is roughly 1km)
+            df.loc[valid_coords, 'lat_grid'] = np.floor(df.loc[valid_coords, 'latitude'] * 100) / 100
+            df.loc[valid_coords, 'lon_grid'] = np.floor(df.loc[valid_coords, 'longitude'] * 100) / 100
+            
+            # Get median prices by grid cell
+            grid_prices = df.loc[valid_coords].groupby(['lat_grid', 'lon_grid'])[price_col].median().to_dict()
+            
+            # Map back to properties
+            def get_grid_price(row):
+                if pd.isna(row['lat_grid']) or pd.isna(row['lon_grid']):
+                    return np.nan
+                grid_key = (row['lat_grid'], row['lon_grid'])
+                return grid_prices.get(grid_key, np.nan)
+                
+            df['location_price_index'] = df.apply(get_grid_price, axis=1)
+            
+            # Calculate price ratio relative to location
+            df.loc[df['location_price_index'].notna() & df[price_col].notna(), 'location_price_ratio'] = (
+                df.loc[df['location_price_index'].notna() & df[price_col].notna(), price_col] / 
+                df.loc[df['location_price_index'].notna() & df[price_col].notna(), 'location_price_index']
+            )
+            
+            logger.info("Created location-based price index features")
+        
+        # ======== 3. Process reference points if provided ========
+        if ref_points and isinstance(ref_points, dict):
+            # Create distance columns for each reference point
+            for point_name, point_data in ref_points.items():
+                if 'lat' in point_data and 'lon' in point_data:
+                    # Calculate distance to this reference point
+                    col_name = f"dist_to_{point_name}"
+                    df.loc[valid_coords, col_name] = df.loc[valid_coords].apply(
+                        lambda row: haversine_distance(
+                            row['latitude'], row['longitude'], 
+                            point_data['lat'], point_data['lon']
+                        ),
+                        axis=1
+                    )
+                    
+                    # Apply importance weight if specified
+                    weight = point_data.get('weight', 1.0)
+                    if weight != 1.0:
+                        df[f"{col_name}_weighted"] = df[col_name] * weight
+                        
+                    logger.info(f"Created distance feature to {point_name}")
+            
+            # Create combined proximity score (inverse of distance) - higher is better
+            dist_cols = [col for col in df.columns if col.startswith('dist_to_')]
+            if dist_cols:
+                # Standardize distances
+                for col in dist_cols:
+                    mean_dist = df[col].mean()
+                    std_dist = df[col].std()
+                    if std_dist > 0:
+                        df[f"{col}_std"] = (df[col] - mean_dist) / std_dist
+                
+                # Combined proximity score (inverse of standardized distances)
+                std_dist_cols = [f"{col}_std" for col in dist_cols if f"{col}_std" in df.columns]
+                if std_dist_cols:
+                    df['proximity_score'] = -df[std_dist_cols].mean(axis=1)
+                    logger.info("Created combined proximity score from reference points")
+        
+        # ======== 4. Apply neighborhood ratings if provided ========
+        if neighborhood_ratings and isinstance(neighborhood_ratings, dict):
+            if 'city' in df.columns:
+                # Map neighborhood ratings to properties
+                df['neighborhood_rating'] = df['city'].map(neighborhood_ratings)
+                logger.info("Added neighborhood rating based on city field")
+            elif 'zip_code' in df.columns:
+                # Try to use zip code mapping if available
+                zip_ratings = {zip_code: rating for zip_code, rating in neighborhood_ratings.items() 
+                              if isinstance(zip_code, (str, int)) and str(zip_code).isdigit()}
+                if zip_ratings:
+                    df['neighborhood_rating'] = df['zip_code'].astype(str).map(zip_ratings)
+                    logger.info("Added neighborhood rating based on zip code")
+            
+            # Fill missing neighborhood ratings with median value
+            if 'neighborhood_rating' in df.columns:
+                median_rating = df['neighborhood_rating'].median()
+                missing_ratings = df['neighborhood_rating'].isna().sum()
+                if missing_ratings > 0 and not np.isnan(median_rating):
+                    df['neighborhood_rating'].fillna(median_rating, inplace=True)
+                    logger.info(f"Filled {missing_ratings} missing neighborhood ratings with median: {median_rating:.2f}")
+        
+        # ======== 5. Create aggregate location quality score ========
+        # Combine various GIS factors into a single quality score
+        location_factors = []
+        
+        if 'proximity_score' in df.columns:
+            location_factors.append('proximity_score')
+            
+        if 'neighborhood_rating' in df.columns:
+            location_factors.append('neighborhood_rating')
+            
+        if 'location_price_ratio' in df.columns:
+            location_factors.append('location_price_ratio')
+        
+        if location_factors:
+            # Normalize each factor to 0-1 scale
+            for factor in location_factors:
+                min_val = df[factor].min()
+                max_val = df[factor].max()
+                if max_val > min_val:
+                    df[f"{factor}_norm"] = (df[factor] - min_val) / (max_val - min_val)
+                else:
+                    df[f"{factor}_norm"] = 0.5  # Default if no variation
+            
+            # Calculate combined location quality score
+            norm_factors = [f"{factor}_norm" for factor in location_factors]
+            df['gis_location_quality'] = df[norm_factors].mean(axis=1)
+            
+            # Create a price adjustment multiplier based on location quality
+            # Typical adjustment range: 0.8 (poor location) to 1.2 (excellent location)
+            df['gis_price_multiplier'] = 0.8 + 0.4 * df['gis_location_quality']
+            
+            logger.info(f"Created GIS location quality score from {len(location_factors)} factors")
+        
+        return df
+        
+    except Exception as e:
+        logger.error(f"Error in GIS feature calculation: {str(e)}", exc_info=True)
+        return properties_df  # Return original DataFrame on error
 
 def estimate_property_value(property_data, target_property=None, test_size=0.2, random_state=42):
     """
@@ -193,14 +407,16 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
 
 
 def advanced_property_valuation(property_data, target_property=None, test_size=0.2, random_state=42,
-                          feature_selection='auto', poly_degree=2, regularization=None, alpha=1.0):
+                          feature_selection='auto', poly_degree=2, regularization=None, alpha=1.0,
+                          gis_data=None, ref_points=None, neighborhood_ratings=None, use_gis_features=True):
     """
     Advanced property valuation using multiple regression analysis with comprehensive
-    data processing, feature engineering, and model evaluation.
+    data processing, feature engineering, and model evaluation, now with GIS data integration.
     
     This function performs sophisticated property valuation using multiple regression techniques,
     including polynomial features, regularization, feature selection, and statistical analysis
-    of results with p-values and confidence intervals.
+    of results with p-values and confidence intervals. It now integrates spatial (GIS) data
+    to account for location-based factors that significantly affect property values.
     
     Args:
         property_data (pd.DataFrame): DataFrame containing property data with features and prices
@@ -212,11 +428,22 @@ def advanced_property_valuation(property_data, target_property=None, test_size=0
         poly_degree (int, optional): Degree of polynomial features to generate (default: 2)
         regularization (str, optional): Type of regularization to use ('ridge', 'lasso', 'elastic', None)
         alpha (float, optional): Regularization strength parameter (default: 1.0)
+        gis_data (pd.DataFrame, optional): Supplementary GIS data to enhance location analysis
+        ref_points (dict, optional): Dictionary of reference points with lat/lon coordinates and importance weights
+            Example: {'downtown': {'lat': 46.2804, 'lon': -119.2752, 'weight': 1.0}}
+        neighborhood_ratings (dict, optional): Dictionary mapping neighborhoods or zip codes to quality ratings
+            Example: {'West Richland': 0.9, 'Kennewick': 0.8, 'Richland': 0.85}
+        use_gis_features (bool, optional): Whether to incorporate GIS features in the valuation model
         
     Returns:
         dict: Dictionary containing predicted value, model performance metrics, 
               feature importance, statistical significance, and more.
     """
+    # Initialize variables that might be referenced in the error case
+    gis_multiplier = None
+    gis_adjusted_value = None
+    target_with_gis = None
+    
     try:
         # Make a copy to avoid modifying original data
         df = property_data.copy()
@@ -327,6 +554,34 @@ def advanced_property_valuation(property_data, target_property=None, test_size=0
         df['property_age'] = current_year - df['year_built']
         df['beds_baths_ratio'] = df['bedrooms'] / df['bathrooms'].clip(lower=0.5)
         df['sqft_per_room'] = df['square_feet'] / (df['bedrooms'] + df['bathrooms']).clip(lower=1.0)
+        
+        # A2. Integrate GIS features if enabled
+        if use_gis_features:
+            logger.info("Integrating GIS features for spatial valuation factors")
+            
+            # Process through the GIS feature calculation function
+            df_with_gis = calculate_gis_features(
+                df, 
+                gis_data=gis_data, 
+                ref_points=ref_points, 
+                neighborhood_ratings=neighborhood_ratings
+            )
+            
+            # Merge back any new GIS features
+            gis_columns = [col for col in df_with_gis.columns if col not in df.columns]
+            if gis_columns:
+                logger.info(f"Added {len(gis_columns)} GIS-based features: {', '.join(gis_columns)}")
+                df = df_with_gis
+            else:
+                logger.warning("No GIS features were created - check if valid GIS data is available")
+                
+            # If we have a GIS price multiplier, log it for later use in prediction
+            if 'gis_price_multiplier' in df.columns:
+                logger.info(f"GIS price multiplier range: {df['gis_price_multiplier'].min():.2f} to {df['gis_price_multiplier'].max():.2f}")
+                
+            # If we have a location quality score, log it for transparency
+            if 'gis_location_quality' in df.columns:
+                logger.info(f"GIS location quality score range: {df['gis_location_quality'].min():.2f} to {df['gis_location_quality'].max():.2f}")
         
         # B. Create advanced engineered features
         
@@ -797,6 +1052,33 @@ def advanced_property_valuation(property_data, target_property=None, test_size=0
             # Make prediction
             predicted_value = float(model.predict(target_processed)[0])
             
+            # Apply GIS location adjustment if we have the quality multiplier
+            gis_adjusted_value = predicted_value
+            gis_multiplier = None
+            
+            # Check if we have GIS data for the target property
+            if use_gis_features and target_property is not None:
+                target_with_gis = calculate_gis_features(
+                    target_property, 
+                    gis_data=gis_data,
+                    ref_points=ref_points,
+                    neighborhood_ratings=neighborhood_ratings
+                )
+                
+                # Apply GIS price multiplier if available
+                if 'gis_price_multiplier' in target_with_gis.columns:
+                    gis_multiplier = float(target_with_gis['gis_price_multiplier'].iloc[0])
+                    gis_adjusted_value = predicted_value * gis_multiplier
+                    logger.info(f"Applying GIS location multiplier: {gis_multiplier:.4f}")
+                    logger.info(f"GIS adjusted value: ${gis_adjusted_value:,.2f} " +
+                               f"({'increased' if gis_multiplier > 1 else 'decreased'} by " +
+                               f"${abs(gis_adjusted_value - predicted_value):,.2f})")
+                    
+                    # Update the predicted value to use the GIS-adjusted value
+                    predicted_value = gis_adjusted_value
+                else:
+                    logger.warning("No GIS price multiplier available for target property")
+            
             # Calculate prediction interval using statsmodels
             # We use the standard error of the prediction for a rough confidence interval
             # This is a simplified approach; a more rigorous method would use the full prediction variance
@@ -861,6 +1143,20 @@ def advanced_property_valuation(property_data, target_property=None, test_size=0
                 'poly_degree': poly_degree,
                 'regularization': regularization,
                 'alpha': alpha
+            },
+            'gis_factors': {
+                'used_gis_features': use_gis_features,
+                'location_multiplier': gis_multiplier,
+                'base_prediction': gis_adjusted_value / gis_multiplier if gis_multiplier and gis_multiplier != 0 else predicted_value,
+                'location_quality': (target_with_gis['gis_location_quality'].iloc[0] 
+                                    if use_gis_features and 
+                                       target_property is not None and 
+                                       target_with_gis is not None and
+                                       isinstance(target_with_gis, pd.DataFrame) and
+                                       'gis_location_quality' in target_with_gis.columns and
+                                       not target_with_gis.empty
+                                    else None),
+                'reference_points': ref_points
             }
         }
         
@@ -870,5 +1166,13 @@ def advanced_property_valuation(property_data, target_property=None, test_size=0
             'error': str(e),
             'predicted_value': None,
             'r2_score': None,
-            'feature_importance': None
+            'feature_importance': None,
+            'gis_factors': {
+                'used_gis_features': use_gis_features,
+                'location_multiplier': None,
+                'base_prediction': None,
+                'location_quality': None,
+                'reference_points': ref_points,
+                'error': f"Failed to calculate GIS features: {str(e)}"
+            }
         }
