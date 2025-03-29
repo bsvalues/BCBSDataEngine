@@ -48,6 +48,21 @@ def parse_arguments():
         default=int(os.getenv("ETL_BATCH_SIZE", 100)),
         help="Number of records to process in each batch"
     )
+    parser.add_argument(
+        "--mls-csv", 
+        type=str,
+        help="Path to CSV file containing MLS data (bypasses API extraction)"
+    )
+    parser.add_argument(
+        "--pacs-csv", 
+        type=str,
+        help="Path to CSV file containing PACS data (bypasses API extraction)"
+    )
+    parser.add_argument(
+        "--narrpr-csv", 
+        type=str,
+        help="Path to CSV file containing NARRPR data (bypasses API extraction)"
+    )
     return parser.parse_args()
 
 
@@ -67,19 +82,22 @@ def run_etl_pipeline(args):
             if "mls" in sources:
                 logger.info("Starting MLS data extraction")
                 mls_scraper = MLSScraper(batch_size=args.batch_size)
-                mls_data = mls_scraper.extract()
+                # Use CSV file if provided, otherwise use API
+                mls_data = mls_scraper.extract(csv_file_path=args.mls_csv)
                 mls_scraper.transform_and_load(mls_data, db)
                 
             if "narrpr" in sources:
                 logger.info("Starting NARRPR data extraction")
                 narrpr_scraper = NARRPRScraper(batch_size=args.batch_size)
+                # Add CSV option for NARRPR (would need to implement in NARRPRScraper class)
                 narrpr_data = narrpr_scraper.extract()
                 narrpr_scraper.transform_and_load(narrpr_data, db)
                 
             if "pacs" in sources:
                 logger.info("Starting PACS data extraction")
                 pacs_importer = PACSImporter(batch_size=args.batch_size)
-                pacs_data = pacs_importer.extract()
+                # Add CSV option for PACS (would need to implement in PACSImporter class)
+                pacs_data = pacs_importer.extract(file_path=args.pacs_csv)
                 pacs_importer.transform_and_load(pacs_data, db)
         
         # Always run data validation

@@ -1,3 +1,3 @@
 """
-Test package for unit and integration tests.
+Test package for the property valuation system.
 """

@@ -29,18 +29,31 @@ class MLSScraper:
         if not self.api_key:
             logger.warning("MLS_API_KEY not found in environment variables")
     
-    def extract(self, start_date=None, end_date=None):
+    def extract(self, start_date=None, end_date=None, csv_file_path=None):
         """
-        Extract property data from MLS API.
+        Extract property data from MLS API or CSV file.
         
         Args:
             start_date (str, optional): Start date for data extraction (YYYY-MM-DD)
             end_date (str, optional): End date for data extraction (YYYY-MM-DD)
+            csv_file_path (str, optional): Path to CSV file containing MLS data.
+                                           If provided, API extraction is skipped.
             
         Returns:
             pd.DataFrame: DataFrame containing extracted property data
         """
-        logger.info("Extracting data from MLS")
+        # If CSV file path is provided, extract data from CSV file instead of API
+        if csv_file_path:
+            logger.info(f"Extracting data from MLS CSV file: {csv_file_path}")
+            try:
+                # Use the CSV reading function
+                return self.read_csv_data(csv_file_path)
+            except Exception as e:
+                logger.error(f"Error extracting data from MLS CSV file: {str(e)}", exc_info=True)
+                raise
+        
+        # Otherwise, extract data from the MLS API
+        logger.info("Extracting data from MLS API")
         
         # Set default date range if not provided
         if not start_date:
@@ -49,6 +62,11 @@ class MLSScraper:
             end_date = datetime.now().strftime("%Y-%m-%d")
             
         try:
+            # Check if API key is available
+            if not self.api_key:
+                logger.error("MLS_API_KEY is required for API extraction")
+                return pd.DataFrame()
+                
             # Prepare parameters for API request
             params = {
                 "api_key": self.api_key,
@@ -78,7 +96,7 @@ class MLSScraper:
                 else:
                     more_data = False
             
-            logger.info(f"Successfully extracted {len(all_properties)} properties from MLS")
+            logger.info(f"Successfully extracted {len(all_properties)} properties from MLS API")
             
             # Convert to DataFrame
             if all_properties:
@@ -87,7 +105,7 @@ class MLSScraper:
                 return pd.DataFrame()
                 
         except Exception as e:
-            logger.error(f"Error extracting data from MLS: {str(e)}", exc_info=True)
+            logger.error(f"Error extracting data from MLS API: {str(e)}", exc_info=True)
             raise
     
     def _make_api_request(self, endpoint, params):
@@ -214,3 +232,142 @@ class MLSScraper:
         """
         # Use the database object to insert the data
         return db.insert_properties(data, source="MLS")
+        
+    def read_csv_data(self, file_path, date_columns=None, id_column='mls_id'):
+        """
+        Read and clean MLS data from a CSV file.
+        
+        Args:
+            file_path (str): Path to the CSV file containing MLS data
+            date_columns (list, optional): List of column names that contain dates
+            id_column (str, optional): Name of the column containing unique property IDs
+            
+        Returns:
+            pd.DataFrame: Cleaned DataFrame containing MLS property data
+            
+        Raises:
+            FileNotFoundError: If the CSV file does not exist
+            ValueError: If duplicate property IDs are found
+        """
+        logger.info(f"Reading MLS data from CSV file: {file_path}")
+        
+        try:
+            # Step 1: Read the CSV file into a pandas DataFrame
+            # Use low_memory=False to avoid mixed type inference warnings
+            df = pd.read_csv(file_path, low_memory=False)
+            logger.info(f"Successfully read {len(df)} records from CSV file")
+            
+            # Step 2: Check for empty DataFrame
+            if df.empty:
+                logger.warning("CSV file contains no data")
+                return df
+                
+            # Step 3: Get initial column info for logging
+            initial_columns = df.columns.tolist()
+            logger.debug(f"Columns in CSV file: {initial_columns}")
+            
+            # Step 4: Remove rows with all NaN values
+            original_row_count = len(df)
+            df = df.dropna(how='all')
+            logger.debug(f"Removed {original_row_count - len(df)} completely empty rows")
+            
+            # Step 5: Handle missing values by column
+            # For critical columns, drop rows; for non-critical columns, fill with appropriate values
+            critical_columns = [id_column, 'address', 'city', 'state', 'zip_code']
+            for col in critical_columns:
+                if col in df.columns:
+                    # Count rows before dropping
+                    pre_drop_count = len(df)
+                    # Drop rows with NaN in critical columns
+                    df = df.dropna(subset=[col])
+                    # Log how many rows were dropped
+                    logger.debug(f"Dropped {pre_drop_count - len(df)} rows with missing {col}")
+            
+            # Step 6: Fill NaN values in non-critical columns
+            # Numeric columns get filled with 0
+            numeric_columns = ['list_price', 'square_feet', 'lot_size', 'year_built', 
+                              'bedrooms', 'bathrooms', 'days_on_market']
+            for col in numeric_columns:
+                if col in df.columns:
+                    # Convert to numeric first to ensure consistent data type
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+                    # Track number of NaN values
+                    na_count = df[col].isna().sum()
+                    # Fill NaN values with 0
+                    df[col] = df[col].fillna(0)
+                    logger.debug(f"Filled {na_count} missing values in {col} with 0")
+            
+            # String columns get filled with empty string
+            string_columns = ['property_type', 'status', 'listing_agent', 'listing_office']
+            for col in string_columns:
+                if col in df.columns:
+                    # Track number of NaN values
+                    na_count = df[col].isna().sum()
+                    # Fill NaN values with empty string
+                    df[col] = df[col].fillna('')
+                    logger.debug(f"Filled {na_count} missing values in {col} with empty string")
+            
+            # Step 7: Standardize date formats
+            if date_columns is None:
+                # Default date columns to look for
+                date_columns = ['listing_date', 'last_sale_date', 'close_date']
+                
+            for col in date_columns:
+                if col in df.columns:
+                    # Track original non-null dates
+                    original_date_count = df[col].notna().sum()
+                    # Convert to datetime with automatic format detection
+                    df[col] = pd.to_datetime(df[col], errors='coerce')
+                    # Check how many dates were successfully parsed
+                    successful_date_count = df[col].notna().sum()
+                    logger.debug(f"Converted {successful_date_count} out of {original_date_count} date values in {col} to standard format")
+                    # Fill NaN dates with None for SQL compatibility
+                    df[col] = df[col].fillna(pd.NaT)
+            
+            # Step 8: Verify that property IDs are unique
+            if id_column in df.columns:
+                # Check for duplicate IDs
+                duplicates = df[df.duplicated(subset=[id_column], keep=False)]
+                if not duplicates.empty:
+                    duplicate_count = len(duplicates)
+                    duplicate_ids = duplicates[id_column].unique().tolist()
+                    logger.warning(f"Found {duplicate_count} rows with duplicate {id_column} values: {duplicate_ids[:5]}...")
+                    
+                    # Option 1: Keep the first occurrence of each duplicate ID
+                    # df = df.drop_duplicates(subset=[id_column], keep='first')
+                    
+                    # Option 2: Raise an error
+                    raise ValueError(f"Found {duplicate_count} duplicate property IDs in CSV file")
+                    
+                    # Option 3: Add a suffix to make IDs unique
+                    # duplicate_ids = duplicates[id_column].unique()
+                    # for dup_id in duplicate_ids:
+                    #     dup_rows = df[df[id_column] == dup_id]
+                    #     for i, idx in enumerate(dup_rows.index[1:], 1):
+                    #         df.loc[idx, id_column] = f"{dup_id}_dup{i}"
+            
+            # Step 9: Ensure consistent data types
+            # Convert string columns to string type explicitly
+            for col in df.columns:
+                # Skip date columns and known numeric columns
+                if col not in date_columns and col not in numeric_columns:
+                    # Convert to string if it's not a numeric column
+                    if df[col].dtype != 'object':
+                        df[col] = df[col].astype(str)
+            
+            # Step 10: Log cleaning results
+            logger.info(f"Successfully cleaned CSV data: {len(df)} records after cleaning")
+            return df
+            
+        except FileNotFoundError:
+            logger.error(f"CSV file not found: {file_path}")
+            raise
+        except pd.errors.ParserError as e:
+            logger.error(f"Error parsing CSV file: {str(e)}")
+            raise
+        except ValueError as e:
+            logger.error(str(e))
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error processing CSV file: {str(e)}", exc_info=True)
+            raise
