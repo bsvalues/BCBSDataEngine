@@ -1,0 +1,311 @@
+{
+  "name": "BCBS TDD Validator",
+  "description": "Test-driven development validation agent for the BCBS_Values project",
+  "version": "1.0.0",
+  
+  "trigger_description": "Trigger phrase that activates this TDD validation agent",
+  "trigger": "tdd-validate",
+  
+  "test_coverage_description": "Configuration for code coverage requirements and thresholds",
+  "test_coverage": {
+    "minimum_thresholds": {
+      "overall": 80,
+      "core_modules": {
+        "src/valuation.py": 90,
+        "db/database.py": 85,
+        "etl/data_validation.py": 90,
+        "db/models.py": 80
+      },
+      "etl_modules": 75,
+      "api_endpoints": 80,
+      "util_functions": 70
+    },
+    "exclusions": [
+      "**/__init__.py",
+      "**/migrations/**",
+      "**/tests/**"
+    ],
+    "coverage_report_format": ["json", "html"],
+    "note": "Defines minimum test coverage requirements for different parts of the codebase"
+  },
+  
+  "test_validation_description": "Rules for validating that new code has corresponding tests",
+  "test_validation": {
+    "required_test_patterns": [
+      {
+        "code_pattern": "def ([a-zA-Z0-9_]+)\\(",
+        "test_pattern": "def test_$1\\(",
+        "applies_to": ["src/**/*.py", "etl/**/*.py", "db/**/*.py"]
+      },
+      {
+        "code_pattern": "class ([a-zA-Z0-9_]+)\\(",
+        "test_pattern": "class Test$1\\(",
+        "applies_to": ["src/**/*.py", "etl/**/*.py", "db/**/*.py"]
+      }
+    ],
+    "verification_strategy": "name_based_mapping",
+    "case_sensitivity": false,
+    "enforce_naming_convention": true,
+    "note": "Rules to verify that new functions and classes have corresponding test implementations"
+  },
+  
+  "test_execution_description": "Configuration for test execution and validation",
+  "test_execution": {
+    "test_command": "python -m pytest",
+    "test_args": [
+      "--cov=src",
+      "--cov=db",
+      "--cov=etl",
+      "--cov-report=term",
+      "--cov-report=json:coverage.json",
+      "-v"
+    ],
+    "parallelize": true,
+    "timeout_per_test": "30s",
+    "total_timeout": "10m",
+    "retries_on_failure": 1,
+    "note": "Configuration for running tests and generating coverage reports"
+  },
+  
+  "regression_detection_description": "Configuration for detecting regressions in code changes",
+  "regression_detection": {
+    "strategies": [
+      {
+        "name": "coverage_decrease",
+        "description": "Detect decreases in test coverage",
+        "threshold": 2,
+        "action": "flag"
+      },
+      {
+        "name": "test_count_decrease",
+        "description": "Detect decreases in test count",
+        "threshold": 1,
+        "action": "flag"
+      },
+      {
+        "name": "failing_tests",
+        "description": "Detect newly failing tests",
+        "threshold": 0,
+        "action": "block"
+      },
+      {
+        "name": "untested_changes",
+        "description": "Detect code changes without corresponding test changes",
+        "threshold": 0,
+        "action": "flag"
+      },
+      {
+        "name": "performance_degradation",
+        "description": "Detect significant degradation in test performance",
+        "threshold": 25,
+        "action": "flag",
+        "unit": "percent"
+      }
+    ],
+    "baseline_branch": "main",
+    "store_historical_data": true,
+    "history_retention": "90d",
+    "note": "Strategies for detecting various types of regressions in code quality and test coverage"
+  },
+  
+  "validation_workflow_description": "Steps the agent should follow when validating TDD compliance",
+  "validation_workflow": [
+    {
+      "step": "identify_changes",
+      "description": "Identify files that have been changed or added",
+      "command": "git diff --name-status {base_branch}...{current_branch} -- '*.py'",
+      "output_parser": "diff_parser"
+    },
+    {
+      "step": "check_test_existence",
+      "description": "Verify test files exist for changed code files",
+      "depends_on": "identify_changes",
+      "action": "verify_test_files_exist",
+      "fail_if_missing": true
+    },
+    {
+      "step": "run_baseline_tests",
+      "description": "Run tests on baseline branch and collect metrics",
+      "command": "{test_execution.test_command} {test_execution.test_args}",
+      "branch": "{regression_detection.baseline_branch}",
+      "output_parser": "pytest_coverage_parser"
+    },
+    {
+      "step": "run_current_tests",
+      "description": "Run tests on current branch and collect metrics",
+      "command": "{test_execution.test_command} {test_execution.test_args}",
+      "output_parser": "pytest_coverage_parser"
+    },
+    {
+      "step": "compare_results",
+      "description": "Compare test results between baseline and current branch",
+      "depends_on": ["run_baseline_tests", "run_current_tests"],
+      "action": "compare_test_results",
+      "output": "regression_report"
+    },
+    {
+      "step": "verify_coverage_thresholds",
+      "description": "Verify coverage meets minimum thresholds",
+      "depends_on": "run_current_tests",
+      "action": "check_coverage_thresholds",
+      "thresholds": "{test_coverage.minimum_thresholds}"
+    },
+    {
+      "step": "generate_report",
+      "description": "Generate comprehensive TDD validation report",
+      "depends_on": ["compare_results", "verify_coverage_thresholds"],
+      "action": "generate_validation_report",
+      "format": "markdown"
+    }
+  ],
+  
+  "reporting_description": "Configuration for reporting validation results",
+  "reporting": {
+    "formats": ["console", "markdown", "json"],
+    "include_sections": [
+      "summary",
+      "coverage_report",
+      "regression_analysis",
+      "missing_tests",
+      "recommendations"
+    ],
+    "notification_channels": [
+      {
+        "type": "console",
+        "level": "info"
+      },
+      {
+        "type": "file",
+        "path": "tdd_validation_report.md",
+        "level": "verbose"
+      }
+    ],
+    "severity_levels": {
+      "missing_tests": "error",
+      "coverage_below_threshold": "error",
+      "failing_tests": "error",
+      "regression_detected": "warning",
+      "performance_degradation": "warning"
+    },
+    "note": "Configuration for how validation results should be reported and which channels to use"
+  },
+  
+  "integration_description": "Configuration for integrating with other development tools",
+  "integration": {
+    "git": {
+      "enabled": true,
+      "hooks": ["pre-commit", "pre-push"],
+      "commit_message_validation": {
+        "pattern": "^(feat|fix|docs|style|refactor|test|chore)(\\(.*\\))?: .*",
+        "require_test_mention_for_code_changes": true
+      }
+    },
+    "ci_cd": {
+      "github_actions": true,
+      "gitlab_ci": false,
+      "jenkins": false,
+      "fail_pipeline_on_error": true
+    },
+    "issue_tracker": {
+      "enabled": true,
+      "create_issues_for_failures": true,
+      "issue_template": "tdd_validation_failure.md"
+    },
+    "note": "Integration points with development tools and CI/CD pipelines"
+  },
+  
+  "custom_rules_description": "Project-specific custom TDD validation rules",
+  "custom_rules": [
+    {
+      "rule_id": "valuation_model_test",
+      "description": "Ensure valuation model changes have accuracy tests",
+      "condition": {
+        "file_pattern": "src/valuation.py",
+        "code_pattern": "def [a-zA-Z0-9_]*_valuation"
+      },
+      "validation": {
+        "required_test_file": "test_*_valuation.py",
+        "required_test_content": [
+          "assert\\s+['\"]r2_score['\"](\\s+in|,)\\s+result",
+          "assert\\s+['\"]feature_importance['\"](\\s+in|,)\\s+result"
+        ]
+      },
+      "severity": "error"
+    },
+    {
+      "rule_id": "database_transaction_test",
+      "description": "Ensure database transaction methods have rollback tests",
+      "condition": {
+        "file_pattern": "db/database.py",
+        "code_pattern": "def (insert|update|delete|batch)"
+      },
+      "validation": {
+        "required_test_content": [
+          "with\\s+pytest.raises",
+          "transaction.rollback"
+        ]
+      },
+      "severity": "warning"
+    },
+    {
+      "rule_id": "etl_validation_test",
+      "description": "Ensure ETL validation functions have edge case tests",
+      "condition": {
+        "file_pattern": "etl/data_validation.py",
+        "code_pattern": "def validate_"
+      },
+      "validation": {
+        "required_test_count": 3,
+        "required_test_cases": ["valid_case", "edge_case", "error_case"]
+      },
+      "severity": "error"
+    }
+  ],
+  
+  "tutorial_description": "Instructions for developers on working with the TDD validator",
+  "tutorial": {
+    "quick_start": "Run the TDD validator with 'bootstrap-tdd-validate' in the agent console",
+    "workflow_instructions": [
+      "1. Write tests first that define expected behavior",
+      "2. Run tests to see them fail (verifying tests work)",
+      "3. Implement code to make tests pass",
+      "4. Refactor while ensuring tests continue to pass",
+      "5. Run the TDD validator to ensure compliance before submitting"
+    ],
+    "examples": [
+      {
+        "title": "Example of TDD for a new valuation function",
+        "test_code": "def test_neighborhood_valuation():\n    # Arrange test data\n    # Act by calling function\n    # Assert expected results",
+        "implementation_code": "def neighborhood_valuation():\n    # Implementation that satisfies the test",
+        "note": "Write the test first, then implement the function"
+      }
+    ],
+    "common_issues": [
+      {
+        "issue": "Missing test for new function",
+        "solution": "Create a test file in the corresponding test directory with test_prefix"
+      },
+      {
+        "issue": "Low test coverage",
+        "solution": "Add tests for edge cases and error conditions"
+      },
+      {
+        "issue": "Failing regression tests",
+        "solution": "Fix implementation without breaking existing functionality"
+      }
+    ],
+    "note": "Instructions and examples to help developers follow TDD practices"
+  },
+  
+  "metadata": {
+    "created_date": "2025-03-29",
+    "author": "BCBS_Values Development Team",
+    "compatibility": "Python 3.10+, pytest 7.0+",
+    "dependencies": [
+      "pytest",
+      "pytest-cov",
+      "pytest-xdist",
+      "pytest-timeout"
+    ]
+  }
+}
