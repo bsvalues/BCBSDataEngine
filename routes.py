@@ -1,7 +1,9 @@
 from flask import render_template, request, jsonify, flash, redirect, url_for
 import logging
+import pandas as pd
 from db.database import Database
 from etl.data_validation import DataValidator
+from src.valuation import estimate_property_value
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -143,6 +145,127 @@ def register_routes(app):
                 'status': 'error',
                 'message': str(e)
             }), 500
+            
+    @app.route('/api/valuation/<int:property_id>')
+    def api_valuation(property_id):
+        """API endpoint to get property valuation."""
+        try:
+            db = Database()
+            
+            # Get all properties for training data
+            all_properties = db.get_all_properties(benton_county_only=True)
+            
+            if all_properties.empty:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'No properties available for valuation model training'
+                }), 400
+                
+            # Get the target property
+            target_property = all_properties[all_properties['id'] == property_id]
+            
+            if target_property.empty:
+                return jsonify({
+                    'status': 'error',
+                    'message': f'Property with ID {property_id} not found'
+                }), 404
+                
+            # Remove target property from training data
+            training_data = all_properties[all_properties['id'] != property_id]
+            
+            # Make a copy of target property to remove price info for prediction
+            prediction_property = target_property.copy()
+            for price_col in ['list_price', 'estimated_value', 'last_sale_price']:
+                if price_col in prediction_property.columns:
+                    prediction_property[price_col] = None
+            
+            # Run valuation model
+            result = estimate_property_value(training_data, prediction_property)
+            
+            # Add original property data for comparison
+            property_data = target_property.iloc[0].to_dict()
+            
+            # Return results
+            return jsonify({
+                'status': 'success',
+                'property': property_data,
+                'valuation_results': result
+            })
+            
+        except Exception as e:
+            logger.error(f"API valuation error: {str(e)}", exc_info=True)
+            return jsonify({
+                'status': 'error',
+                'message': str(e)
+            }), 500
+            
+    @app.route('/property/<int:property_id>')
+    def property_detail(property_id):
+        """Render property detail page with valuation."""
+        try:
+            db = Database()
+            
+            # Get all properties
+            all_properties = db.get_all_properties(benton_county_only=True)
+            
+            if all_properties.empty:
+                flash("No properties available for valuation model training", "warning")
+                return redirect(url_for('properties'))
+                
+            # Get the target property
+            target_property = all_properties[all_properties['id'] == property_id]
+            
+            if target_property.empty:
+                flash(f"Property with ID {property_id} not found", "danger")
+                return redirect(url_for('properties'))
+                
+            # Get property data for the template
+            property_data = target_property.iloc[0].to_dict()
+            
+            # Remove target property from training data
+            training_data = all_properties[all_properties['id'] != property_id]
+            
+            # Make a copy of target property to remove price info for prediction
+            prediction_property = target_property.copy()
+            for price_col in ['list_price', 'estimated_value', 'last_sale_price']:
+                if price_col in prediction_property.columns:
+                    prediction_property[price_col] = None
+            
+            # Run valuation model
+            valuation_results = estimate_property_value(training_data, prediction_property)
+            
+            # Get original price for comparison
+            original_price = None
+            price_source = None
+            for price_col in ['list_price', 'estimated_value', 'last_sale_price']:
+                if price_col in property_data and property_data[price_col] is not None:
+                    original_price = property_data[price_col]
+                    price_source = price_col
+                    break
+            
+            # Calculate price difference if both prices exist
+            price_difference = None
+            price_difference_percent = None
+            if original_price and 'predicted_value' in valuation_results and valuation_results['predicted_value']:
+                price_difference = valuation_results['predicted_value'] - original_price
+                price_difference_percent = (price_difference / original_price) * 100
+            
+            db.close()
+            
+            # Render template with all data
+            return render_template('property_detail.html', 
+                                  property=property_data,
+                                  valuation_results=valuation_results,
+                                  original_price=original_price,
+                                  price_source=price_source,
+                                  price_difference=price_difference,
+                                  price_difference_percent=price_difference_percent,
+                                  location_focus="Benton County, Washington")
+            
+        except Exception as e:
+            logger.error(f"Error loading property detail: {str(e)}", exc_info=True)
+            flash(f"Error loading property detail: {str(e)}", "danger")
+            return redirect(url_for('properties'))
     
     @app.errorhandler(404)
     def page_not_found(e):
