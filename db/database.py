@@ -394,6 +394,155 @@ class Database:
         finally:
             session.close()
     
+    def batch_insert_properties(self, properties_df, batch_size=1000):
+        """
+        Efficiently insert a DataFrame of properties into the database using batch insertion.
+        
+        This method uses SQLAlchemy's Core functionality for bulk insertion, which is more
+        efficient than ORM-based insertion for large datasets.
+        
+        Args:
+            properties_df (pd.DataFrame): DataFrame containing property data
+            batch_size (int, optional): Number of records to insert in each batch
+            
+        Returns:
+            int: Number of records inserted
+            
+        Raises:
+            SQLAlchemyError: If there's an error with the database connection or insertion
+            ValueError: If the DataFrame is empty or doesn't match the expected schema
+        """
+        if properties_df.empty:
+            logger.warning("Empty DataFrame provided, no records to insert")
+            return 0
+            
+        logger.info(f"Batch inserting {len(properties_df)} property records")
+        
+        try:
+            # Ensure the engine is connected
+            if not hasattr(self, 'engine') or self.engine is None:
+                raise ValueError("Database connection not established")
+                
+            # Make a copy of the DataFrame to avoid modifying the original
+            df = properties_df.copy()
+            
+            # Handle NaN values - convert to None for SQL compatibility
+            df = df.where(pd.notnull(df), None)
+            
+            # Add import timestamp if not present
+            if 'import_date' not in df.columns or df['import_date'].isnull().all():
+                df['import_date'] = datetime.now()
+                
+            # Drop the 'id' column if it exists (let the database auto-generate it)
+            if 'id' in df.columns:
+                df = df.drop(columns=['id'])
+                
+            # Get the Property table columns for validation
+            # This helps catch mismatched columns before attempting insertion
+            property_columns = [c.name for c in Property.__table__.columns if c.name != 'id']
+            
+            # Filter the DataFrame to include only valid columns
+            valid_columns = [col for col in df.columns if col in property_columns]
+            if not valid_columns:
+                raise ValueError(f"No valid Property model columns found in DataFrame. Expected columns: {property_columns}")
+                
+            df = df[valid_columns]
+            
+            # Convert DataFrame to list of dictionaries
+            records = df.to_dict(orient='records')
+            total_records = len(records)
+            records_inserted = 0
+            
+            # Batch insert records
+            # This is much more efficient than inserting one by one
+            for i in range(0, total_records, batch_size):
+                batch = records[i:i + batch_size]
+                if batch:
+                    try:
+                        # Use SQLAlchemy Core for batch insertion
+                        with self.engine.begin() as conn:
+                            # The execute() method automatically creates a transaction
+                            # that will be committed if successful or rolled back on error
+                            conn.execute(Property.__table__.insert(), batch)
+                            
+                        records_inserted += len(batch)
+                        
+                        # CREATE INDEX recommendation:
+                        # For best performance with large datasets, consider creating indexes:
+                        # CREATE INDEX idx_properties_address ON properties(address, city, state, zip_code);
+                        # CREATE INDEX idx_properties_location ON properties(city, state, zip_code);
+                        # CREATE INDEX idx_properties_parcel ON properties(parcel_id);
+                        # CREATE INDEX idx_properties_property ON properties(property_id);
+                        logger.debug(f"Inserted batch of {len(batch)} records (total: {records_inserted}/{total_records})")
+                    except SQLAlchemyError as e:
+                        # Log the specific error but continue with the next batch
+                        logger.error(f"Error inserting batch {i//batch_size + 1}: {str(e)}")
+                        raise
+            
+            logger.info(f"Successfully inserted {records_inserted} property records")
+            return records_inserted
+            
+        except SQLAlchemyError as e:
+            logger.error(f"Database error during batch insertion: {str(e)}", exc_info=True)
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error during batch insertion: {str(e)}", exc_info=True)
+            raise
+            
+    def create_properties_indexes(self):
+        """
+        Create indexes on the properties table to improve query performance.
+        
+        This method creates indexes on commonly queried fields in the properties table.
+        It's recommended to call this after large batch insertions to improve query performance.
+        
+        Note: Creating indexes can be a time-consuming operation on large tables, but
+        the performance benefits for queries are substantial.
+        
+        Returns:
+            bool: True if indexes were created successfully, False otherwise
+        """
+        logger.info("Creating indexes on properties table")
+        
+        # SQL statements to create indexes
+        index_statements = [
+            # Composite index for full address searches
+            "CREATE INDEX IF NOT EXISTS idx_properties_address ON properties(address, city, state, zip_code)",
+            
+            # Index for location-based searches
+            "CREATE INDEX IF NOT EXISTS idx_properties_location ON properties(city, state, zip_code)",
+            
+            # Indexes for identifier fields
+            "CREATE INDEX IF NOT EXISTS idx_properties_parcel_id ON properties(parcel_id)",
+            "CREATE INDEX IF NOT EXISTS idx_properties_property_id ON properties(property_id)",
+            "CREATE INDEX IF NOT EXISTS idx_properties_mls_id ON properties(mls_id)",
+            
+            # Indexes for common filter criteria
+            "CREATE INDEX IF NOT EXISTS idx_properties_price ON properties(list_price)",
+            "CREATE INDEX IF NOT EXISTS idx_properties_sqft ON properties(square_feet)",
+            "CREATE INDEX IF NOT EXISTS idx_properties_bedrooms ON properties(bedrooms)",
+            "CREATE INDEX IF NOT EXISTS idx_properties_property_type ON properties(property_type)",
+            
+            # Index for data source
+            "CREATE INDEX IF NOT EXISTS idx_properties_data_source ON properties(data_source)"
+        ]
+        
+        try:
+            with self.engine.begin() as conn:
+                for statement in index_statements:
+                    try:
+                        conn.execute(text(statement))
+                        logger.debug(f"Created index: {statement}")
+                    except SQLAlchemyError as e:
+                        logger.warning(f"Error creating index: {statement}. Error: {str(e)}")
+                
+            logger.info("Indexes created successfully")
+            return True
+            
+        except SQLAlchemyError as e:
+            logger.error(f"Error creating indexes: {str(e)}", exc_info=True)
+            return False
+        
     def close(self):
         """
         Close the database connection.
