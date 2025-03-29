@@ -6,6 +6,7 @@ Also exports the Flask app for gunicorn to use.
 import os
 import logging
 import argparse
+import json
 import pandas as pd
 from datetime import datetime
 from dotenv import load_dotenv
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 from etl.mls_scraper import MLSScraper
 from etl.narrpr_scraper import NARRPRScraper
 from etl.pacs_import import PACSImporter
-from etl.data_validation import DataValidator
+from etl.data_validation import DataValidator, validate_property_data
 from db.database import Database
 
 
@@ -43,6 +44,11 @@ def parse_arguments():
         "--validate-only", 
         action="store_true",
         help="Only validate existing data without importing new data"
+    )
+    parser.add_argument(
+        "--standalone-validation",
+        action="store_true",
+        help="Use the standalone property validation function instead of the DataValidator class"
     )
     parser.add_argument(
         "--batch-size", 
@@ -163,9 +169,46 @@ def run_etl_pipeline(args):
         
         # Always run data validation
         logger.info("Starting data validation")
-        validator = DataValidator(db)
-        validation_results = validator.validate_all()
-        validator.report_validation_results(validation_results)
+        
+        # Determine which validation method to use
+        if args.standalone_validation:
+            logger.info("Using standalone property validation function")
+            # Get all properties from the database
+            properties = db.get_all_properties()
+            
+            if properties.empty:
+                logger.warning("No properties found in database for validation")
+                logger.info("ETL pipeline completed successfully")
+                return
+                
+            # Run the standalone validation function
+            validation_passed, validation_summary = validate_property_data(properties)
+            
+            # Log the validation results
+            logger.info(f"Standalone validation complete. Passed: {validation_passed}")
+            if not validation_passed:
+                logger.warning("Validation issues found:")
+                for category, result in validation_summary['categories'].items():
+                    if result["status"] == "failed":
+                        logger.warning(f"- {category}: {len(result['issues'])} issues found")
+                        
+            # Store results to a file
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            result_file = f"validation_results_{timestamp}.json"
+            with open(result_file, 'w') as f:
+                json.dump(validation_summary, f, indent=2)
+            logger.info(f"Detailed validation results saved to {result_file}")
+            
+            # Store in database as JSON string
+            db.store_validation_results({
+                "status": "passed" if validation_passed else "failed",
+                "results": json.dumps(validation_summary)
+            })
+        else:
+            # Use the DataValidator class (original behavior)
+            validator = DataValidator(db)
+            validation_results = validator.validate_all()
+            validator.report_validation_results(validation_results)
         
         logger.info("ETL pipeline completed successfully")
         

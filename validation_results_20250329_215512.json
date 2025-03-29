@@ -1,0 +1,28 @@
+{
+  "validation_passed": false,
+  "timestamp": "2025-03-29T21:55:12.839840",
+  "record_count": 10,
+  "categories": {
+    "unique_ids": {
+      "status": "passed",
+      "issues": []
+    },
+    "date_formats": {
+      "status": "passed",
+      "issues": []
+    },
+    "numeric_ranges": {
+      "status": "failed",
+      "issues": [
+        {
+          "field": "lot_size",
+          "issue_type": "above_maximum",
+          "max_value": 100.0,
+          "count": 10,
+          "percentage": 100.0,
+          "max_observed": 108900.0
+        }
+      ]
+    }
+  }
+}

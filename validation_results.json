@@ -1,0 +1,89 @@
+{
+  "validation_passed": false,
+  "timestamp": "2025-03-29T21:54:36.356122",
+  "record_count": 10,
+  "categories": {
+    "unique_ids": {
+      "status": "failed",
+      "issues": [
+        {
+          "field": "property_id",
+          "duplicate_count": 1,
+          "duplicate_percentage": 10.0,
+          "example_duplicates": [
+            "P003"
+          ]
+        },
+        {
+          "field": "parcel_id",
+          "duplicate_count": 1,
+          "duplicate_percentage": 10.0,
+          "example_duplicates": [
+            "PA005"
+          ]
+        }
+      ]
+    },
+    "date_formats": {
+      "status": "failed",
+      "issues": [
+        {
+          "field": "last_sale_date",
+          "invalid_count": 1,
+          "invalid_percentage": 10.0,
+          "example_invalid_formats": [
+            "invalid-date"
+          ]
+        },
+        {
+          "field": "listing_date",
+          "future_dates_count": 1,
+          "future_percentage": 10.0
+        }
+      ]
+    },
+    "numeric_ranges": {
+      "status": "failed",
+      "issues": [
+        {
+          "field": "square_feet",
+          "issue_type": "non_numeric",
+          "count": 1,
+          "percentage": 10.0
+        },
+        {
+          "field": "lot_size",
+          "issue_type": "below_minimum",
+          "min_value": 0.01,
+          "count": 1,
+          "percentage": 10.0,
+          "min_observed": 0.005
+        },
+        {
+          "field": "lot_size",
+          "issue_type": "above_maximum",
+          "max_value": 100.0,
+          "count": 1,
+          "percentage": 10.0,
+          "max_observed": 150.0
+        },
+        {
+          "field": "bedrooms",
+          "issue_type": "above_maximum",
+          "max_value": 20.0,
+          "count": 1,
+          "percentage": 10.0,
+          "max_observed": 25.0
+        },
+        {
+          "field": "last_sale_price",
+          "issue_type": "below_minimum",
+          "min_value": 1000.0,
+          "count": 1,
+          "percentage": 10.0,
+          "min_observed": 900.0
+        }
+      ]
+    }
+  }
+}

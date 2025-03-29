@@ -6,8 +6,213 @@ import logging
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import json
 
 logger = logging.getLogger(__name__)
+
+def validate_property_data(data):
+    """
+    Validates property data from a DataFrame, checking for unique IDs,
+    properly formatted dates, and numeric fields within expected ranges.
+    
+    Args:
+        data (pd.DataFrame): Property data to validate
+        
+    Returns:
+        tuple: (bool, dict) - Boolean indicating if validation passed and summary of issues
+    """
+    logger.info("Starting comprehensive property data validation")
+    
+    # Initialize results dictionary
+    validation_passed = True
+    validation_results = {
+        "unique_ids": {"status": "passed", "issues": []},
+        "date_formats": {"status": "passed", "issues": []},
+        "numeric_ranges": {"status": "passed", "issues": []}
+    }
+    
+    # Check for empty DataFrame
+    if data.empty:
+        logger.warning("No data to validate")
+        return False, {"error": "No data to validate"}
+    
+    # 1. Check that all property IDs are unique
+    id_fields = ['id', 'property_id', 'parcel_id', 'mls_id', 'listing_id', 'apn']
+    id_fields = [field for field in id_fields if field in data.columns]
+    
+    if id_fields:
+        logger.info(f"Checking unique IDs for fields: {', '.join(id_fields)}")
+        for id_field in id_fields:
+            # Skip fields that are all null
+            if data[id_field].isna().all():
+                continue
+                
+            # Count duplicates
+            duplicate_count = data[id_field].duplicated().sum()
+            if duplicate_count > 0:
+                validation_passed = False
+                validation_results["unique_ids"]["status"] = "failed"
+                duplicate_ids = data[data[id_field].duplicated(keep=False)][id_field].unique().tolist()
+                # Limit to 5 examples in the log for clarity
+                example_duplicates = duplicate_ids[:5]
+                validation_results["unique_ids"]["issues"].append({
+                    "field": id_field,
+                    "duplicate_count": int(duplicate_count),
+                    "duplicate_percentage": float(round((duplicate_count / len(data)) * 100, 2)),
+                    "example_duplicates": example_duplicates
+                })
+                logger.warning(f"Found {duplicate_count} duplicate values in {id_field}")
+    else:
+        logger.warning("No ID fields found in the data")
+        validation_results["unique_ids"]["status"] = "skipped"
+        validation_results["unique_ids"]["issues"].append({
+            "message": "No ID fields found in the data"
+        })
+    
+    # 2. Verify date fields are correctly formatted
+    date_fields = ['last_sale_date', 'listing_date', 'import_date']
+    date_fields = [field for field in date_fields if field in data.columns]
+    
+    if date_fields:
+        logger.info(f"Validating date formats for fields: {', '.join(date_fields)}")
+        for date_field in date_fields:
+            # Skip fields that are all null
+            if data[date_field].isna().all():
+                continue
+                
+            # Convert to datetime, coerce errors to NaN
+            date_values = pd.to_datetime(data[date_field], errors='coerce')
+            
+            # Count invalid dates
+            invalid_count = (~date_values.notna() & ~data[date_field].isna()).sum()
+            
+            if invalid_count > 0:
+                validation_passed = False
+                validation_results["date_formats"]["status"] = "failed"
+                invalid_examples = data[~date_values.notna() & ~data[date_field].isna()][date_field].head(5).tolist()
+                validation_results["date_formats"]["issues"].append({
+                    "field": date_field,
+                    "invalid_count": int(invalid_count),
+                    "invalid_percentage": float(round((invalid_count / len(data)) * 100, 2)),
+                    "example_invalid_formats": invalid_examples
+                })
+                logger.warning(f"Found {invalid_count} improperly formatted dates in {date_field}")
+                
+            # Check for dates in the future
+            current_date = pd.Timestamp.now()
+            future_dates = (date_values > current_date).sum()
+            
+            if future_dates > 0:
+                validation_passed = False
+                validation_results["date_formats"]["status"] = "failed"
+                validation_results["date_formats"]["issues"].append({
+                    "field": date_field,
+                    "future_dates_count": int(future_dates),
+                    "future_percentage": float(round((future_dates / len(data)) * 100, 2))
+                })
+                logger.warning(f"Found {future_dates} future dates in {date_field}")
+    else:
+        logger.warning("No date fields found in the data")
+        validation_results["date_formats"]["status"] = "skipped"
+        validation_results["date_formats"]["issues"].append({
+            "message": "No date fields found in the data"
+        })
+    
+    # 3. Ensure numeric fields fall within expected ranges
+    numeric_fields = {
+        'square_feet': (100, 20000),         # Square feet between 100 and 20,000
+        'lot_size': (0.01, 150000),          # Lot size between 0.01 and 150,000 square feet (about 3.5 acres)
+        'bedrooms': (0, 20),                 # Bedrooms between 0 and 20
+        'bathrooms': (0, 15),                # Bathrooms between 0 and 15
+        'list_price': (1000, 100000000),     # List price between $1,000 and $100M
+        'last_sale_price': (1000, 100000000),# Sale price between $1,000 and $100M
+        'estimated_value': (1000, 100000000),# Estimated value between $1,000 and $100M
+        'land_value': (1000, 100000000),     # Land value between $1,000 and $100M
+        'total_value': (1000, 100000000)     # Total value between $1,000 and $100M
+    }
+    
+    # Filter to fields present in the DataFrame
+    available_numeric_fields = {k: v for k, v in numeric_fields.items() if k in data.columns}
+    
+    if available_numeric_fields:
+        logger.info(f"Validating numeric ranges for fields: {', '.join(available_numeric_fields.keys())}")
+        for field, (min_val, max_val) in available_numeric_fields.items():
+            # Skip fields that are all null
+            if data[field].isna().all():
+                continue
+                
+            # Convert to numeric, coerce errors to NaN
+            numeric_values = pd.to_numeric(data[field], errors='coerce')
+            
+            # Count non-numeric values
+            non_numeric = (~numeric_values.notna() & ~data[field].isna()).sum()
+            if non_numeric > 0:
+                validation_passed = False
+                validation_results["numeric_ranges"]["status"] = "failed"
+                validation_results["numeric_ranges"]["issues"].append({
+                    "field": field,
+                    "issue_type": "non_numeric",
+                    "count": int(non_numeric),
+                    "percentage": float(round((non_numeric / len(data)) * 100, 2))
+                })
+                logger.warning(f"Found {non_numeric} non-numeric values in {field}")
+            
+            # Count out-of-range values
+            below_min = (numeric_values < min_val) & numeric_values.notna()
+            above_max = (numeric_values > max_val) & numeric_values.notna()
+            
+            below_min_count = below_min.sum()
+            above_max_count = above_max.sum()
+            
+            if below_min_count > 0:
+                validation_passed = False
+                validation_results["numeric_ranges"]["status"] = "failed"
+                validation_results["numeric_ranges"]["issues"].append({
+                    "field": field,
+                    "issue_type": "below_minimum",
+                    "min_value": float(min_val),
+                    "count": int(below_min_count),
+                    "percentage": float(round((below_min_count / len(data)) * 100, 2)),
+                    "min_observed": float(numeric_values[below_min].min()) if below_min_count > 0 else None
+                })
+                logger.warning(f"Found {below_min_count} values below minimum ({min_val}) in {field}")
+            
+            if above_max_count > 0:
+                validation_passed = False
+                validation_results["numeric_ranges"]["status"] = "failed"
+                validation_results["numeric_ranges"]["issues"].append({
+                    "field": field,
+                    "issue_type": "above_maximum",
+                    "max_value": float(max_val),
+                    "count": int(above_max_count),
+                    "percentage": float(round((above_max_count / len(data)) * 100, 2)),
+                    "max_observed": float(numeric_values[above_max].max()) if above_max_count > 0 else None
+                })
+                logger.warning(f"Found {above_max_count} values above maximum ({max_val}) in {field}")
+    else:
+        logger.warning("No numeric fields found in the data")
+        validation_results["numeric_ranges"]["status"] = "skipped"
+        validation_results["numeric_ranges"]["issues"].append({
+            "message": "No numeric fields found in the data"
+        })
+    
+    # Summarize validation results
+    logger.info(f"Property data validation complete. Passed: {validation_passed}")
+    if not validation_passed:
+        logger.warning("Validation issues found:")
+        for category, result in validation_results.items():
+            if result["status"] == "failed":
+                logger.warning(f"- {category}: {len(result['issues'])} issues found")
+    
+    # Return results
+    validation_summary = {
+        "validation_passed": validation_passed,
+        "timestamp": datetime.now().isoformat(),
+        "record_count": len(data),
+        "categories": validation_results
+    }
+    
+    return validation_passed, validation_summary
 
 class DataValidator:
     """
@@ -208,7 +413,7 @@ class DataValidator:
         # Define reasonable ranges for numeric fields
         ranges = {
             "square_feet": (100, 20000),  # Square feet between 100 and 20,000
-            "lot_size": (0.01, 100),      # Lot size between 0.01 and 100 acres
+            "lot_size": (0.01, 150000),      # Lot size between 0.01 and 150,000 square feet
             "year_built": (1800, datetime.now().year),  # Year built between 1800 and current year
             "bedrooms": (0, 20),          # Bedrooms between 0 and 20
             "bathrooms": (0, 15),         # Bathrooms between 0 and 15

@@ -1,0 +1,19 @@
+{
+  "validation_passed": true,
+  "timestamp": "2025-03-29T21:55:58.909221",
+  "record_count": 10,
+  "categories": {
+    "unique_ids": {
+      "status": "passed",
+      "issues": []
+    },
+    "date_formats": {
+      "status": "passed",
+      "issues": []
+    },
+    "numeric_ranges": {
+      "status": "passed",
+      "issues": []
+    }
+  }
+}
