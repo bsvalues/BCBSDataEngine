@@ -1,0 +1,39 @@
+{
+  "module_name": "BCBS_Values",
+  "version": "1.0.0",
+  "description": "Real estate property valuation ETL and analytics system",
+  "maintainers": [
+    {
+      "name": "Development Team",
+      "email": "dev@example.com"
+    }
+  ],
+  "components": {
+    "etl": {
+      "enable_mls": true,
+      "enable_narrpr": true,
+      "enable_pacs": true,
+      "batch_size": 100,
+      "validation": {
+        "use_standalone": false,
+        "numeric_tolerance": 0.01,
+        "date_max_future_days": 0
+      }
+    },
+    "database": {
+      "enable_indexes": true,
+      "pool_recycle": 300,
+      "pool_pre_ping": true
+    },
+    "web": {
+      "enable_api": true,
+      "enable_ui": true,
+      "default_port": 5000
+    }
+  },
+  "dependencies": {
+    "python": ">=3.10",
+    "database": "PostgreSQL >=13.0"
+  },
+  "build_timestamp": "2025-03-29T22:00:00Z"
+}

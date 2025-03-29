@@ -1,0 +1,118 @@
+name: BCBS Values CI Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_USER: bcbs_test
+          POSTGRES_PASSWORD: bcbs_test
+          POSTGRES_DB: bcbs_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 pytest pytest-cov
+        # Install exact package versions that match production environment
+        pip install flask==2.3.0 flask-sqlalchemy==3.1.0 
+        pip install pandas==2.1.0 psycopg2-binary==2.9.9
+        pip install python-dotenv==1.0.0 requests==2.31.0
+        pip install selenium==4.15.0 webdriver-manager==4.0.0
+        pip install sqlalchemy==2.0.0 email-validator==2.1.0
+    
+    - name: Lint with flake8
+      run: |
+        # stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # exit-zero treats all errors as warnings
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    
+    - name: Test with pytest
+      env:
+        DATABASE_URL: postgresql://bcbs_test:bcbs_test@localhost:5432/bcbs_test
+        PGHOST: localhost
+        PGPORT: 5432
+        PGDATABASE: bcbs_test
+        PGUSER: bcbs_test
+        PGPASSWORD: bcbs_test
+        FLASK_ENV: testing
+      run: |
+        pytest --cov=. --cov-report=xml
+
+    - name: Test ETL Validation
+      env:
+        DATABASE_URL: postgresql://bcbs_test:bcbs_test@localhost:5432/bcbs_test
+      run: |
+        python main.py --sources all --validate-only
+    
+    - name: Upload test reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-reports
+        path: |
+          coverage.xml
+          validation_results*.json
+        if-no-files-found: warn
+    
+    - name: Upload config files
+      uses: actions/upload-artifact@v3
+      with:
+        name: config-files
+        path: configs/
+        if-no-files-found: warn
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Create deployment package
+      run: |
+        mkdir -p deploy
+        cp -r db etl templates configs *.py deploy/
+        cp requirements.txt deploy/
+        echo "Build completed on $(date)" > deploy/build_info.txt
+    
+    - name: Upload deployment package
+      uses: actions/upload-artifact@v3
+      with:
+        name: deployment-package
+        path: deploy/
