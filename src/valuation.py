@@ -1147,7 +1147,8 @@ def advanced_property_valuation(property_data, target_property=None, test_size=0
             'gis_factors': {
                 'used_gis_features': use_gis_features,
                 'location_multiplier': gis_multiplier,
-                'base_prediction': gis_adjusted_value / gis_multiplier if gis_multiplier and gis_multiplier != 0 else predicted_value,
+                'base_prediction': (gis_adjusted_value / gis_multiplier if gis_multiplier and gis_multiplier != 0 and gis_adjusted_value is not None 
+                                   else predicted_value),
                 'location_quality': (target_with_gis['gis_location_quality'].iloc[0] 
                                     if use_gis_features and 
                                        target_property is not None and 

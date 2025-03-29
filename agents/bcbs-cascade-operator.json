@@ -1,0 +1,321 @@
+{
+  "name": "BCBS Cascade Operator",
+  "description": "An orchestration agent for multi-agent workflows in the BCBS_Values system",
+  "version": "1.0.0",
+  
+  "trigger_description": "Trigger phrase that activates this orchestration agent",
+  "trigger": "cascade-operator",
+  
+  "orchestration_capabilities_description": "Core capabilities for multi-agent orchestration",
+  "orchestration_capabilities": {
+    "execution_modes": ["sequential", "parallel", "conditional", "event-driven"],
+    "agent_coordination": true,
+    "state_persistence": true,
+    "workflow_visualization": true,
+    "note": "These capabilities define how the agent coordinates and executes multi-agent workflows"
+  },
+  
+  "agent_registry_description": "Registry of all available agents that can be coordinated by this operator",
+  "agent_registry": {
+    "agent_types": [
+      {
+        "type": "bootstrap",
+        "config_path": "agents/bcbs-bootstrap-commander.json",
+        "capabilities": ["environment-setup", "dependency-validation", "test-execution"],
+        "communication_channels": ["direct-command", "status-update"]
+      },
+      {
+        "type": "etl",
+        "config_path": "agents/bootstrap-commander.json",
+        "capabilities": ["data-extraction", "data-transformation", "data-loading", "data-validation"],
+        "communication_channels": ["data-pipeline", "validation-results", "status-update"]
+      },
+      {
+        "type": "valuation",
+        "config_path": "agents/god-tier-builder.json",
+        "capabilities": ["valuation-modeling", "feature-engineering", "prediction-generation"],
+        "communication_channels": ["model-updates", "prediction-results", "status-update"]
+      },
+      {
+        "type": "validation",
+        "config_path": "agents/tdd-validator.json",
+        "capabilities": ["validation-logic", "test-execution", "quality-assurance"],
+        "communication_channels": ["validation-results", "test-reports", "status-update"]
+      }
+    ],
+    "note": "Registry of all available agents with their capabilities and communication channels"
+  },
+  
+  "workflow_templates_description": "Pre-defined workflow templates for common operations",
+  "workflow_templates": [
+    {
+      "name": "full_etl_cycle",
+      "description": "Complete ETL pipeline execution with validation",
+      "steps": [
+        {
+          "agent": "etl",
+          "action": "extract",
+          "sources": ["mls", "narrpr", "pacs"],
+          "params": {
+            "validate_source_data": true
+          }
+        },
+        {
+          "agent": "etl",
+          "action": "transform",
+          "params": {
+            "normalize_fields": true,
+            "handle_missing_values": "impute"
+          }
+        },
+        {
+          "agent": "etl",
+          "action": "load",
+          "params": {
+            "batch_size": 1000,
+            "create_indexes": true
+          }
+        },
+        {
+          "agent": "validation",
+          "action": "validate_data",
+          "params": {
+            "comprehensive": true
+          }
+        }
+      ],
+      "communication_flow": {
+        "messaging_pattern": "sequential",
+        "state_sharing": "shared_context",
+        "error_handling": "propagate_and_log"
+      },
+      "note": "This workflow template orchestrates the complete ETL process with validation"
+    },
+    {
+      "name": "valuation_pipeline",
+      "description": "Run property valuation pipeline with model selection and validation",
+      "steps": [
+        {
+          "agent": "etl",
+          "action": "fetch_properties",
+          "params": {
+            "benton_county_only": true
+          }
+        },
+        {
+          "agent": "valuation",
+          "action": "prepare_features",
+          "params": {
+            "feature_engineering": "advanced",
+            "use_gis_features": true
+          }
+        },
+        {
+          "agent": "valuation",
+          "action": "run_models",
+          "params": {
+            "models": ["basic", "advanced"],
+            "cross_validation": true
+          }
+        },
+        {
+          "agent": "validation",
+          "action": "validate_predictions",
+          "params": {
+            "performance_metrics": ["r2", "mae", "mape"]
+          }
+        }
+      ],
+      "communication_flow": {
+        "messaging_pattern": "sequential",
+        "state_sharing": "shared_context",
+        "error_handling": "retry_then_skip"
+      },
+      "note": "This workflow template coordinates the valuation pipeline from data to predictions"
+    }
+  ],
+  
+  "message_broker_description": "Configuration for inter-agent communication system",
+  "message_broker": {
+    "protocol": "direct-invocation",
+    "message_format": "json",
+    "channels": {
+      "command": {
+        "direction": "bidirectional",
+        "persistence": false,
+        "prioritization": "fifo"
+      },
+      "event": {
+        "direction": "publish-subscribe",
+        "persistence": true,
+        "retention_policy": "24h",
+        "prioritization": "priority-based"
+      },
+      "data": {
+        "direction": "bidirectional",
+        "persistence": true,
+        "retention_policy": "7d",
+        "prioritization": "fifo"
+      },
+      "status": {
+        "direction": "publish-subscribe",
+        "persistence": true,
+        "retention_policy": "24h",
+        "prioritization": "fifo"
+      }
+    },
+    "note": "Configuration for message passing between agents, defining channels and protocols"
+  },
+  
+  "status_dashboard_description": "Configuration for the visual status dashboard",
+  "status_dashboard": {
+    "update_frequency": "real-time",
+    "display_components": [
+      {
+        "name": "agent_status_grid",
+        "type": "grid",
+        "data_source": "status_channel",
+        "visualization": "status-cards",
+        "refresh_rate": "5s"
+      },
+      {
+        "name": "task_pipeline_view",
+        "type": "pipeline",
+        "data_source": "event_channel",
+        "visualization": "flow-diagram",
+        "refresh_rate": "5s"
+      },
+      {
+        "name": "resource_utilization",
+        "type": "metrics",
+        "data_source": "system_metrics",
+        "visualization": "gauges",
+        "refresh_rate": "10s"
+      },
+      {
+        "name": "error_log",
+        "type": "log",
+        "data_source": "error_events",
+        "visualization": "scrolling-list",
+        "refresh_rate": "5s"
+      }
+    ],
+    "interaction_capabilities": ["filter", "drill-down", "pause-resume-workflow"],
+    "note": "Configuration for the visual status dashboard that displays agent activity and system health"
+  },
+  
+  "execution_engine_description": "Configuration for workflow execution and scheduling",
+  "execution_engine": {
+    "scheduler": {
+      "mode": "event-driven",
+      "cron_capabilities": true,
+      "concurrent_workflows": 5,
+      "priority_levels": ["critical", "high", "normal", "low", "background"]
+    },
+    "workflow_executor": {
+      "isolation_level": "shared-context",
+      "transaction_support": true,
+      "retry_policy": {
+        "max_retries": 3,
+        "backoff_strategy": "exponential",
+        "initial_delay": "1s"
+      }
+    },
+    "resource_management": {
+      "cpu_allocation": "dynamic",
+      "memory_limits": "enforced",
+      "timeout_policy": {
+        "default_timeout": "10m",
+        "long_running_tasks": "1h"
+      }
+    },
+    "note": "Configuration for the execution engine that runs workflows and manages system resources"
+  },
+  
+  "monitoring_and_alerting_description": "Configuration for system monitoring and alerting",
+  "monitoring_and_alerting": {
+    "metrics_collection": {
+      "system_metrics": ["cpu", "memory", "disk", "network"],
+      "workflow_metrics": ["execution_time", "success_rate", "throughput"],
+      "agent_metrics": ["activity", "error_rate", "task_completion_time"]
+    },
+    "alert_conditions": [
+      {
+        "name": "agent_error_threshold",
+        "metric": "agent_error_rate",
+        "threshold": "> 10%",
+        "window": "5m",
+        "severity": "warning"
+      },
+      {
+        "name": "workflow_failure",
+        "metric": "workflow_success_rate",
+        "threshold": "< 80%",
+        "window": "15m",
+        "severity": "critical"
+      },
+      {
+        "name": "system_resources",
+        "metric": "system_cpu_usage",
+        "threshold": "> 90%",
+        "window": "5m",
+        "severity": "warning"
+      }
+    ],
+    "notification_channels": ["dashboard", "log", "websocket"],
+    "note": "Configuration for monitoring system health and generating alerts when issues are detected"
+  },
+  
+  "api_description": "API endpoints for external integration with the cascade operator",
+  "api": {
+    "base_path": "/api/v1/cascade-operator",
+    "endpoints": [
+      {
+        "path": "/workflows",
+        "methods": ["GET", "POST"],
+        "description": "List or create workflows"
+      },
+      {
+        "path": "/workflows/{id}",
+        "methods": ["GET", "PUT", "DELETE"],
+        "description": "Get, update, or delete a specific workflow"
+      },
+      {
+        "path": "/workflows/{id}/execute",
+        "methods": ["POST"],
+        "description": "Execute a specific workflow"
+      },
+      {
+        "path": "/workflows/{id}/status",
+        "methods": ["GET"],
+        "description": "Get the current status of a workflow"
+      },
+      {
+        "path": "/agents",
+        "methods": ["GET"],
+        "description": "List all registered agents"
+      },
+      {
+        "path": "/agents/{id}/tasks",
+        "methods": ["GET"],
+        "description": "Get tasks assigned to a specific agent"
+      }
+    ],
+    "authentication": {
+      "type": "jwt",
+      "scopes": ["read", "write", "execute"]
+    },
+    "note": "API endpoints for external systems to interact with the cascade operator"
+  },
+  
+  "metadata": {
+    "created_date": "2025-03-29",
+    "author": "BCBS_Values Development Team",
+    "compatibility": "Replit environment",
+    "dependencies": [
+      "bcbs-bootstrap-commander.json",
+      "god-tier-builder.json",
+      "tdd-validator.json"
+    ]
+  }
+}

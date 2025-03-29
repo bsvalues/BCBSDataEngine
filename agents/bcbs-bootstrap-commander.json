@@ -1,0 +1,109 @@
+{
+  "name": "BCBS Bootstrap Commander",
+  "description": "An agent for bootstrapping and auditing the BCBS_Values project environment",
+  "version": "1.0.0",
+  
+  "trigger_description": "Trigger phrase that activates this agent",
+  "trigger": "bootstrap-dev-checkoff",
+  
+  "project_audit_description": "Configuration for project structure verification",
+  "project_audit": {
+    "required_directories": [
+      "db",
+      "etl",
+      "src",
+      "templates",
+      "tests",
+      "logs",
+      "data",
+      "configs"
+    ],
+    "core_files": [
+      "main.py",
+      "app.py",
+      "routes.py",
+      "db/models.py",
+      "db/database.py",
+      "src/valuation.py"
+    ],
+    "note": "These directories and files must exist for the project to function properly"
+  },
+  
+  "dependency_validation_description": "Configuration for dependency validation",
+  "dependency_validation": {
+    "required_packages": [
+      "flask",
+      "flask-sqlalchemy",
+      "gunicorn",
+      "pandas",
+      "numpy",
+      "scikit-learn",
+      "sqlalchemy",
+      "psycopg2-binary",
+      "selenium",
+      "webdriver-manager",
+      "statsmodels",
+      "requests",
+      "python-dotenv"
+    ],
+    "python_version": ">=3.10",
+    "note": "These packages must be installed for the application to function correctly"
+  },
+  
+  "environment_check_description": "Configuration for environment verification",
+  "environment_check": {
+    "required_env_vars": [
+      "DATABASE_URL",
+      "PGUSER",
+      "PGPASSWORD",
+      "PGHOST",
+      "PGPORT",
+      "PGDATABASE"
+    ],
+    "optional_env_vars": [
+      "NARRPR_USERNAME",
+      "NARRPR_PASSWORD", 
+      "PACS_API_KEY"
+    ],
+    "note": "Required environment variables must be set, optional ones are needed for specific data sources"
+  },
+  
+  "test_suite_description": "Configuration for test execution",
+  "test_suite": {
+    "initial_tests": [
+      "tests/test_data_validation.py",
+      "basic_valuation_test.py",
+      "test_batch_insert.py"
+    ],
+    "validation_test": "test_property_validation.py",
+    "etl_test_command": "python main.py --sources all --validate-only",
+    "note": "Tests to run during initial bootstrap to verify system functionality"
+  },
+  
+  "database_check_description": "Database configuration check",
+  "database_check": {
+    "test_query": "SELECT COUNT(*) FROM pg_catalog.pg_tables WHERE schemaname != 'pg_catalog' AND schemaname != 'information_schema'",
+    "benton_county_check": "python add_benton_county_sample.py",
+    "note": "Tests to verify the database is properly configured with required tables"
+  },
+  
+  "instructions_description": "Additional instructions for agent processing",
+  "instructions": {
+    "post_bootstrap": "After successful bootstrap, report status of each component and suggest next steps for development",
+    "error_handling": "If errors are encountered, provide detailed diagnosis and corrective actions",
+    "performance_notes": "Collect and report execution times of validation steps to identify potential bottlenecks"
+  },
+  
+  "workflow_commands_description": "Workflow commands to be run",
+  "workflow_commands": {
+    "server_start": "gunicorn --bind 0.0.0.0:5000 --reuse-port --reload main:app",
+    "etl_pipeline": "python main.py --sources all --validate-only",
+    "note": "Commands for starting the web server and ETL pipeline"
+  },
+  
+  "metadata": {
+    "created_date": "2025-03-29",
+    "author": "BCBS_Values Development Team",
+    "compatibility": "Replit environment"
+  }
+}
