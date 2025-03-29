@@ -1,0 +1,36 @@
+{
+  "validation_passed": false,
+  "timestamp": "2025-03-29T22:03:02.578596",
+  "record_count": 110,
+  "categories": {
+    "unique_ids": {
+      "status": "failed",
+      "issues": [
+        {
+          "field": "property_id",
+          "duplicate_count": 9,
+          "duplicate_percentage": 8.18,
+          "example_duplicates": [
+            null
+          ]
+        },
+        {
+          "field": "mls_id",
+          "duplicate_count": 9,
+          "duplicate_percentage": 8.18,
+          "example_duplicates": [
+            null
+          ]
+        }
+      ]
+    },
+    "date_formats": {
+      "status": "passed",
+      "issues": []
+    },
+    "numeric_ranges": {
+      "status": "passed",
+      "issues": []
+    }
+  }
+}
