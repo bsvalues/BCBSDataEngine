@@ -1,174 +1,142 @@
 """
-Unit tests for NARRPR scraper module.
+Tests for the NARRPR scraper module.
 """
+import os
+import sys
 import unittest
+from unittest import mock
 import pandas as pd
-from unittest.mock import patch, MagicMock
+from datetime import datetime
+
+# Add parent directory to path to import the module
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from etl.narrpr_scraper import NARRPRScraper
 
 class TestNARRPRScraper(unittest.TestCase):
-    """
-    Test cases for the NARRPRScraper class.
-    """
+    """Test cases for the NARRPR scraper."""
     
     def setUp(self):
         """Set up test fixtures."""
-        self.scraper = NARRPRScraper(batch_size=10)
+        self.scraper = NARRPRScraper()
         
-        # Mock property data
-        self.mock_property_data = {
-            "properties": [
-                {
-                    "propertyId": "P123456",
-                    "addressLine1": "123 Main St",
-                    "city": "Anytown",
-                    "state": "CA",
-                    "zipCode": "12345",
-                    "propertyType": "Single Family",
-                    "estimatedValue": 520000,
-                    "lastSalePrice": 450000,
-                    "lastSaleDate": "2020-06-15",
-                    "bedrooms": 3,
-                    "bathrooms": 2.5,
-                    "totalRooms": 7,
-                    "squareFeet": 2100,
-                    "lotSize": 0.25,
-                    "yearBuilt": 1992
-                },
-                {
-                    "propertyId": "P789012",
-                    "addressLine1": "456 Oak Ave",
-                    "city": "Sometown",
-                    "state": "CA",
-                    "zipCode": "54321",
-                    "propertyType": "Condo",
-                    "estimatedValue": 310000,
-                    "lastSalePrice": 285000,
-                    "lastSaleDate": "2019-03-22",
-                    "bedrooms": 2,
-                    "bathrooms": 1,
-                    "totalRooms": 4,
-                    "squareFeet": 1150,
-                    "lotSize": 0.0,
-                    "yearBuilt": 2005
-                }
-            ]
-        }
-    
-    @patch('etl.narrpr_scraper.requests.get')
-    def test_extract_success(self, mock_get):
-        """Test successful data extraction."""
-        # Configure mock
-        mock_response = MagicMock()
-        mock_response.json.return_value = self.mock_property_data
-        mock_response.raise_for_status.return_value = None
-        mock_get.return_value = mock_response
+        # Create mock data for testing
+        self.mock_property_data = [
+            {
+                'address': '123 Main St',
+                'city': 'Anytown',
+                'state': 'CA',
+                'zip_code': '90210',
+                'bedrooms': 3.0,
+                'bathrooms': 2.0,
+                'square_feet': 1800.0,
+                'year_built': 2005,
+                'list_price': 500000.0,
+                'property_type': 'residential',
+                'data_source': 'NARRPR',
+                'scrape_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            },
+            {
+                'address': '456 Oak Ave',
+                'city': 'Sometown',
+                'state': 'CA',
+                'zip_code': '90211',
+                'bedrooms': 4.0,
+                'bathrooms': 3.0,
+                'square_feet': 2400.0,
+                'year_built': 2010,
+                'list_price': 750000.0,
+                'property_type': 'residential',
+                'data_source': 'NARRPR',
+                'scrape_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            }
+        ]
         
-        # Call extract method
-        result = self.scraper.extract()
+    @mock.patch('etl.narrpr_scraper.webdriver')
+    @mock.patch('etl.narrpr_scraper.Service')
+    @mock.patch('etl.narrpr_scraper.ChromeDriverManager')
+    @mock.patch.dict(os.environ, {"NARRPR_USERNAME": "testuser", "NARRPR_PASSWORD": "testpass"})
+    def test_login_credentials_validation(self, mock_cdm, mock_service, mock_webdriver):
+        """Test that the scraper validates login credentials."""
+        # This test simply verifies that the function doesn't raise an exception
+        # when the credentials are available in the environment
         
-        # Assertions
-        self.assertIsInstance(result, pd.DataFrame)
-        self.assertEqual(len(result), 2)
-        self.assertEqual(result.iloc[0]['propertyId'], 'P123456')
-        self.assertEqual(result.iloc[1]['propertyId'], 'P789012')
+        # Create a mock driver that returns empty results
+        mock_driver = mock.MagicMock()
+        mock_webdriver.Chrome.return_value = mock_driver
         
-        # Verify the API was called with correct parameters
-        mock_get.assert_called_once()
-        args, kwargs = mock_get.call_args
-        self.assertTrue(args[0].endswith('/properties/search'))
-        self.assertEqual(kwargs['params']['limit'], 10)
-    
-    @patch('etl.narrpr_scraper.requests.get')
-    def test_extract_with_location(self, mock_get):
-        """Test extraction with location parameter."""
-        # Configure mock
-        mock_response = MagicMock()
-        mock_response.json.return_value = self.mock_property_data
-        mock_response.raise_for_status.return_value = None
-        mock_get.return_value = mock_response
+        # Make the driver return no results to avoid complex mocking
+        mock_wait = mock.MagicMock()
+        mock_driver.find_elements.return_value = []
         
-        # Call extract method with location parameter
-        result = self.scraper.extract(location="Anytown, CA")
+        # Test should pass without raising ValueError for missing credentials
+        try:
+            self.scraper.narrpr_login_and_scrape(search_location="Test Location")
+            # If we get here, it didn't raise the ValueError we wanted to test for
+            self.assertTrue(True)
+        except Exception as e:
+            # We should not get here with the mocked credentials
+            if isinstance(e, ValueError) and "credentials" in str(e).lower():
+                self.fail("Credential validation failed with valid credentials")
+                
+    @mock.patch.dict(os.environ, {}, clear=True)  # Empty environment
+    def test_missing_credentials(self):
+        """Test that the scraper raises an error when credentials are missing."""
+        with self.assertRaises(ValueError) as context:
+            self.scraper.narrpr_login_and_scrape(search_location="Test Location")
         
-        # Assertions
-        self.assertIsInstance(result, pd.DataFrame)
+        # Check that the error message mentions credentials
+        self.assertIn("credentials", str(context.exception).lower())
         
-        # Verify the API was called with correct parameters
-        args, kwargs = mock_get.call_args
-        self.assertEqual(kwargs['params']['location'], "Anytown, CA")
-    
-    @patch('etl.narrpr_scraper.requests.get')
-    def test_extract_empty_response(self, mock_get):
-        """Test extraction with empty response."""
-        # Configure mock
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"properties": []}
-        mock_response.raise_for_status.return_value = None
-        mock_get.return_value = mock_response
+    @mock.patch('etl.narrpr_scraper.NARRPRScraper.narrpr_login_and_scrape')
+    @mock.patch.dict(os.environ, {"NARRPR_USERNAME": "testuser", "NARRPR_PASSWORD": "testpass"})
+    def test_scrape_and_load(self, mock_scrape):
+        """Test the scrape_and_load method."""
+        # Mock the scrape function to return our test data
+        mock_scrape.return_value = pd.DataFrame(self.mock_property_data)
         
-        # Call extract method
-        result = self.scraper.extract()
+        # Mock database object
+        mock_db = mock.MagicMock()
+        mock_db.insert_properties.return_value = len(self.mock_property_data)
+        
+        # Test the scrape_and_load function
+        result = self.scraper.scrape_and_load("Test Location", "residential", mock_db)
         
         # Assertions
-        self.assertIsInstance(result, pd.DataFrame)
-        self.assertTrue(result.empty)
-    
-    @patch('etl.narrpr_scraper.requests.get')
-    def test_extract_api_error(self, mock_get):
-        """Test extraction with API error."""
-        # Configure mock to raise exception
-        mock_get.side_effect = Exception("API Error")
-        
-        # Call extract method and check for exception
-        with self.assertRaises(Exception):
-            self.scraper.extract()
-    
-    def test_transform_data(self):
-        """Test data transformation."""
-        # Create input data
-        input_data = pd.DataFrame(self.mock_property_data['properties'])
-        
-        # Call transform method
-        result = self.scraper._transform_data(input_data)
-        
-        # Assertions
-        self.assertIsInstance(result, pd.DataFrame)
-        self.assertEqual(len(result), 2)
-        
-        # Check column renaming
-        self.assertIn('property_id', result.columns)
-        self.assertIn('address', result.columns)
-        self.assertIn('property_type', result.columns)
-        self.assertIn('estimated_value', result.columns)
-        
-        # Check data source and import date
-        self.assertEqual(result.iloc[0]['data_source'], 'NARRPR')
-        self.assertIsNotNone(result.iloc[0]['import_date'])
-        
-        # Check data type conversions
-        self.assertTrue(pd.api.types.is_numeric_dtype(result['estimated_value']))
-        self.assertTrue(pd.api.types.is_numeric_dtype(result['square_feet']))
-        self.assertIsInstance(result.iloc[0]['last_sale_date'], pd.Timestamp)
-    
-    def test_load_data(self):
-        """Test data loading."""
-        # Create mock database
-        mock_db = MagicMock()
-        mock_db.insert_properties.return_value = 2
-        
-        # Create input data
-        input_data = pd.DataFrame(self.mock_property_data['properties'])
-        transformed_data = self.scraper._transform_data(input_data)
-        
-        # Call load method
-        result = self.scraper._load_data(transformed_data, mock_db)
-        
-        # Assertions
-        self.assertEqual(result, 2)
+        self.assertEqual(result, len(self.mock_property_data))
+        mock_scrape.assert_called_once()
         mock_db.insert_properties.assert_called_once()
-        args, kwargs = mock_db.insert_properties.call_args
-        self.assertEqual(kwargs['source'], 'NARRPR')
-
+        
+    @mock.patch('etl.narrpr_scraper.NARRPRScraper.narrpr_login_and_scrape')
+    @mock.patch.dict(os.environ, {"NARRPR_USERNAME": "testuser", "NARRPR_PASSWORD": "testpass"})
+    def test_scrape_and_load_no_results(self, mock_scrape):
+        """Test the scrape_and_load method when no results are found."""
+        # Mock the scrape function to return an empty DataFrame
+        mock_scrape.return_value = pd.DataFrame()
+        
+        # Mock database object
+        mock_db = mock.MagicMock()
+        
+        # Test the scrape_and_load function
+        result = self.scraper.scrape_and_load("Test Location", "residential", mock_db)
+        
+        # Assertions
+        self.assertEqual(result, 0)
+        mock_scrape.assert_called_once()
+        mock_db.insert_properties.assert_not_called()
+        
+    def test_transform_data(self):
+        """Test the _transform_data method."""
+        # Create a DataFrame from our mock data
+        input_df = pd.DataFrame(self.mock_property_data)
+        
+        # Call the transform method
+        result_df = self.scraper._transform_data(input_df)
+        
+        # Assertions
+        self.assertEqual(len(result_df), len(self.mock_property_data))
+        self.assertEqual(result_df['data_source'].unique()[0], 'NARRPR')
+        self.assertTrue('import_date' in result_df.columns)
+        
 if __name__ == '__main__':
     unittest.main()

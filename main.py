@@ -6,6 +6,8 @@ Also exports the Flask app for gunicorn to use.
 import os
 import logging
 import argparse
+import pandas as pd
+from datetime import datetime
 from dotenv import load_dotenv
 from app import app
 
@@ -63,6 +65,29 @@ def parse_arguments():
         type=str,
         help="Path to CSV file containing NARRPR data (bypasses API extraction)"
     )
+    parser.add_argument(
+        "--narrpr-location",
+        type=str,
+        help="Location to search for NARRPR properties (city, zip code, etc.)"
+    )
+    parser.add_argument(
+        "--narrpr-property-type",
+        type=str,
+        default="residential",
+        choices=["residential", "commercial", "land", "multifamily"],
+        help="Property type to search for in NARRPR"
+    )
+    parser.add_argument(
+        "--narrpr-max-results",
+        type=int,
+        default=100,
+        help="Maximum number of results to scrape from NARRPR"
+    )
+    parser.add_argument(
+        "--narrpr-use-selenium",
+        action="store_true",
+        help="Use Selenium-based web scraping for NARRPR data instead of API"
+    )
     return parser.parse_args()
 
 
@@ -89,9 +114,45 @@ def run_etl_pipeline(args):
             if "narrpr" in sources:
                 logger.info("Starting NARRPR data extraction")
                 narrpr_scraper = NARRPRScraper(batch_size=args.batch_size)
-                # Add CSV option for NARRPR (would need to implement in NARRPRScraper class)
-                narrpr_data = narrpr_scraper.extract()
-                narrpr_scraper.transform_and_load(narrpr_data, db)
+                
+                # Use CSV file if provided (bypasses API and Selenium scraping)
+                if args.narrpr_csv:
+                    logger.info(f"Loading NARRPR data from CSV file: {args.narrpr_csv}")
+                    try:
+                        # Load data from CSV
+                        narrpr_data = pd.read_csv(args.narrpr_csv)
+                        narrpr_scraper.transform_and_load(narrpr_data, db)
+                    except Exception as e:
+                        logger.error(f"Failed to load NARRPR CSV data: {str(e)}")
+                        raise
+                
+                # Use Selenium scraper if specified
+                elif args.narrpr_use_selenium:
+                    if not args.narrpr_location:
+                        logger.error("NARRPR location parameter is required when using Selenium scraper")
+                        raise ValueError("--narrpr-location parameter is required with --narrpr-use-selenium")
+                    
+                    logger.info(f"Using Selenium to scrape NARRPR data for location: {args.narrpr_location}")
+                    
+                    # Generate timestamped CSV filename
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    csv_path = f"narrpr_properties_{timestamp}.csv"
+                    
+                    # Call the integrated scrape and load function
+                    records_loaded = narrpr_scraper.scrape_and_load(
+                        search_location=args.narrpr_location,
+                        property_type=args.narrpr_property_type,
+                        db=db,
+                        output_path=csv_path,
+                        max_results=args.narrpr_max_results
+                    )
+                    logger.info(f"NARRPR Selenium scraper loaded {records_loaded} records")
+                
+                # Default: Use API extraction
+                else:
+                    logger.info("Using NARRPR API to extract data")
+                    narrpr_data = narrpr_scraper.extract()
+                    narrpr_scraper.transform_and_load(narrpr_data, db)
                 
             if "pacs" in sources:
                 logger.info("Starting PACS data extraction")
