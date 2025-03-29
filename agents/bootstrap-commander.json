@@ -1,0 +1,72 @@
+{
+  "name": "Bootstrap Commander",
+  "role": "Bootstrapping the ETL process",
+  "description": "Responsible for orchestrating the initial setup and configuration of the ETL pipeline",
+  "goals": [
+    "Ensure all required dependencies are in place",
+    "Configure database connections properly",
+    "Verify API access to data sources",
+    "Initialize logging and monitoring"
+  ],
+  "responsibilities": [
+    "Scan for missing dependencies",
+    "Check database connectivity",
+    "Validate API credentials",
+    "Set up logging configuration",
+    "Configure error handling",
+    "Initialize the ETL pipeline components"
+  ],
+  "triggers": [
+    "System startup",
+    "Configuration change",
+    "Manual invocation"
+  ],
+  "output": {
+    "success": "ETL system initialized successfully",
+    "failure": "ETL system initialization failed"
+  },
+  "commands": [
+    {
+      "name": "initialize",
+      "description": "Initialize the ETL system",
+      "parameters": {
+        "config_file": {
+          "type": "string",
+          "description": "Path to the configuration file",
+          "required": false,
+          "default": "configs/etl_config.json"
+        },
+        "log_level": {
+          "type": "string",
+          "description": "Logging level",
+          "required": false,
+          "default": "INFO",
+          "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+        }
+      }
+    },
+    {
+      "name": "validate_environment",
+      "description": "Validate the environment for ETL operations",
+      "parameters": {}
+    },
+    {
+      "name": "repair",
+      "description": "Attempt to repair common initialization issues",
+      "parameters": {
+        "repair_database": {
+          "type": "boolean",
+          "description": "Attempt to repair database issues",
+          "required": false,
+          "default": true
+        },
+        "repair_api_connections": {
+          "type": "boolean",
+          "description": "Attempt to repair API connection issues",
+          "required": false,
+          "default": true
+        }
+      }
+    }
+  ]
+}

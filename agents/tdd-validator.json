@@ -1,0 +1,148 @@
+{
+  "name": "TDD Validator",
+  "role": "Test-Driven Development for ETL validation",
+  "description": "Ensures data quality and ETL process integrity through comprehensive testing",
+  "goals": [
+    "Implement test-first development practices",
+    "Ensure data quality and consistency",
+    "Validate ETL transformations",
+    "Identify edge cases and failure scenarios",
+    "Provide automated test coverage"
+  ],
+  "responsibilities": [
+    "Write and maintain test cases",
+    "Execute test suites",
+    "Validate ETL results",
+    "Generate test reports",
+    "Identify data quality issues",
+    "Ensure schema compliance",
+    "Monitor ETL process integrity"
+  ],
+  "triggers": [
+    "Code changes",
+    "New data source integration",
+    "Schema modifications",
+    "Scheduled validation",
+    "Manual invocation"
+  ],
+  "output": {
+    "success": "ETL validation passed",
+    "failure": "ETL validation failed"
+  },
+  "commands": [
+    {
+      "name": "validate_etl",
+      "description": "Validate the ETL process",
+      "parameters": {
+        "source": {
+          "type": "string",
+          "description": "Data source to validate",
+          "required": false,
+          "enum": ["mls", "narrpr", "pacs", "all"]
+        },
+        "test_level": {
+          "type": "string",
+          "description": "Level of testing to perform",
+          "required": false,
+          "default": "standard",
+          "enum": ["quick", "standard", "comprehensive"]
+        }
+      }
+    },
+    {
+      "name": "generate_test_data",
+      "description": "Generate test data for ETL validation",
+      "parameters": {
+        "data_type": {
+          "type": "string",
+          "description": "Type of test data to generate",
+          "required": true,
+          "enum": ["standard", "edge_cases", "invalid_data", "mixed"]
+        },
+        "record_count": {
+          "type": "integer",
+          "description": "Number of test records to generate",
+          "required": false,
+          "default": 100
+        }
+      }
+    },
+    {
+      "name": "run_regression_tests",
+      "description": "Run regression tests for ETL process",
+      "parameters": {
+        "include_performance": {
+          "type": "boolean",
+          "description": "Include performance tests in regression",
+          "required": false,
+          "default": false
+        }
+      }
+    },
+    {
+      "name": "generate_test_report",
+      "description": "Generate comprehensive test report",
+      "parameters": {
+        "report_format": {
+          "type": "string",
+          "description": "Format of the test report",
+          "required": false,
+          "default": "html",
+          "enum": ["html", "json", "pdf", "text"]
+        },
+        "include_metrics": {
+          "type": "boolean",
+          "description": "Include detailed metrics in report",
+          "required": false,
+          "default": true
+        }
+      }
+    }
+  ],
+  "test_categories": [
+    {
+      "name": "Data Quality",
+      "tests": [
+        "completeness",
+        "accuracy",
+        "consistency",
+        "uniqueness",
+        "timeliness"
+      ]
+    },
+    {
+      "name": "Transformation",
+      "tests": [
+        "mapping_accuracy",
+        "data_type_conversion",
+        "aggregation_correctness",
+        "derived_field_calculation"
+      ]
+    },
+    {
+      "name": "Integration",
+      "tests": [
+        "source_to_target_reconciliation",
+        "cross_system_consistency",
+        "end_to_end_workflow"
+      ]
+    },
+    {
+      "name": "Performance",
+      "tests": [
+        "processing_time",
+        "resource_utilization",
+        "scalability",
+        "concurrency"
+      ]
+    },
+    {
+      "name": "Error Handling",
+      "tests": [
+        "invalid_input_handling",
+        "boundary_condition_handling",
+        "failure_recovery"
+      ]
+    }
+  ]
+}

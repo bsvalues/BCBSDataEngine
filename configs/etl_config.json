@@ -1,0 +1,128 @@
+{
+  "etl_settings": {
+    "batch_size": 100,
+    "log_level": "INFO",
+    "retry_attempts": 3,
+    "retry_delay": 5,
+    "timeout": 30
+  },
+  "data_sources": {
+    "mls": {
+      "enabled": true,
+      "api_endpoint": "https://mls-api.example.com/v1",
+      "default_start_date": "first_day_current_month",
+      "default_end_date": "current_date",
+      "required_fields": [
+        "mlsId",
+        "listingId",
+        "address",
+        "city",
+        "state",
+        "zipCode",
+        "price"
+      ]
+    },
+    "narrpr": {
+      "enabled": true,
+      "api_endpoint": "https://api.narrpr.com/v1",
+      "default_location": "",
+      "default_property_type": "",
+      "required_fields": [
+        "propertyId",
+        "addressLine1",
+        "city",
+        "state",
+        "zipCode"
+      ]
+    },
+    "pacs": {
+      "enabled": true,
+      "api_endpoint": "https://pacs-api.example.com/v1",
+      "default_county": "",
+      "default_state": "",
+      "required_fields": [
+        "parcelId",
+        "propertyAddress",
+        "city",
+        "county",
+        "state",
+        "zipCode"
+      ]
+    }
+  },
+  "validation": {
+    "completeness": {
+      "enabled": true,
+      "threshold": 10,
+      "critical_fields": [
+        "address",
+        "city",
+        "state",
+        "zip_code",
+        "property_type",
+        "square_feet",
+        "year_built"
+      ]
+    },
+    "data_types": {
+      "enabled": true,
+      "threshold": 5
+    },
+    "numeric_ranges": {
+      "enabled": true,
+      "threshold": 5,
+      "ranges": {
+        "square_feet": [100, 20000],
+        "lot_size": [0.01, 100],
+        "year_built": [1800, "current_year"],
+        "bedrooms": [0, 20],
+        "bathrooms": [0, 15],
+        "list_price": [1000, 100000000],
+        "last_sale_price": [1000, 100000000]
+      }
+    },
+    "dates": {
+      "enabled": true,
+      "threshold": 5,
+      "min_dates": {
+        "last_sale_date": "1900-01-01",
+        "listing_date": "1900-01-01",
+        "import_date": "2020-01-01"
+      }
+    },
+    "duplicates": {
+      "enabled": true,
+      "threshold": 5
+    },
+    "cross_source": {
+      "enabled": true,
+      "threshold": 10,
+      "attributes": [
+        "square_feet",
+        "year_built",
+        "bedrooms",
+        "bathrooms"
+      ]
+    }
+  },
+  "scheduling": {
+    "mls": {
+      "frequency": "daily",
+      "time": "02:00"
+    },
+    "narrpr": {
+      "frequency": "weekly",
+      "day": "Monday",
+      "time": "03:00"
+    },
+    "pacs": {
+      "frequency": "monthly",
+      "day": 1,
+      "time": "04:00"
+    },
+    "validation": {
+      "frequency": "daily",
+      "time": "05:00"
+    }
+  }
+}

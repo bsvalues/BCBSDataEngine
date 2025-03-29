@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Validation - BCBS_Values</title>
+    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">BCBS_Values</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/properties">Properties</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/search">Search</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/validation">Validation</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container mt-4">
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Validation History -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h2>Data Validation History</h2>
+                        <button id="run-validation" class="btn btn-primary">Run New Validation</button>
+                    </div>
+                    <div class="card-body">
+                        <div id="validation-result" class="mb-4"></div>
+                        
+                        {% if count > 0 %}
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Timestamp</th>
+                                        <th>Status</th>
+                                        <th>Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for result in validation_results %}
+                                        <tr>
+                                            <td>{{ result.id }}</td>
+                                            <td>{{ result.timestamp }}</td>
+                                            <td>
+                                                {% if result.status == 'passed' %}
+                                                    <span class="badge bg-success">Passed</span>
+                                                {% elif result.status == 'failed' %}
+                                                    <span class="badge bg-danger">Failed</span>
+                                                {% elif result.status == 'warning' %}
+                                                    <span class="badge bg-warning">Warning</span>
+                                                {% elif result.status == 'no_data' %}
+                                                    <span class="badge bg-info">No Data</span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary">{{ result.status }}</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <button class="btn btn-sm btn-info view-details" data-bs-toggle="modal" data-bs-target="#validationDetailsModal" data-result='{{ result.results|tojson }}'>
+                                                    View Details
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        {% else %}
+                            <div class="alert alert-info">
+                                <p>No validation results found in the database.</p>
+                                <p>Click the "Run New Validation" button to perform data validation.</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Validation Info Card -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>About Data Validation</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h4>Validation Types</h4>
+                                <ul>
+                                    <li><strong>Completeness</strong> - Checks for missing values in critical fields</li>
+                                    <li><strong>Data Types</strong> - Validates that all fields have the correct data types</li>
+                                    <li><strong>Numeric Ranges</strong> - Ensures numeric values are within reasonable ranges</li>
+                                    <li><strong>Dates</strong> - Verifies dates are valid and within acceptable ranges</li>
+                                    <li><strong>Duplicates</strong> - Identifies duplicate property records</li>
+                                    <li><strong>Cross-Source Consistency</strong> - Checks for consistency across different data sources</li>
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <h4>Validation Status</h4>
+                                <ul>
+                                    <li><span class="badge bg-success">Passed</span> - All validation checks passed</li>
+                                    <li><span class="badge bg-danger">Failed</span> - One or more validations failed</li>
+                                    <li><span class="badge bg-warning">Warning</span> - Minor issues were detected</li>
+                                    <li><span class="badge bg-info">No Data</span> - No property data found for validation</li>
+                                </ul>
+                                <p class="mt-3">
+                                    To run the ETL pipeline with validation:
+                                    <br>
+                                    <code>python main.py --sources all --validate-only</code>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Validation Details Modal -->
+    <div class="modal fade" id="validationDetailsModal" tabindex="-1" aria-labelledby="validationDetailsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="validationDetailsModalLabel">Validation Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="validation-details-content">
+                        <!-- Content will be populated by JavaScript -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="py-3 mt-4 bg-dark">
+        <div class="container text-center">
+            <p class="text-muted">© 2025 BCBS_Values Real Estate Valuation System</p>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Custom JavaScript -->
+    <script>
+        // Run validation button
+        document.getElementById('run-validation').addEventListener('click', async function() {
+            try {
+                const resultDiv = document.getElementById('validation-result');
+                resultDiv.innerHTML = '<div class="alert alert-info">Running validation...</div>';
+                
+                const response = await fetch('/api/validation');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    const result = data.validation_results;
+                    let statusClass = 'alert-success';
+                    
+                    if (result.status === 'failed') {
+                        statusClass = 'alert-danger';
+                    } else if (result.status === 'warning') {
+                        statusClass = 'alert-warning';
+                    } else if (result.status === 'no_data') {
+                        statusClass = 'alert-info';
+                    }
+                    
+                    resultDiv.innerHTML = `
+                        <div class="alert ${statusClass}">
+                            <h4>Validation Status: ${result.status}</h4>
+                            <p>Timestamp: ${result.timestamp}</p>
+                            ${result.status === 'no_data' ? 
+                                '<p>No property data found in the database. Please import data to perform validation.</p>' : 
+                                `<p>Validations run: ${Object.keys(result.validations || {}).length}</p>`
+                            }
+                            <p>Refresh the page to see the new validation result in the history table.</p>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.message}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('validation-result').innerHTML = 
+                    `<div class="alert alert-danger">Error running validation: ${error.message}</div>`;
+            }
+        });
+        
+        // View validation details
+        document.querySelectorAll('.view-details').forEach(button => {
+            button.addEventListener('click', function() {
+                const resultData = JSON.parse(this.getAttribute('data-result'));
+                const detailsContent = document.getElementById('validation-details-content');
+                
+                let html = `
+                    <div class="mb-3">
+                        <h5>Overall Status: 
+                            <span class="badge ${getStatusClass(resultData.status)}">${resultData.status}</span>
+                        </h5>
+                        <p>Timestamp: ${resultData.timestamp}</p>
+                    </div>
+                `;
+                
+                if (resultData.status === 'no_data') {
+                    html += `<div class="alert alert-info">No property data found in the database. Please import data to perform validation.</div>`;
+                } else if (resultData.validations) {
+                    html += `<h5>Validation Results</h5>`;
+                    html += `<div class="accordion" id="validationAccordion">`;
+                    
+                    let index = 0;
+                    for (const [validationType, validationResult] of Object.entries(resultData.validations)) {
+                        const accordionId = `validation-${index}`;
+                        const headingId = `heading-${index}`;
+                        const collapseId = `collapse-${index}`;
+                        
+                        html += `
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="${headingId}">
+                                    <button class="accordion-button ${index > 0 ? 'collapsed' : ''}" type="button" data-bs-toggle="collapse" data-bs-target="#${collapseId}" aria-expanded="${index === 0 ? 'true' : 'false'}" aria-controls="${collapseId}">
+                                        ${formatValidationType(validationType)}
+                                        <span class="badge ${getStatusClass(validationResult.status)} ms-auto">${validationResult.status}</span>
+                                    </button>
+                                </h2>
+                                <div id="${collapseId}" class="accordion-collapse collapse ${index === 0 ? 'show' : ''}" aria-labelledby="${headingId}" data-bs-parent="#validationAccordion">
+                                    <div class="accordion-body">
+                                        <p>${validationResult.message}</p>
+                                        ${renderValidationDetails(validationResult)}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        
+                        index++;
+                    }
+                    
+                    html += `</div>`;
+                }
+                
+                detailsContent.innerHTML = html;
+            });
+        });
+        
+        // Helper functions
+        function getStatusClass(status) {
+            switch (status) {
+                case 'passed': return 'bg-success';
+                case 'failed': return 'bg-danger';
+                case 'warning': return 'bg-warning';
+                case 'no_data': return 'bg-info';
+                default: return 'bg-secondary';
+            }
+        }
+        
+        function formatValidationType(type) {
+            return type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ' ');
+        }
+        
+        function renderValidationDetails(result) {
+            if (result.status === 'passed') {
+                return '';
+            }
+            
+            let html = '';
+            
+            if (result.errors) {
+                html += '<h6>Errors:</h6><ul>';
+                for (const [field, error] of Object.entries(result.errors)) {
+                    html += `<li><strong>${field}:</strong> `;
+                    
+                    if (typeof error === 'object') {
+                        if (error.expected) {
+                            html += `Expected ${error.expected}, `;
+                        }
+                        if (error.error_count) {
+                            html += `Found ${error.error_count} errors `;
+                        }
+                        if (error.error_percentage) {
+                            html += `(${error.error_percentage.toFixed(1)}%)`;
+                        }
+                    } else {
+                        html += error;
+                    }
+                    
+                    html += `</li>`;
+                }
+                html += '</ul>';
+            }
+            
+            if (result.failed_fields) {
+                html += '<h6>Failed Fields:</h6><ul>';
+                for (const field of result.failed_fields) {
+                    html += `<li>${field}</li>`;
+                }
+                html += '</ul>';
+            }
+            
+            if (result.checks) {
+                html += '<h6>Checks:</h6><ul>';
+                for (const [checkName, checkResult] of Object.entries(result.checks)) {
+                    html += `<li><strong>${formatValidationType(checkName)}:</strong> `;
+                    
+                    if (typeof checkResult === 'object') {
+                        if (checkResult.status) {
+                            html += `Status: ${checkResult.status}, `;
+                        }
+                        if (checkResult.count !== undefined) {
+                            html += `Count: ${checkResult.count}`;
+                        }
+                    } else {
+                        html += checkResult;
+                    }
+                    
+                    html += `</li>`;
+                }
+                html += '</ul>';
+            }
+            
+            return html;
+        }
+    </script>
+</body>
+</html>

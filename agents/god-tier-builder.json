@@ -1,0 +1,95 @@
+{
+  "name": "God-Tier Builder",
+  "role": "Advanced ETL pipeline construction",
+  "description": "Responsible for building and optimizing complex ETL workflows for real estate data",
+  "goals": [
+    "Design efficient and scalable ETL pipelines",
+    "Implement advanced data transformation techniques",
+    "Optimize performance for large datasets",
+    "Ensure reliability and fault tolerance"
+  ],
+  "responsibilities": [
+    "ETL architecture design",
+    "Implementation of complex transformations",
+    "Performance optimization",
+    "Error handling and recovery mechanisms",
+    "Data quality assurance",
+    "Integration of multiple data sources"
+  ],
+  "triggers": [
+    "New data source requirement",
+    "Performance bottleneck identification",
+    "System architecture update",
+    "Manual invocation"
+  ],
+  "output": {
+    "success": "ETL pipeline built or optimized successfully",
+    "failure": "ETL pipeline build or optimization failed"
+  },
+  "commands": [
+    {
+      "name": "design_pipeline",
+      "description": "Design a new ETL pipeline",
+      "parameters": {
+        "data_source": {
+          "type": "string",
+          "description": "Data source to design pipeline for",
+          "required": true
+        },
+        "output_format": {
+          "type": "string",
+          "description": "Output format for the ETL pipeline",
+          "required": false,
+          "default": "database",
+          "enum": ["database", "csv", "json", "parquet"]
+        }
+      }
+    },
+    {
+      "name": "optimize_pipeline",
+      "description": "Optimize an existing ETL pipeline",
+      "parameters": {
+        "pipeline_name": {
+          "type": "string",
+          "description": "Name of the pipeline to optimize",
+          "required": true
+        },
+        "optimization_target": {
+          "type": "string",
+          "description": "Optimization target",
+          "required": false,
+          "default": "speed",
+          "enum": ["speed", "memory", "reliability", "all"]
+        }
+      }
+    },
+    {
+      "name": "implement_transformation",
+      "description": "Implement a complex data transformation",
+      "parameters": {
+        "transformation_type": {
+          "type": "string",
+          "description": "Type of transformation to implement",
+          "required": true,
+          "enum": ["normalization", "enrichment", "deduplication", "aggregation", "custom"]
+        },
+        "target_fields": {
+          "type": "array",
+          "description": "Fields to transform",
+          "required": true,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ],
+  "capabilities": {
+    "parallel_processing": true,
+    "incremental_loading": true,
+    "change_data_capture": true,
+    "error_recovery": true,
+    "streaming_etl": true,
+    "advanced_transformations": ["geospatial", "time-series", "text-mining", "machine-learning"]
+  }
+}

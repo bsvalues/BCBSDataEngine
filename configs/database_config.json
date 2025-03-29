@@ -1,0 +1,80 @@
+{
+  "connection": {
+    "type": "postgresql",
+    "host": "${PGHOST}",
+    "port": "${PGPORT}",
+    "database": "${PGDATABASE}",
+    "user": "${PGUSER}",
+    "password": "${PGPASSWORD}",
+    "connection_string": "${DATABASE_URL}"
+  },
+  "tables": {
+    "properties": {
+      "name": "properties",
+      "primary_key": "id",
+      "indexes": [
+        {
+          "name": "idx_properties_address",
+          "columns": ["address", "city", "state", "zip_code"]
+        },
+        {
+          "name": "idx_properties_parcel_id",
+          "columns": ["parcel_id"]
+        },
+        {
+          "name": "idx_properties_mls_id",
+          "columns": ["mls_id"]
+        },
+        {
+          "name": "idx_properties_property_id",
+          "columns": ["property_id"]
+        },
+        {
+          "name": "idx_properties_last_sale_date",
+          "columns": ["last_sale_date"]
+        },
+        {
+          "name": "idx_properties_data_source",
+          "columns": ["data_source"]
+        }
+      ]
+    },
+    "validation_results": {
+      "name": "validation_results",
+      "primary_key": "id",
+      "indexes": [
+        {
+          "name": "idx_validation_results_timestamp",
+          "columns": ["timestamp"]
+        },
+        {
+          "name": "idx_validation_results_status",
+          "columns": ["status"]
+        }
+      ]
+    }
+  },
+  "performance": {
+    "pool_size": 5,
+    "pool_recycle": 300,
+    "pool_pre_ping": true,
+    "max_overflow": 10
+  },
+  "migrations": {
+    "enabled": true,
+    "directory": "db/migrations",
+    "version_table": "alembic_version"
+  },
+  "backup": {
+    "enabled": true,
+    "frequency": "daily",
+    "time": "01:00",
+    "retention_days": 30,
+    "backup_directory": "/backups"
+  },
+  "data_retention": {
+    "archive_data_older_than_days": 730,
+    "delete_data_older_than_days": 1825,
+    "exclude_tables": ["validation_results"]
+  }
+}

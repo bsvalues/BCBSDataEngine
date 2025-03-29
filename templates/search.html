@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Properties - BCBS_Values</title>
+    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">BCBS_Values</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/properties">Properties</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/search">Search</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/validation">Validation</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container mt-4">
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Search Form -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Search Properties</h2>
+                    </div>
+                    <div class="card-body">
+                        <form action="/search" method="POST">
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label for="city" class="form-label">City</label>
+                                    <input type="text" class="form-control" id="city" name="city" placeholder="City">
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="state" class="form-label">State</label>
+                                    <input type="text" class="form-control" id="state" name="state" placeholder="State (e.g., CA)">
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="zip_code" class="form-label">ZIP Code</label>
+                                    <input type="text" class="form-control" id="zip_code" name="zip_code" placeholder="ZIP Code">
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="min_price" class="form-label">Minimum Price</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" class="form-control" id="min_price" name="min_price" placeholder="Min Price">
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="max_price" class="form-label">Maximum Price</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" class="form-control" id="max_price" name="max_price" placeholder="Max Price">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label for="property_type" class="form-label">Property Type</label>
+                                    <select class="form-select" id="property_type" name="property_type">
+                                        <option value="" selected>All Property Types</option>
+                                        <option value="Single Family">Single Family</option>
+                                        <option value="Condo">Condo</option>
+                                        <option value="Townhome">Townhome</option>
+                                        <option value="Multi-Family">Multi-Family</option>
+                                        <option value="Land">Land</option>
+                                        <option value="Commercial">Commercial</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="min_bedrooms" class="form-label">Min Bedrooms</label>
+                                    <select class="form-select" id="min_bedrooms" name="min_bedrooms">
+                                        <option value="" selected>Any</option>
+                                        <option value="1">1+</option>
+                                        <option value="2">2+</option>
+                                        <option value="3">3+</option>
+                                        <option value="4">4+</option>
+                                        <option value="5">5+</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="min_bathrooms" class="form-label">Min Bathrooms</label>
+                                    <select class="form-select" id="min_bathrooms" name="min_bathrooms">
+                                        <option value="" selected>Any</option>
+                                        <option value="1">1+</option>
+                                        <option value="1.5">1.5+</option>
+                                        <option value="2">2+</option>
+                                        <option value="2.5">2.5+</option>
+                                        <option value="3">3+</option>
+                                        <option value="4">4+</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-12 mt-3">
+                                    <button type="submit" class="btn btn-primary">Search Properties</button>
+                                    <button type="reset" class="btn btn-secondary">Reset</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="py-3 mt-4 bg-dark">
+        <div class="container text-center">
+            <p class="text-muted">© 2025 BCBS_Values Real Estate Valuation System</p>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
