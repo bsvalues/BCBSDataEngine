@@ -1,162 +1,93 @@
-"""
-Database models for the property valuation system.
+from app import db
+from datetime import datetime
+from flask_login import UserMixin
+from werkzeug.security import generate_password_hash, check_password_hash
 
-This module uses SQLAlchemy declarative base from db package to ensure
-consistency between the Flask app and FastAPI.
-"""
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, ForeignKey, JSON
-from sqlalchemy.orm import relationship
 
-# Import Base from db package
-from db import Base
-
-class Property(Base):
-    """
-    Property model representing real estate properties.
-    """
-    __tablename__ = 'properties'
+class User(UserMixin, db.Model):
+    __tablename__ = "users"
     
-    # Primary key
-    id = Column(Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    email = db.Column(db.String(120), unique=True, nullable=False, index=True)
+    password_hash = db.Column(db.String(256), nullable=False)
+    is_admin = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+    
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+    
+    def __repr__(self):
+        return f"<User {self.username}>"
+
+
+class Property(db.Model):
+    __tablename__ = "properties"
+    
+    id = db.Column(db.Integer, primary_key=True)
+    property_id = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    address = db.Column(db.String(255), nullable=False)
+    city = db.Column(db.String(100), nullable=False)
+    state = db.Column(db.String(2), nullable=False)
+    zip_code = db.Column(db.String(10), nullable=False)
+    bedrooms = db.Column(db.Float, nullable=True)
+    bathrooms = db.Column(db.Float, nullable=True)
+    square_feet = db.Column(db.Float, nullable=True)
+    lot_size = db.Column(db.Float, nullable=True)
+    year_built = db.Column(db.Integer, nullable=True)
+    property_type = db.Column(db.String(50), nullable=True)
+    last_sold_price = db.Column(db.Float, nullable=True)
+    last_sold_date = db.Column(db.Date, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Geographic data
+    latitude = db.Column(db.Float, nullable=True)
+    longitude = db.Column(db.Float, nullable=True)
     
     # Relationships
-    valuations = relationship("PropertyValuation", backref="property", cascade="all, delete-orphan")
-    
-    # Identifiers
-    mls_id = Column(String(50))
-    listing_id = Column(String(50))
-    property_id = Column(String(50))
-    parcel_id = Column(String(50))
-    apn = Column(String(50))
-    
-    # Location information
-    address = Column(String(255))
-    city = Column(String(100))
-    county = Column(String(100))
-    state = Column(String(50))
-    zip_code = Column(String(20))
-    neighborhood = Column(String(100))
-    latitude = Column(Float)
-    longitude = Column(Float)
-    
-    # Property characteristics
-    property_type = Column(String(50))
-    bedrooms = Column(Float)
-    bathrooms = Column(Float)
-    total_rooms = Column(Integer)
-    square_feet = Column(Float)
-    lot_size = Column(Float)
-    year_built = Column(Integer)
-    stories = Column(Float)
-    basement = Column(String(50))
-    garage = Column(String(50))
-    garage_spaces = Column(Integer)
-    pool = Column(String(10))
-    view = Column(String(50))
-    construction_type = Column(String(50))
-    roof_type = Column(String(50))
-    foundation_type = Column(String(50))
-    
-    # Valuation information
-    list_price = Column(Float)
-    estimated_value = Column(Float)
-    last_sale_price = Column(Float)
-    last_sale_date = Column(DateTime)
-    land_value = Column(Float)
-    improvement_value = Column(Float)
-    total_value = Column(Float)
-    assessment_year = Column(Integer)
-    
-    # Listing information
-    listing_date = Column(DateTime)
-    status = Column(String(50))
-    days_on_market = Column(Integer)
-    listing_agent = Column(String(100))
-    listing_office = Column(String(100))
-    
-    # Data source and import information
-    data_source = Column(String(50))
-    import_date = Column(DateTime)
+    valuations = db.relationship("Valuation", back_populates="property", cascade="all, delete-orphan")
     
     def __repr__(self):
-        """String representation of a Property object."""
-        return f"<Property(id={self.id}, address='{self.address}', city='{self.city}', state='{self.state}')>"
+        return f"<Property {self.property_id}: {self.address}>"
 
 
-class ValidationResult(Base):
-    """
-    Validation result model for storing data validation history.
-    """
-    __tablename__ = 'validation_results'
+class Valuation(db.Model):
+    __tablename__ = "valuations"
     
-    # Primary key
-    id = Column(Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
+    property_id = db.Column(db.Integer, db.ForeignKey("properties.id"), nullable=False)
+    estimated_value = db.Column(db.Float, nullable=False)
+    confidence_score = db.Column(db.Float, nullable=True)
+    model_used = db.Column(db.String(100), nullable=False)
+    valuation_date = db.Column(db.DateTime, default=datetime.utcnow)
+    features_used = db.Column(db.JSON, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
-    # Timestamps
-    timestamp = Column(DateTime)
-    
-    # Validation status and results
-    status = Column(String(20))
-    results = Column(Text)
+    # Relationship back to property
+    property = db.relationship("Property", back_populates="valuations")
     
     def __repr__(self):
-        """String representation of a ValidationResult object."""
-        return f"<ValidationResult(id={self.id}, timestamp='{self.timestamp}', status='{self.status}')>"
+        return f"<Valuation for {self.property_id}: ${self.estimated_value:,.2f}>"
 
 
-class PropertyValuation(Base):
-    """
-    Property valuation model for storing valuation results from the various models.
-    """
-    __tablename__ = 'property_valuations'
+class GISFeature(db.Model):
+    __tablename__ = "gis_features"
     
-    # Primary key
-    id = Column(Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
+    property_id = db.Column(db.Integer, db.ForeignKey("properties.id"), nullable=False)
+    feature_type = db.Column(db.String(100), nullable=False)
+    feature_value = db.Column(db.Float, nullable=True)
+    feature_name = db.Column(db.String(255), nullable=False)
+    feature_description = db.Column(db.Text, nullable=True)
+    feature_data = db.Column(db.JSON, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
-    # Foreign key to Property
-    property_id = Column(Integer, ForeignKey('properties.id'))
-    
-    # Valuation timestamp
-    valuation_date = Column(DateTime)
-    
-    # Core valuation data
-    estimated_value = Column(Float)
-    confidence_score = Column(Float)
-    prediction_interval_low = Column(Float)
-    prediction_interval_high = Column(Float)
-    
-    # Model metadata
-    model_name = Column(String(100))
-    model_version = Column(String(50))
-    model_r2_score = Column(Float)
-    
-    # Feature importance and contribution data
-    feature_importance = Column(JSON)  # Stores feature importance as JSON
-    top_features = Column(Text)        # Comma-separated list of top features
-    
-    # Comparables used
-    comparable_properties = Column(JSON)  # IDs of comparable properties used in valuation
-    
-    # Valuation factors
-    location_factor = Column(Float)    # How much location contributed to value
-    size_factor = Column(Float)        # How much size contributed to value
-    condition_factor = Column(Float)   # How much condition contributed to value
-    market_factor = Column(Float)      # How much market trends contributed to value
-    
-    # Raw model outputs
-    raw_model_outputs = Column(JSON)   # Additional model-specific outputs
+    # Define relationships if needed here
     
     def __repr__(self):
-        """String representation of a PropertyValuation object."""
-        return f"<PropertyValuation(id={self.id}, property_id={self.property_id}, value=${self.estimated_value:,.2f}, date='{self.valuation_date}')>"
-
-# Function to initialize models with a Flask-SQLAlchemy instance if needed
-def init_models(database):
-    """
-    Initialize models for use with Flask-SQLAlchemy.
-    This is only used for Flask app integration.
-    
-    Returns:
-        tuple: Property, ValidationResult, PropertyValuation classes
-    """
-    return Property, ValidationResult, PropertyValuation
+        return f"<GISFeature {self.feature_type} for property {self.property_id}>"

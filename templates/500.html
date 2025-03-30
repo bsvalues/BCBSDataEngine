@@ -1,21 +1,19 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Server Error - BCBS Values</title>
-    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
-</head>
-<body data-bs-theme="dark">
-    <div class="container my-5">
-        <div class="row">
-            <div class="col-md-6 mx-auto text-center">
-                <h1 class="display-1">500</h1>
-                <h2>Server Error</h2>
-                <p class="lead">Something went wrong on our end. Our team has been notified.</p>
-                <a href="/" class="btn btn-primary mt-3">Return Home</a>
+{% extends 'base.html' %}
+
+{% block title %}Server Error - BCBS Property Valuation{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 mx-auto text-center">
+        <div class="mt-5 mb-5">
+            <h1 class="display-1">500</h1>
+            <h2 class="mb-4">Server Error</h2>
+            <p class="lead">Sorry, something went wrong on our server. We're working to fix the issue.</p>
+            <img src="{{ url_for('static', filename='img/500.svg') }}" alt="500 Illustration" class="img-fluid mb-4" style="max-height: 300px;">
+            <div>
+                <a href="{{ url_for('index') }}" class="btn btn-primary">Return to Homepage</a>
             </div>
         </div>
     </div>
-</body>
-</html>
+</div>
+{% endblock %}
