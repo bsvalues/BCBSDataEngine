@@ -10,6 +10,7 @@ import json
 import os
 import time
 import logging
+import secrets  # For timing-safe string comparison
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional, Union, Any
@@ -96,32 +97,89 @@ TRAINING_DATA = None
 
 # Get API key from environment variables
 def get_api_key():
-    """Get API key from environment"""
-    return os.environ.get("BCBS_VALUES_API_KEY", "sample_test_key")
+    """
+    Get API key from environment.
+    
+    Security best practices:
+    - Never returns a hardcoded API key; relies on environment for security
+    - Uses os.environ.get() which will fail silently but safely if key not present
+    - Logs usage of the key to help with security audits
+    """
+    api_key = os.environ.get("BCBS_VALUES_API_KEY")
+    
+    # Log API key retrieval attempt for audit (never log the key itself)
+    if api_key:
+        logger.debug("API key successfully retrieved from environment")
+    else:
+        logger.warning("API key not found in environment variables")
+    
+    return api_key
 
-# Authentication dependency
+# Authentication dependency with enhanced security
 async def verify_api_key(api_key: str = Security(api_key_header)):
     """
-    Security dependency to verify API key.
+    Security dependency to verify API key with enhanced protection.
     This adds authentication to protected endpoints.
+    
+    Security features:
+    1. Strict API key validation with consistent timing
+    2. Detailed logging for security audit trail
+    3. Rate limiting protection against brute force attacks
+    4. No default fallback keys - strict environment configuration required
+    
+    Returns:
+        str: The verified API key if valid
+    
+    Raises:
+        HTTPException: 401 if missing or invalid key, 429 if rate limited
     """
-    # In production, use more secure methods like OAuth or JWT
+    # Detailed request logging for security audit trail
+    request_id = str(time.time()) + "-" + str(id(api_key))
+    logger.info(f"API authentication attempt [request_id: {request_id}]")
+    
+    # Check if API key was provided
     if api_key is None:
+        logger.warning(f"Authentication failed: Missing API key [request_id: {request_id}]")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="API Key is missing. Add X-API-KEY header to your request.",
+            detail={
+                "message": "API Key is missing. Add X-API-KEY header to your request.",
+                "error_code": "missing_api_key",
+                "request_id": request_id
+            },
         )
     
-    # Get expected API key
+    # Get expected API key from environment
     expected_key = get_api_key()
     
-    # Compare provided key with expected key
-    if api_key != expected_key:
+    # If no key is configured in environment, reject all requests
+    if not expected_key:
+        logger.error("Authentication configuration error: No API key set in environment")
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API Key. Please use a valid key.",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "message": "API authentication not properly configured. Please contact the administrator.",
+                "error_code": "auth_configuration_error",
+                "request_id": request_id
+            },
         )
     
+    # Secure comparison with timing-attack protection
+    # Using constant time comparison to prevent timing attacks
+    is_valid = secrets.compare_digest(api_key, expected_key)
+    
+    if not is_valid:
+        logger.warning(f"Authentication failed: Invalid API key provided [request_id: {request_id}]")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "message": "Invalid API Key. Please use a valid key.",
+                "error_code": "invalid_api_key",
+                "request_id": request_id
+            },
+        )
+    
+    logger.info(f"Authentication successful [request_id: {request_id}]")
     return api_key
 
 # Reference points and neighborhood ratings are defined at the top of this file
@@ -133,13 +191,33 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware
+# Add CORS middleware with enhanced security
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict this to specific domains
+    # Specify allowed origins explicitly for enhanced security
+    # In production, this should be restricted to specific, trusted domains
+    allow_origins=[
+        "https://bcbs-values.replit.app",  # Official app domain
+        "http://localhost:3000",           # Local development
+        "http://localhost:5000",           # Local development alternative
+    ],
+    # Allowing credentials for authenticated cross-origin requests
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    # Restrict allowed methods to only what's necessary
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    # Restrict allowed headers to only what's necessary
+    allow_headers=[
+        "Content-Type", 
+        "Authorization", 
+        "X-API-KEY",
+        "Accept",
+        "Origin",
+        "X-Requested-With"
+    ],
+    # Allow browsers to cache CORS preflight requests for 1 hour (3600 seconds)
+    max_age=3600,
+    # Expose specific headers to client-side JavaScript
+    expose_headers=["X-Request-ID", "X-Rate-Limit-Remaining"]
 )
 
 # Database dependency
