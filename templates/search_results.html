@@ -1,20 +1,22 @@
 <!DOCTYPE html>
-<html lang="en" data-bs-theme="dark">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Search Results - BCBS Values</title>
     <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
 </head>
-<body>
+<body data-bs-theme="dark">
+    <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
             <a class="navbar-brand" href="/">BCBS Values</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+                    aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
+                <ul class="navbar-nav">
                     <li class="nav-item">
                         <a class="nav-link" href="/">Home</a>
                     </li>
@@ -22,151 +24,104 @@
                         <a class="nav-link" href="/properties">Properties</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/validation">Validation Results</a>
+                        <a class="nav-link" href="/validation">Validation</a>
                     </li>
                 </ul>
-                <form class="d-flex" action="/search" method="get">
-                    <input class="form-control me-2" type="search" name="query" value="{{ query }}" placeholder="Search properties..." aria-label="Search">
+                <form class="d-flex ms-auto" action="/search" method="get">
+                    <input class="form-control me-2" type="search" name="query" placeholder="Search properties..." aria-label="Search" value="{{ query }}">
                     <button class="btn btn-outline-light" type="submit">Search</button>
                 </form>
             </div>
         </div>
     </nav>
 
-    <div class="container mt-5">
-        <div class="row mb-4">
-            <div class="col-md-12">
-                <nav aria-label="breadcrumb">
-                    <ol class="breadcrumb">
-                        <li class="breadcrumb-item"><a href="/">Home</a></li>
-                        <li class="breadcrumb-item active" aria-current="page">Search Results</li>
-                    </ol>
-                </nav>
-            </div>
-        </div>
-        
-        <div class="row mb-4">
-            <div class="col-md-12">
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h3>Search Results for "{{ query }}"</h3>
-                        <span class="badge bg-info">{{ results|length }} Results</span>
-                    </div>
-                    <div class="card-body">
-                        {% if results|length > 0 %}
-                            <div class="table-responsive">
-                                <table class="table table-hover">
-                                    <thead>
-                                        <tr>
-                                            <th>Property ID</th>
-                                            <th>Address</th>
-                                            <th>Estimated Value</th>
-                                            <th>Confidence</th>
-                                            <th>Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {% for property in results %}
-                                        <tr>
-                                            <td>{{ property.property_id }}</td>
-                                            <td>{{ property.address }}</td>
-                                            <td>${{ "{:,.2f}".format(property.estimated_value) }}</td>
-                                            <td>
-                                                {% if property.confidence_score >= 0.9 %}
-                                                    <span class="badge bg-success">High ({{ property.confidence_score*100|int }}%)</span>
-                                                {% elif property.confidence_score >= 0.75 %}
-                                                    <span class="badge bg-primary">Medium ({{ property.confidence_score*100|int }}%)</span>
-                                                {% else %}
-                                                    <span class="badge bg-warning text-dark">Low ({{ property.confidence_score*100|int }}%)</span>
-                                                {% endif %}
-                                            </td>
-                                            <td>
-                                                <a href="/property/{{ property.property_id }}" class="btn btn-sm btn-info">Details</a>
-                                            </td>
-                                        </tr>
-                                        {% endfor %}
-                                    </tbody>
-                                </table>
-                            </div>
-                        {% else %}
-                            <div class="alert alert-info">
-                                <h4 class="alert-heading">No Results Found</h4>
-                                <p>We couldn't find any properties matching your search criteria. Please try a different search term.</p>
-                                <hr>
-                                <p class="mb-0">Try searching for addresses, property IDs, or cities.</p>
-                            </div>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        {% if results|length > 0 %}
-        <div class="row mb-4">
-            <div class="col-md-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h3>Search Filters</h3>
-                    </div>
-                    <div class="card-body">
-                        <form>
-                            <div class="row">
-                                <div class="col-md-3 mb-3">
-                                    <label for="minValue" class="form-label">Min Value ($)</label>
-                                    <input type="number" class="form-control" id="minValue" placeholder="Min Value">
-                                </div>
-                                <div class="col-md-3 mb-3">
-                                    <label for="maxValue" class="form-label">Max Value ($)</label>
-                                    <input type="number" class="form-control" id="maxValue" placeholder="Max Value">
-                                </div>
-                                <div class="col-md-3 mb-3">
-                                    <label for="propertyType" class="form-label">Property Type</label>
-                                    <select class="form-select" id="propertyType">
-                                        <option value="">All Types</option>
-                                        <option value="residential">Residential</option>
-                                        <option value="commercial">Commercial</option>
-                                        <option value="agricultural">Agricultural</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-3 mb-3">
-                                    <label for="sortBy" class="form-label">Sort By</label>
-                                    <select class="form-select" id="sortBy">
-                                        <option value="relevance">Relevance</option>
-                                        <option value="value_desc">Value (High to Low)</option>
-                                        <option value="value_asc">Value (Low to High)</option>
-                                        <option value="confidence_desc">Confidence (High to Low)</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <input type="hidden" name="query" value="{{ query }}">
-                            <button type="submit" class="btn btn-primary">Apply Filters</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-        
-        <div class="row mb-4">
-            <div class="col-md-12 text-center">
-                <a href="/properties" class="btn btn-outline-secondary">View All Properties</a>
-            </div>
-        </div>
-    </div>
-
-    <footer class="bg-dark text-light mt-5 py-3">
+    <!-- Page Header -->
+    <header class="bg-primary py-4">
         <div class="container">
+            <h1 class="text-white">Search Results</h1>
+            <p class="lead text-white">Showing results for: "{{ query }}"</p>
+        </div>
+    </header>
+
+    <!-- Search Results -->
+    <section class="py-5">
+        <div class="container">
+            <!-- Results Count -->
+            <div class="mb-4">
+                <h4>{{ results|length }} result{% if results|length != 1 %}s{% endif %} found</h4>
+            </div>
+
+            <!-- Results Table -->
             <div class="row">
-                <div class="col-md-6">
-                    <p>&copy; 2025 BCBS Values. All rights reserved.</p>
-                </div>
-                <div class="col-md-6 text-end">
-                    <p>Benton County, Washington Real Estate Valuation</p>
+                <div class="col-12">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Address</th>
+                                    <th>City</th>
+                                    <th>Bedrooms</th>
+                                    <th>Bathrooms</th>
+                                    <th>Sq. Ft.</th>
+                                    <th>Estimated Value</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if results %}
+                                    {% for property in results %}
+                                    <tr>
+                                        <td>{{ property.address }}</td>
+                                        <td>{{ property.city }}</td>
+                                        <td>{{ property.bedrooms }}</td>
+                                        <td>{{ property.bathrooms }}</td>
+                                        <td>{{ property.square_feet }}</td>
+                                        <td>${{ '%0.2f'|format(property.estimated_value|float) if property.estimated_value else 'N/A' }}</td>
+                                        <td><a href="/property/{{ property.id }}" class="btn btn-sm btn-primary">View</a></td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="7" class="text-center">No properties found matching your search criteria.</td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
+
+            <!-- No Results -->
+            {% if not results %}
+            <div class="row mt-4">
+                <div class="col-md-8 mx-auto">
+                    <div class="card bg-dark text-white">
+                        <div class="card-body text-center">
+                            <h5 class="card-title">No properties found</h5>
+                            <p class="card-text">We couldn't find any properties matching your search for "{{ query }}".</p>
+                            <p>Try:</p>
+                            <ul class="text-start">
+                                <li>Using fewer keywords</li>
+                                <li>Checking for typos</li>
+                                <li>Searching by property ID or exact address</li>
+                            </ul>
+                            <a href="/properties" class="btn btn-primary">Browse All Properties</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-4 bg-dark text-white-50">
+        <div class="container text-center">
+            <small>Copyright &copy; 2025 BCBS Values</small>
         </div>
     </footer>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

@@ -1,31 +1,33 @@
 <!DOCTYPE html>
-<html lang="en" data-bs-theme="dark">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BCBS Values - Real Estate Valuation</title>
+    <title>BCBS Values - Benton County Real Estate Valuation</title>
     <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
 </head>
-<body>
+<body data-bs-theme="dark">
+    <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
             <a class="navbar-brand" href="/">BCBS Values</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+                    aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
+                <ul class="navbar-nav">
                     <li class="nav-item">
-                        <a class="nav-link active" href="/">Home</a>
+                        <a class="nav-link active" aria-current="page" href="/">Home</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/properties">Properties</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/validation">Validation Results</a>
+                        <a class="nav-link" href="/validation">Validation</a>
                     </li>
                 </ul>
-                <form class="d-flex" action="/search" method="get">
+                <form class="d-flex ms-auto" action="/search" method="get">
                     <input class="form-control me-2" type="search" name="query" placeholder="Search properties..." aria-label="Search">
                     <button class="btn btn-outline-light" type="submit">Search</button>
                 </form>
@@ -33,87 +35,95 @@
         </div>
     </nav>
 
-    <div class="container mt-5">
-        <div class="row">
-            <div class="col-md-6 mb-4">
-                <div class="card">
-                    <div class="card-body">
-                        <h2 class="card-title">Welcome to BCBS Values</h2>
-                        <p class="card-text">A sophisticated real estate valuation platform for Benton County, Washington, leveraging advanced machine learning techniques for accurate property price prediction.</p>
-                        <a href="/properties" class="btn btn-primary">View Properties</a>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6 mb-4">
-                <div class="card bg-dark text-light">
-                    <div class="card-body">
-                        <h3 class="card-title">Advanced Valuation Features</h3>
-                        <ul class="list-group list-group-flush">
-                            <li class="list-group-item bg-dark text-light">Machine learning-based price prediction</li>
-                            <li class="list-group-item bg-dark text-light">Geospatial analysis factors</li>
-                            <li class="list-group-item bg-dark text-light">Comprehensive feature importance metrics</li>
-                            <li class="list-group-item bg-dark text-light">Multi-source data integration (MLS, NARRPR, PACS)</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
+    <!-- Hero Section -->
+    <header class="py-5 bg-primary text-white">
+        <div class="container px-4 text-center">
+            <h1 class="display-4 fw-bold">Benton County Property Valuation</h1>
+            <p class="lead">Advanced real estate valuation powered by machine learning</p>
+            <a href="/properties" class="btn btn-light btn-lg">Browse Properties</a>
         </div>
+    </header>
 
-        <div class="row mt-4">
-            <div class="col-md-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h3>Recent Valuations</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>Property ID</th>
-                                        <th>Address</th>
-                                        <th>Estimated Value</th>
-                                        <th>Confidence</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td>PROP-1001</td>
-                                        <td>123 Cherry Lane, Richland, WA 99352</td>
-                                        <td>$425,000.00</td>
-                                        <td><span class="badge bg-success">High (92%)</span></td>
-                                        <td><a href="/property/PROP-1001" class="btn btn-sm btn-info">Details</a></td>
-                                    </tr>
-                                    <tr>
-                                        <td>PROP-1002</td>
-                                        <td>456 Oak Street, Kennewick, WA 99336</td>
-                                        <td>$375,000.00</td>
-                                        <td><span class="badge bg-success">High (88%)</span></td>
-                                        <td><a href="/property/PROP-1002" class="btn btn-sm btn-info">Details</a></td>
-                                    </tr>
-                                </tbody>
-                            </table>
+    <!-- Features Section -->
+    <section class="py-5">
+        <div class="container px-4">
+            <div class="row gx-4 justify-content-center">
+                <div class="col-lg-8">
+                    <h2 class="mb-4">Features of BCBS Values</h2>
+                    <div class="row row-cols-1 row-cols-md-3 g-4">
+                        <div class="col">
+                            <div class="card h-100 bg-dark text-white">
+                                <div class="card-body">
+                                    <h5 class="card-title">Advanced Valuation</h5>
+                                    <p class="card-text">Utilizing multiple regression analysis and machine learning algorithms for accurate property valuations.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="card h-100 bg-dark text-white">
+                                <div class="card-body">
+                                    <h5 class="card-title">Multi-Source Data</h5>
+                                    <p class="card-text">Integrating data from MLS, NARRPR, and PACS to provide comprehensive property insights.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="card h-100 bg-dark text-white">
+                                <div class="card-body">
+                                    <h5 class="card-title">Confidence Metrics</h5>
+                                    <p class="card-text">Every valuation includes confidence scores and prediction intervals for transparency.</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
+    </section>
 
-    <footer class="bg-dark text-light mt-5 py-3">
-        <div class="container">
+    <!-- Recent Valuations -->
+    <section class="py-5 bg-dark">
+        <div class="container px-4">
+            <h2 class="text-center text-white mb-4">Recent Property Valuations</h2>
             <div class="row">
-                <div class="col-md-6">
-                    <p>&copy; 2025 BCBS Values. All rights reserved.</p>
-                </div>
-                <div class="col-md-6 text-end">
-                    <p>Benton County, Washington Real Estate Valuation</p>
+                <div class="col-12">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Address</th>
+                                    <th>City</th>
+                                    <th>Bedrooms</th>
+                                    <th>Bathrooms</th>
+                                    <th>Sq. Ft.</th>
+                                    <th>Estimated Value</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- This would be filled with Jinja template logic -->
+                                <tr>
+                                    <td colspan="7" class="text-center">Loading recent valuations...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="text-center mt-3">
+                        <a href="/properties" class="btn btn-primary">View All Properties</a>
+                    </div>
                 </div>
             </div>
         </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-4 bg-dark text-white-50">
+        <div class="container text-center">
+            <small>Copyright &copy; 2025 BCBS Values</small>
+        </div>
     </footer>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

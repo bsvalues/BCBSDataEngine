@@ -1,67 +1,21 @@
 <!DOCTYPE html>
-<html lang="en" data-bs-theme="dark">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Server Error - BCBS Values</title>
     <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
 </head>
-<body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-        <div class="container">
-            <a class="navbar-brand" href="/">BCBS Values</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="/">Home</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/properties">Properties</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/validation">Validation Results</a>
-                    </li>
-                </ul>
-                <form class="d-flex" action="/search" method="get">
-                    <input class="form-control me-2" type="search" name="query" placeholder="Search properties..." aria-label="Search">
-                    <button class="btn btn-outline-light" type="submit">Search</button>
-                </form>
-            </div>
-        </div>
-    </nav>
-
-    <div class="container mt-5 text-center">
+<body data-bs-theme="dark">
+    <div class="container my-5">
         <div class="row">
-            <div class="col-md-8 offset-md-2">
-                <div class="card">
-                    <div class="card-body">
-                        <h1 class="display-1 text-danger">500</h1>
-                        <h2 class="mb-4">Server Error</h2>
-                        <p class="lead">Oops! Something went wrong on our end.</p>
-                        <p>Our team has been notified and is working to fix the issue. Please try again later.</p>
-                        <a href="/" class="btn btn-primary mt-3">Return to Home</a>
-                    </div>
-                </div>
+            <div class="col-md-6 mx-auto text-center">
+                <h1 class="display-1">500</h1>
+                <h2>Server Error</h2>
+                <p class="lead">Something went wrong on our end. Our team has been notified.</p>
+                <a href="/" class="btn btn-primary mt-3">Return Home</a>
             </div>
         </div>
     </div>
-
-    <footer class="bg-dark text-light mt-5 py-3 fixed-bottom">
-        <div class="container">
-            <div class="row">
-                <div class="col-md-6">
-                    <p>&copy; 2025 BCBS Values. All rights reserved.</p>
-                </div>
-                <div class="col-md-6 text-end">
-                    <p>Benton County, Washington Real Estate Valuation</p>
-                </div>
-            </div>
-        </div>
-    </footer>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

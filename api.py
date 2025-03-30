@@ -4,8 +4,8 @@ This module provides HTTP endpoints for property valuation, ETL status, and agen
 """
 import datetime
 import json
-import logging
 import os
+import time
 from typing import Dict, List, Optional, Union
 
 from fastapi import FastAPI, HTTPException, Query, Path, Depends
@@ -16,9 +16,12 @@ from pydantic import BaseModel, Field
 from db.database import Database
 from db.models import PropertyValuation, Property, ValidationResult
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Setup logging with our custom configuration
+from utils.logging_config import get_api_logger
+
+# Get a configured logger for the API
+logger = get_api_logger()
+logger.info("API module initializing...")
 
 # Initialize FastAPI application
 app = FastAPI(

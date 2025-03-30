@@ -8,58 +8,41 @@ import datetime
 from pathlib import Path
 import logging
 from flask import Flask, render_template, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.orm import DeclarativeBase
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Create Base class for SQLAlchemy models
+class Base(DeclarativeBase):
+    pass
+
 # Create Flask app
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "bcbs_values_dev_key")
 
-# Sample data for property valuations
-SAMPLE_VALUATIONS = [
-    {
-        "property_id": "PROP-1001",
-        "address": "123 Cherry Lane, Richland, WA 99352",
-        "estimated_value": 425000.00,
-        "confidence_score": 0.92,
-        "model_used": "advanced_regression",
-        "valuation_date": datetime.datetime.now().isoformat(),
-        "features_used": {
-            "square_feet": 2450,
-            "bedrooms": 4,
-            "bathrooms": 2.5,
-            "year_built": 1998,
-            "lot_size": 12000
-        },
-        "comparable_properties": [
-            {"id": "COMP-101", "address": "125 Cherry Lane", "sale_price": 415000},
-            {"id": "COMP-102", "address": "130 Cherry Lane", "sale_price": 432000}
-        ]
-    },
-    {
-        "property_id": "PROP-1002",
-        "address": "456 Oak Street, Kennewick, WA 99336",
-        "estimated_value": 375000.00,
-        "confidence_score": 0.88,
-        "model_used": "hedonic_price_model",
-        "valuation_date": datetime.datetime.now().isoformat(),
-        "features_used": {
-            "square_feet": 2100,
-            "bedrooms": 3,
-            "bathrooms": 2.0,
-            "year_built": 2005,
-            "lot_size": 9500
-        },
-        "comparable_properties": [
-            {"id": "COMP-201", "address": "460 Oak Street", "sale_price": 368000},
-            {"id": "COMP-202", "address": "470 Oak Street", "sale_price": 382500}
-        ]
-    }
-]
+# Configure database
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_recycle": 300,
+    "pool_pre_ping": True,
+}
 
-# Sample ETL status data
+# Initialize SQLAlchemy
+db = SQLAlchemy(model_class=Base)
+db.init_app(app)
+
+# Initialize models using our db instance
+from models import Property, ValidationResult, PropertyValuation, init_models
+init_models(db)
+
+# Create all database tables if they don't exist yet
+with app.app_context():
+    db.create_all()
+
+# ETL status data
 ETL_STATUS = {
     "status": "completed",
     "last_run": (datetime.datetime.now() - datetime.timedelta(hours=2)).isoformat(),
@@ -94,6 +77,29 @@ ETL_STATUS = {
     ]
 }
 
+# Helper function to convert property DB models to dictionary
+def property_to_dict(property_obj):
+    """Convert a Property object to a dictionary for API responses"""
+    return {
+        "id": property_obj.id,
+        "property_id": property_obj.property_id,
+        "address": property_obj.address,
+        "city": property_obj.city,
+        "county": property_obj.county,
+        "state": property_obj.state,
+        "zip_code": property_obj.zip_code,
+        "bedrooms": property_obj.bedrooms,
+        "bathrooms": property_obj.bathrooms,
+        "square_feet": property_obj.square_feet,
+        "lot_size": property_obj.lot_size,
+        "year_built": property_obj.year_built,
+        "estimated_value": property_obj.estimated_value,
+        "last_sale_price": property_obj.last_sale_price,
+        "last_sale_date": property_obj.last_sale_date.isoformat() if property_obj.last_sale_date else None,
+        "property_type": property_obj.property_type,
+        "data_source": property_obj.data_source
+    }
+
 # Register routes
 @app.route('/')
 def index():
@@ -102,25 +108,73 @@ def index():
 
 @app.route('/properties')
 def properties():
-    """Render the properties page with data."""
-    return render_template('properties.html', properties=SAMPLE_VALUATIONS)
-
-@app.route('/property/<property_id>')
-def property_detail(property_id):
-    """Render property detail page with valuation."""
-    property_data = next(
-        (p for p in SAMPLE_VALUATIONS if p["property_id"] == property_id), 
-        None
-    )
+    """Render the properties page with data from the database."""
+    # Get properties from the database
+    props = Property.query.filter_by(county='Benton', state='WA').limit(20).all()
     
-    if property_data:
+    # Convert Property objects to dictionaries for the template
+    property_list = [property_to_dict(p) for p in props]
+    
+    return render_template('properties.html', properties=property_list)
+
+@app.route('/property/<int:id>')
+def property_detail(id):
+    """Render property detail page with valuation."""
+    # Get property from the database by ID
+    property_obj = Property.query.get(id)
+    
+    if property_obj:
+        # Convert Property object to dictionary
+        property_data = property_to_dict(property_obj)
+        
+        # Get any valuations for this property
+        valuations = PropertyValuation.query.filter_by(property_id=id).order_by(PropertyValuation.valuation_date.desc()).first()
+        
+        # Add valuation data if available
+        if valuations:
+            property_data["confidence_score"] = valuations.confidence_score
+            property_data["valuation_date"] = valuations.valuation_date.isoformat() if valuations.valuation_date else None
+            property_data["model_used"] = valuations.model_name
+            property_data["prediction_interval"] = {
+                "low": valuations.prediction_interval_low,
+                "high": valuations.prediction_interval_high
+            }
+            property_data["features_used"] = {}
+            if valuations.feature_importance:
+                property_data["features_used"] = valuations.feature_importance
+            
+            # Add comparable properties if available
+            if valuations.comparable_properties:
+                property_data["comparable_properties"] = valuations.comparable_properties
+        
         return render_template('property_detail.html', property=property_data)
+    else:
+        return render_template('404.html'), 404
+
+@app.route('/property/by-property-id/<property_id>')
+def property_by_property_id(property_id):
+    """Find property by its property_id field and redirect to the detail page."""
+    property_obj = Property.query.filter_by(property_id=property_id).first()
+    
+    if property_obj:
+        return property_detail(property_obj.id)
     else:
         return render_template('404.html'), 404
 
 @app.route('/validation')
 def validation():
     """Render the validation results page."""
+    # Get the most recent validation result from the database
+    validation_result = ValidationResult.query.order_by(ValidationResult.timestamp.desc()).first()
+    
+    if validation_result and validation_result.results:
+        try:
+            validation_data = json.loads(validation_result.results)
+            return render_template('validation.html', validation_results=validation_data)
+        except json.JSONDecodeError:
+            logger.error("Error decoding validation results JSON")
+    
+    # Fall back to sample data if no validation results in DB
     return render_template('validation.html', validation_results=ETL_STATUS)
 
 @app.route('/search')
@@ -130,8 +184,16 @@ def search():
     results = []
     
     if query:
-        results = [p for p in SAMPLE_VALUATIONS 
-                  if query.lower() in p["address"].lower()]
+        # Search the database for properties matching the query
+        search_term = f"%{query}%"
+        results_query = Property.query.filter(
+            (Property.address.ilike(search_term)) |
+            (Property.city.ilike(search_term)) |
+            (Property.property_id.ilike(search_term))
+        ).limit(50)
+        
+        # Convert results to dictionaries
+        results = [property_to_dict(p) for p in results_query]
     
     return render_template('search_results.html', 
                           query=query, 
@@ -140,25 +202,83 @@ def search():
 # API Routes
 @app.route('/api/properties')
 def api_properties():
-    """API endpoint to get properties."""
-    return jsonify(SAMPLE_VALUATIONS)
-
-@app.route('/api/property/<property_id>')
-def api_property(property_id):
-    """API endpoint to get property details."""
-    property_data = next(
-        (p for p in SAMPLE_VALUATIONS if p["property_id"] == property_id), 
-        None
-    )
+    """API endpoint to get properties from the database."""
+    # Get query parameters for filtering
+    limit = request.args.get('limit', 20, type=int)
+    min_value = request.args.get('min_value', None, type=float)
+    max_value = request.args.get('max_value', None, type=float)
+    property_type = request.args.get('property_type', None)
     
-    if property_data:
+    # Start with a base query
+    query = Property.query.filter_by(county='Benton', state='WA')
+    
+    # Apply filters
+    if min_value is not None:
+        query = query.filter(Property.estimated_value >= min_value)
+    if max_value is not None:
+        query = query.filter(Property.estimated_value <= max_value)
+    if property_type is not None:
+        query = query.filter(Property.property_type == property_type)
+    
+    # Get results and convert to list of dictionaries
+    properties = [property_to_dict(p) for p in query.limit(limit).all()]
+    
+    return jsonify(properties)
+
+@app.route('/api/property/<int:id>')
+def api_property(id):
+    """API endpoint to get property details by database ID."""
+    # Get property from the database
+    property_obj = Property.query.get(id)
+    
+    if property_obj:
+        # Convert to dictionary
+        property_data = property_to_dict(property_obj)
+        
+        # Get valuation data if available
+        valuation = PropertyValuation.query.filter_by(property_id=id).order_by(PropertyValuation.valuation_date.desc()).first()
+        if valuation:
+            property_data["valuation"] = {
+                "estimated_value": valuation.estimated_value,
+                "confidence_score": valuation.confidence_score,
+                "valuation_date": valuation.valuation_date.isoformat() if valuation.valuation_date else None,
+                "model_name": valuation.model_name,
+                "model_version": valuation.model_version,
+                "prediction_interval": {
+                    "low": valuation.prediction_interval_low,
+                    "high": valuation.prediction_interval_high
+                }
+            }
+        
         return jsonify(property_data)
+    else:
+        return jsonify({"error": "Property not found"}), 404
+
+@app.route('/api/property/by-property-id/<property_id>')
+def api_property_by_property_id(property_id):
+    """API endpoint to get property details by property_id field."""
+    # Find property by property_id
+    property_obj = Property.query.filter_by(property_id=property_id).first()
+    
+    if property_obj:
+        return api_property(property_obj.id)
     else:
         return jsonify({"error": "Property not found"}), 404
 
 @app.route('/api/validation')
 def api_validation():
     """API endpoint for validation results."""
+    # Get the most recent validation result
+    validation_result = ValidationResult.query.order_by(ValidationResult.timestamp.desc()).first()
+    
+    if validation_result and validation_result.results:
+        try:
+            validation_data = json.loads(validation_result.results)
+            return jsonify(validation_data)
+        except json.JSONDecodeError:
+            logger.error("Error decoding validation results JSON")
+    
+    # Fall back to sample data if no validation results in DB
     return jsonify(ETL_STATUS)
 
 @app.errorhandler(404)

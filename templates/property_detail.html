@@ -1,20 +1,22 @@
 <!DOCTYPE html>
-<html lang="en" data-bs-theme="dark">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ property.address }} - BCBS Values</title>
     <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
 </head>
-<body>
+<body data-bs-theme="dark">
+    <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
             <a class="navbar-brand" href="/">BCBS Values</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+                    aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
+                <ul class="navbar-nav">
                     <li class="nav-item">
                         <a class="nav-link" href="/">Home</a>
                     </li>
@@ -22,10 +24,10 @@
                         <a class="nav-link" href="/properties">Properties</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/validation">Validation Results</a>
+                        <a class="nav-link" href="/validation">Validation</a>
                     </li>
                 </ul>
-                <form class="d-flex" action="/search" method="get">
+                <form class="d-flex ms-auto" action="/search" method="get">
                     <input class="form-control me-2" type="search" name="query" placeholder="Search properties..." aria-label="Search">
                     <button class="btn btn-outline-light" type="submit">Search</button>
                 </form>
@@ -33,214 +35,201 @@
         </div>
     </nav>
 
-    <div class="container mt-5">
-        <div class="row mb-4">
-            <div class="col-md-12">
-                <nav aria-label="breadcrumb">
-                    <ol class="breadcrumb">
-                        <li class="breadcrumb-item"><a href="/">Home</a></li>
-                        <li class="breadcrumb-item"><a href="/properties">Properties</a></li>
-                        <li class="breadcrumb-item active" aria-current="page">{{ property.property_id }}</li>
-                    </ol>
-                </nav>
-            </div>
-        </div>
-        
-        <div class="row">
-            <div class="col-md-8">
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <h2>Property Details</h2>
-                    </div>
-                    <div class="card-body">
-                        <h3 class="mb-3">{{ property.address }}</h3>
-                        <div class="alert alert-primary" role="alert">
-                            <h4 class="alert-heading">Estimated Value: ${{ "{:,.2f}".format(property.estimated_value) }}</h4>
-                            <p class="mb-0">
-                                {% if property.confidence_score >= 0.9 %}
-                                    <span class="badge bg-success">High Confidence ({{ property.confidence_score*100|int }}%)</span>
-                                {% elif property.confidence_score >= 0.75 %}
-                                    <span class="badge bg-primary">Medium Confidence ({{ property.confidence_score*100|int }}%)</span>
-                                {% else %}
-                                    <span class="badge bg-warning text-dark">Low Confidence ({{ property.confidence_score*100|int }}%)</span>
-                                {% endif %}
-                                <span class="ms-2">Valuation Date: {{ property.valuation_date }}</span>
-                            </p>
-                        </div>
-                        
-                        <h4 class="mt-4">Property Features</h4>
-                        <div class="table-responsive">
-                            <table class="table table-striped">
-                                <tbody>
-                                    {% for key, value in property.features_used.items() %}
-                                    <tr>
-                                        <th scope="row">{{ key|replace('_', ' ')|title }}</th>
-                                        <td>{{ value }}</td>
-                                    </tr>
-                                    {% endfor %}
-                                    <tr>
-                                        <th scope="row">Model Used</th>
-                                        <td>{{ property.model_used }}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+    <!-- Property Header -->
+    <header class="bg-primary py-4">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h1 class="text-white">{{ property.address }}</h1>
+                    <p class="lead text-white mb-0">{{ property.city }}, {{ property.state }} {{ property.zip_code }}</p>
                 </div>
-            </div>
-            
-            <div class="col-md-4">
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <h4>Valuation Summary</h4>
-                    </div>
-                    <div class="card-body">
-                        <div class="mb-3">
-                            <h5>Valuation Breakdown</h5>
-                            <div class="progress mb-3" style="height: 25px;">
-                                <div class="progress-bar bg-primary" role="progressbar" style="width: 65%;" aria-valuenow="65" aria-valuemin="0" aria-valuemax="100">Land Value (65%)</div>
-                            </div>
-                            <div class="progress mb-3" style="height: 25px;">
-                                <div class="progress-bar bg-success" role="progressbar" style="width: 30%;" aria-valuenow="30" aria-valuemin="0" aria-valuemax="100">Structure Value (30%)</div>
-                            </div>
-                            <div class="progress mb-3" style="height: 25px;">
-                                <div class="progress-bar bg-info" role="progressbar" style="width: 5%;" aria-valuenow="5" aria-valuemin="0" aria-valuemax="100">Improvements (5%)</div>
-                            </div>
+                <div class="col-md-4 text-md-end">
+                    <div class="bg-dark text-center p-3 rounded">
+                        <h3 class="mb-0 text-white">
+                            ${{ '%0.2f'|format(property.estimated_value|float) if property.estimated_value else 'N/A' }}
+                        </h3>
+                        <p class="text-light mb-0">Estimated Value</p>
+                        {% if property.confidence_score %}
+                        <div class="mt-1">
+                            <small class="text-light">Confidence: {{ '%.1f'|format(property.confidence_score * 100) }}%</small>
                         </div>
-                        
-                        <h5 class="mt-4">Market Trends</h5>
-                        <p>3-Month Trend: <span class="text-success">+2.3%</span></p>
-                        <p>12-Month Trend: <span class="text-success">+5.7%</span></p>
-                        <p>Neighborhood Average: ${{ "{:,.2f}".format(property.estimated_value * 0.95) }}</p>
-                    </div>
-                </div>
-                
-                <div class="card">
-                    <div class="card-header">
-                        <h4>Comparable Properties</h4>
-                    </div>
-                    <div class="card-body">
-                        {% if property.comparable_properties %}
-                            <ul class="list-group list-group-flush">
-                                {% for comp in property.comparable_properties %}
-                                <li class="list-group-item bg-dark">
-                                    <h6>{{ comp.address }}</h6>
-                                    <p class="mb-1">Sale Price: ${{ "{:,.2f}".format(comp.sale_price) }}</p>
-                                    <p class="mb-0 small">ID: {{ comp.id }}</p>
-                                </li>
-                                {% endfor %}
-                            </ul>
-                        {% else %}
-                            <p>No comparable properties available.</p>
                         {% endif %}
                     </div>
                 </div>
             </div>
         </div>
-        
-        <div class="row mt-4">
-            <div class="col-md-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h3>What-If Analysis</h3>
-                    </div>
-                    <div class="card-body">
-                        <p>Explore how changes to property features might affect the valuation.</p>
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="renovationLevel" class="form-label">Renovation Level</label>
-                                <select class="form-select" id="renovationLevel">
-                                    <option value="none">None</option>
-                                    <option value="minor">Minor Improvements</option>
-                                    <option value="moderate">Moderate Renovation</option>
-                                    <option value="major">Major Renovation</option>
-                                </select>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="marketProjection" class="form-label">Market Projection</label>
-                                <select class="form-select" id="marketProjection">
-                                    <option value="current">Current Market</option>
-                                    <option value="6month">6-Month Projection</option>
-                                    <option value="1year">1-Year Projection</option>
-                                    <option value="5year">5-Year Projection</option>
-                                </select>
+    </header>
+
+    <!-- Property Details -->
+    <section class="py-5">
+        <div class="container">
+            <div class="row">
+                <!-- Main Property Info -->
+                <div class="col-md-8">
+                    <div class="card bg-dark mb-4">
+                        <div class="card-header">
+                            <h4>Property Details</h4>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <strong>Property ID:</strong> {{ property.property_id }}
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <strong>Property Type:</strong> {{ property.property_type }}
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <strong>Bedrooms:</strong> {{ property.bedrooms }}
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <strong>Bathrooms:</strong> {{ property.bathrooms }}
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <strong>Square Feet:</strong> {{ property.square_feet }}
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <strong>Lot Size:</strong> {{ property.lot_size }} sq ft
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <strong>Year Built:</strong> {{ property.year_built }}
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <strong>Last Sale Price:</strong> ${{ '%0.2f'|format(property.last_sale_price|float) if property.last_sale_price else 'N/A' }}
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <strong>Last Sale Date:</strong> {{ property.last_sale_date|default('N/A') }}
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <strong>Data Source:</strong> {{ property.data_source|default('Multiple Sources') }}
+                                </div>
                             </div>
                         </div>
-                        <button class="btn btn-primary" id="calculateWhatIf">Calculate New Valuation</button>
-                        
-                        <div class="mt-4" id="whatIfResult" style="display: none;">
-                            <div class="alert alert-info">
-                                <h5>Projected Value: <span id="projectedValue">$450,000.00</span></h5>
-                                <p>This represents a <span id="valueChange">+5.9%</span> change from the current valuation.</p>
+                    </div>
+
+                    <!-- Valuation Information -->
+                    <div class="card bg-dark mb-4">
+                        <div class="card-header">
+                            <h4>Valuation Analysis</h4>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-4">
+                                <h5>Estimated Value</h5>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h2 class="mb-0">${{ '%0.2f'|format(property.estimated_value|float) if property.estimated_value else 'N/A' }}</h2>
+                                        {% if property.prediction_interval %}
+                                        <small class="text-muted">
+                                            Range: ${{ '%0.2f'|format(property.prediction_interval.low|float) }} - ${{ '%0.2f'|format(property.prediction_interval.high|float) }}
+                                        </small>
+                                        {% endif %}
+                                    </div>
+                                    <div>
+                                        {% if property.confidence_score %}
+                                        <div class="text-end">
+                                            <h5 class="mb-0">Confidence Score</h5>
+                                            <p class="mb-0">{{ '%.1f'|format(property.confidence_score * 100) }}%</p>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
                             </div>
+
+                            <div class="mb-4">
+                                <h5>Valuation Details</h5>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <strong>Model Used:</strong> {{ property.model_used|default('Multiple Regression') }}
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <strong>Valuation Date:</strong> {{ property.valuation_date|default('N/A') }}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Features Used for Valuation -->
+                            {% if property.features_used %}
+                            <div>
+                                <h5>Key Valuation Factors</h5>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-dark">
+                                        <thead>
+                                            <tr>
+                                                <th>Feature</th>
+                                                <th>Importance</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for feature, importance in property.features_used.items() %}
+                                            <tr>
+                                                <td>{{ feature|replace('_', ' ')|title }}</td>
+                                                <td>
+                                                    <div class="progress" style="height: 10px;">
+                                                        <div class="progress-bar bg-primary" role="progressbar" 
+                                                             style="width: {{ importance * 100 }}%;" 
+                                                             aria-valuenow="{{ importance * 100 }}" 
+                                                             aria-valuemin="0" 
+                                                             aria-valuemax="100"></div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sidebar -->
+                <div class="col-md-4">
+                    <!-- Comparable Properties -->
+                    <div class="card bg-dark mb-4">
+                        <div class="card-header">
+                            <h4>Comparable Properties</h4>
+                        </div>
+                        <div class="card-body">
+                            {% if property.comparable_properties %}
+                                <div class="list-group">
+                                    {% for comp in property.comparable_properties %}
+                                    <div class="list-group-item bg-dark text-white border-light">
+                                        <div class="d-flex w-100 justify-content-between">
+                                            <h6 class="mb-1">{{ comp.address }}</h6>
+                                            <small>${{ '%0.2f'|format(comp.sale_price|float) }}</small>
+                                        </div>
+                                        <small>Property ID: {{ comp.id }}</small>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <p class="text-muted">No comparable properties available.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Value History -->
+                    <div class="card bg-dark">
+                        <div class="card-header">
+                            <h4>Value History</h4>
+                        </div>
+                        <div class="card-body">
+                            <p class="text-muted">Value history data is not available for this property.</p>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
+    </section>
 
-    <footer class="bg-dark text-light mt-5 py-3">
-        <div class="container">
-            <div class="row">
-                <div class="col-md-6">
-                    <p>&copy; 2025 BCBS Values. All rights reserved.</p>
-                </div>
-                <div class="col-md-6 text-end">
-                    <p>Benton County, Washington Real Estate Valuation</p>
-                </div>
-            </div>
+    <!-- Footer -->
+    <footer class="py-4 bg-dark text-white-50">
+        <div class="container text-center">
+            <small>Copyright &copy; 2025 BCBS Values</small>
         </div>
     </footer>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Simple what-if analysis demo functionality
-        document.getElementById('calculateWhatIf').addEventListener('click', function() {
-            const renovationLevel = document.getElementById('renovationLevel').value;
-            const marketProjection = document.getElementById('marketProjection').value;
-            
-            // Show the result section
-            document.getElementById('whatIfResult').style.display = 'block';
-            
-            // In a real application, this would call an API endpoint to calculate the new value
-            // For demo purposes, we're just showing hard-coded values
-            let currentValue = {{ property.estimated_value }};
-            let percentChange = 0;
-            
-            // Apply renovation factor
-            if (renovationLevel === 'minor') {
-                percentChange += 3;
-            } else if (renovationLevel === 'moderate') {
-                percentChange += 7;
-            } else if (renovationLevel === 'major') {
-                percentChange += 12;
-            }
-            
-            // Apply market projection factor
-            if (marketProjection === '6month') {
-                percentChange += 1.5;
-            } else if (marketProjection === '1year') {
-                percentChange += 3;
-            } else if (marketProjection === '5year') {
-                percentChange += 15;
-            }
-            
-            // Calculate new value
-            const newValue = currentValue * (1 + (percentChange / 100));
-            
-            // Update the UI with the new values
-            document.getElementById('projectedValue').innerText = '$' + newValue.toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-            });
-            
-            document.getElementById('valueChange').innerText = (percentChange > 0 ? '+' : '') + 
-                percentChange.toLocaleString('en-US', {
-                    minimumFractionDigits: 1,
-                    maximumFractionDigits: 1
-                }) + '%';
-        });
-    </script>
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

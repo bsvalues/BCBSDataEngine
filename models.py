@@ -4,10 +4,10 @@ Database models for the property valuation system.
 from sqlalchemy import Column, Integer, String, Float, DateTime, Text, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 
-# Import db and Base from app
-from app import db
+# This will be imported after the db is initialized
+db = None
 
-class Property(db.Model):
+class Property():
     """
     Property model representing real estate properties.
     """
@@ -79,7 +79,7 @@ class Property(db.Model):
         return f"<Property(id={self.id}, address='{self.address}', city='{self.city}', state='{self.state}')>"
 
 
-class ValidationResult(db.Model):
+class ValidationResult():
     """
     Validation result model for storing data validation history.
     """
@@ -100,7 +100,7 @@ class ValidationResult(db.Model):
         return f"<ValidationResult(id={self.id}, timestamp='{self.timestamp}', status='{self.status}')>"
 
 
-class PropertyValuation(db.Model):
+class PropertyValuation():
     """
     Property valuation model for storing valuation results from the various models.
     """
@@ -145,3 +145,14 @@ class PropertyValuation(db.Model):
     def __repr__(self):
         """String representation of a PropertyValuation object."""
         return f"<PropertyValuation(id={self.id}, property_id={self.property_id}, value=${self.estimated_value:,.2f}, date='{self.valuation_date}')>"
+
+def init_models(database):
+    """Initialize the models with the database instance"""
+    global db, Property, ValidationResult, PropertyValuation
+    
+    db = database
+    
+    # Set the parent classes
+    Property.__bases__ = (db.Model,)
+    ValidationResult.__bases__ = (db.Model,)
+    PropertyValuation.__bases__ = (db.Model,)

@@ -3,16 +3,40 @@ Simple API implementation for the BCBS Values system.
 This module provides a simplified HTTP API without external dependencies.
 """
 import json
-import datetime
 import http.server
 import socketserver
 import urllib.parse
 from pathlib import Path
-import logging
+import sys
+import os
+import time
+import datetime  # Import the datetime module
+from datetime import datetime as dt  # Import datetime class as dt
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Setup logging with our custom configuration
+try:
+    from utils.logging_config import setup_logging
+
+    # Initialize a dedicated logger for the simple API
+    logger = setup_logging(
+        log_level="INFO",
+        log_file="simple_api.log",
+        module_name="simple_api"
+    )
+    logger.info("Simple API module initializing with custom logging...")
+except ImportError:
+    # Fallback to basic logging if custom logging is not available
+    import logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[%(asctime)s] [%(levelname)s] - %(message)s",
+        datefmt="%H:%M:%S"
+    )
+    logger = logging.getLogger(__name__)
+    logger.info("Simple API module initializing with basic logging (custom logging not available)...")
 
 # Define the port to listen on
 PORT = 8000
@@ -25,7 +49,7 @@ SAMPLE_VALUATIONS = [
         "estimated_value": 425000.00,
         "confidence_score": 0.92,
         "model_used": "advanced_regression",
-        "valuation_date": datetime.datetime.now().isoformat(),
+        "valuation_date": dt.now().isoformat(),
         "features_used": {
             "square_feet": 2450,
             "bedrooms": 4,
@@ -44,7 +68,7 @@ SAMPLE_VALUATIONS = [
         "estimated_value": 375000.00,
         "confidence_score": 0.88,
         "model_used": "hedonic_price_model",
-        "valuation_date": datetime.datetime.now().isoformat(),
+        "valuation_date": dt.now().isoformat(),
         "features_used": {
             "square_feet": 2100,
             "bedrooms": 3,
@@ -62,7 +86,7 @@ SAMPLE_VALUATIONS = [
 # Sample ETL status data
 ETL_STATUS = {
     "status": "completed",
-    "last_run": (datetime.datetime.now() - datetime.timedelta(hours=2)).isoformat(),
+    "last_run": (dt.now() - datetime.timedelta(hours=2)).isoformat(),
     "sources_processed": [
         {"name": "MLS", "status": "success", "records": 1250},
         {"name": "NARRPR", "status": "success", "records": 875},
@@ -101,7 +125,7 @@ AGENT_STATUS = {
             "agent_id": "bcbs-bootstrap-commander",
             "name": "BCBS Bootstrap Commander",
             "status": "active",
-            "last_active": (datetime.datetime.now() - datetime.timedelta(minutes=15)).isoformat(),
+            "last_active": (dt.now() - datetime.timedelta(minutes=15)).isoformat(),
             "current_task": "verifying_dependencies",
             "queue_size": 3,
             "performance_metrics": {
@@ -114,7 +138,7 @@ AGENT_STATUS = {
             "agent_id": "bcbs-cascade-operator",
             "name": "BCBS Cascade Operator",
             "status": "active",
-            "last_active": (datetime.datetime.now() - datetime.timedelta(minutes=2)).isoformat(),
+            "last_active": (dt.now() - datetime.timedelta(minutes=2)).isoformat(),
             "current_task": "orchestrating_etl_workflow",
             "queue_size": 1,
             "performance_metrics": {
@@ -127,7 +151,7 @@ AGENT_STATUS = {
             "agent_id": "bcbs-tdd-validator",
             "name": "BCBS TDD Validator",
             "status": "idle",
-            "last_active": (datetime.datetime.now() - datetime.timedelta(hours=1)).isoformat(),
+            "last_active": (dt.now() - datetime.timedelta(hours=1)).isoformat(),
             "current_task": None,
             "queue_size": 0,
             "performance_metrics": {
