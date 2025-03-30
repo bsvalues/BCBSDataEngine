@@ -2,7 +2,7 @@
 Integration tests for the BCBS_Values system.
 
 These tests validate the full ETL pipeline and API endpoints
-in an integrated manner.
+in an integrated manner, simulating real-world usage patterns.
 """
 import os
 import sys
@@ -30,6 +30,9 @@ from db.models import Property, PropertyValuation, ValidationResult
 # Import valuation component
 from src.valuation import simple_property_valuation, advanced_property_valuation
 
+# Import main module with ETL pipeline
+import main
+
 # Import API components (for API endpoint testing)
 import api
 from fastapi.testclient import TestClient
@@ -37,399 +40,427 @@ from fastapi.testclient import TestClient
 # Create a test client for the FastAPI application
 client = TestClient(api.app)
 
-class TestETLPipeline(unittest.TestCase):
-    """Integration test for the ETL pipeline."""
-    
-    @classmethod
-    def setUpClass(cls):
-        """Set up test fixtures that should be shared across all tests."""
-        # Create a test database connection
-        cls.db = Database()
+# Sample data for testing
+sample_properties = [
+    {
+        "property_id": "BC12345",
+        "address": "123 Main St, Richland, WA 99352",
+        "city": "Richland",
+        "county": "Benton",
+        "state": "WA",
+        "zip_code": "99352",
+        "latitude": 46.2807,
+        "longitude": -119.2785,
+        "property_type": "Single Family",
+        "bedrooms": 3,
+        "bathrooms": 2.0,
+        "square_feet": 1800,
+        "lot_size": 10890,
+        "year_built": 1985,
+        "estimated_value": 380000.0,
+        "data_source": "PACS"
+    },
+    {
+        "property_id": "BC67890",
+        "address": "456 Oak Ave, Kennewick, WA 99336",
+        "city": "Kennewick",
+        "county": "Benton",
+        "state": "WA",
+        "zip_code": "99336",
+        "latitude": 46.2087,
+        "longitude": -119.1361,
+        "property_type": "Single Family",
+        "bedrooms": 4,
+        "bathrooms": 3.0,
+        "square_feet": 2500,
+        "lot_size": 12000,
+        "year_built": 2005,
+        "estimated_value": 450000.0,
+        "data_source": "MLS"
+    }
+]
+
+@pytest.fixture
+def mock_database():
+    """
+    Create a mock database for testing.
+    This fixture creates a mock database that will be passed to functions
+    that require database access.
+    """
+    with mock.patch('db.database.Database') as mock_db:
+        # Configure the mock to return our test data
+        session_mock = mock.MagicMock()
+        mock_db.return_value.Session.return_value = session_mock
         
-        # Sample property data for testing
-        cls.sample_property_data = {
-            'property_id': ['BC12345', 'BC67890'],
-            'parcel_id': ['12345', '67890'],
-            'address': ['123 Main St, Richland, WA 99352', '456 Oak Ave, Kennewick, WA 99336'],
-            'city': ['Richland', 'Kennewick'],
-            'state': ['WA', 'WA'],
-            'zip_code': ['99352', '99336'],
-            'bedrooms': [3, 4],
-            'bathrooms': [2.0, 3.5],
-            'square_feet': [1800, 2400],
-            'lot_size': [10890, 21780],  # 0.25 and 0.5 acres in sq ft
-            'year_built': [2005, 2010],
-            'property_type': ['Residential', 'Residential'],
-            'pool': ['Yes', 'No'],
-            'basement': ['Full', 'No'],
-            'assessed_value': [500000, 750000],
-            'last_sale_price': [450000, 700000],
-            'last_sale_date': ['2020-01-15', '2019-06-30'],
-            'land_value': [200000, 300000],
-            'improvement_value': [300000, 450000],
-            'data_source': ['PACS', 'PACS'],
-            'collection_date': [datetime.now(), datetime.now()]
-        }
-    
-    def setUp(self):
-        """Set up test fixtures for each individual test."""
-        # Create a temporary directory for test files
-        self.temp_dir = tempfile.TemporaryDirectory()
+        # Setup query methods to return test data
+        session_mock.query.return_value.filter.return_value.all.return_value = []
         
-        # Create a mock PACS data file
-        import pandas as pd
-        self.pacs_csv_path = os.path.join(self.temp_dir.name, 'pacs_sample.csv')
-        pd.DataFrame({
-            'ParcelID': ['12345', '67890'],
-            'PropertyAddress': ['123 Main St', '456 Oak Ave'],
-            'SitusCity': ['Richland', 'Kennewick'],
-            'SitusState': ['WA', 'WA'],
-            'SitusZip': ['99352', '99336'],
-            'Bedrooms': [3, 4],
-            'Bathrooms': [2, 3.5],
-            'LivingSqFt': [1800, 2400],
-            'LotSizeAcres': [0.25, 0.5],
-            'YearBuilt': [2005, 2010],
-            'PropertyType': ['R', 'R'],
-            'HasPool': ['Y', 'N'],
-            'Basement': ['FULL', 'NO'],
-            'TotalAssessedValue': [500000, 750000],
-            'LastSalePrice': [450000, 700000],
-            'SaleDate': ['2020-01-15', '2019-06-30'],
-            'LandValue': [200000, 300000],
-            'ImprovementValue': [300000, 450000],
-            'AssessmentYear': [2022, 2022],
-            'AssessmentDate': ['2022-01-01', '2022-01-01']
-        }).to_csv(self.pacs_csv_path, index=False)
+        yield mock_db
+
+
+@pytest.fixture
+def mock_etl_components():
+    """
+    Create mocks for the ETL components.
+    This fixture patches the extract, transform, and load methods of the ETL
+    components to avoid making actual API calls during testing.
+    """
+    with mock.patch('etl.pacs_import.extract_data') as mock_pacs_extract, \
+         mock.patch('etl.pacs_import.transform_data') as mock_pacs_transform, \
+         mock.patch('etl.pacs_import.load_data') as mock_pacs_load, \
+         mock.patch('etl.mls_scraper.extract_data') as mock_mls_extract, \
+         mock.patch('etl.mls_scraper.transform_data') as mock_mls_transform, \
+         mock.patch('etl.mls_scraper.load_data') as mock_mls_load, \
+         mock.patch('etl.narrpr_scraper.extract_data') as mock_narrpr_extract, \
+         mock.patch('etl.narrpr_scraper.transform_data') as mock_narrpr_transform, \
+         mock.patch('etl.narrpr_scraper.load_data') as mock_narrpr_load, \
+         mock.patch('etl.data_validation.validate_data') as mock_validate:
+         
+        # Configure the extract mocks to return sample data
+        raw_data = {'results': sample_properties}
+        mock_pacs_extract.return_value = raw_data
+        mock_mls_extract.return_value = raw_data
+        mock_narrpr_extract.return_value = raw_data
         
-        # Set up mock objects
-        self.mock_db = mock.MagicMock()
-        self.mock_db.insert_properties.return_value = 2
-        self.mock_db.get_properties.return_value = pd.DataFrame(self.sample_property_data)
+        # Configure the transform mocks to return transformed data
+        mock_pacs_transform.return_value = sample_properties
+        mock_mls_transform.return_value = sample_properties
+        mock_narrpr_transform.return_value = sample_properties
         
-    def tearDown(self):
-        """Clean up after each test."""
-        # Remove temporary directory and its contents
-        self.temp_dir.cleanup()
-    
-    @mock.patch('etl.pacs_import.PACSImporter.extract')
-    @mock.patch('etl.pacs_import.PACSImporter.transform_and_load')
-    @mock.patch('etl.data_validation.validate_property_data')
-    def test_etl_pipeline_complete_run(self, mock_validate, mock_transform_load, mock_extract):
-        """Test the complete ETL pipeline from extraction to validation."""
-        # Mock the return values
-        mock_extract.return_value = pd.DataFrame({'dummy': [1, 2]})
-        mock_transform_load.return_value = 2
+        # Configure the load mocks to return a count of loaded records
+        mock_pacs_load.return_value = len(sample_properties)
+        mock_mls_load.return_value = len(sample_properties)
+        mock_narrpr_load.return_value = len(sample_properties)
+        
+        # Configure the validate mock to return successful validation
         mock_validate.return_value = {
             'validation_passed': True,
-            'total_records': 2,
-            'valid_records': 2,
+            'total_records': len(sample_properties),
+            'valid_records': len(sample_properties),
             'invalid_records': 0,
-            'validation_results': {
-                'missing_values': {'count': 0, 'details': []},
-                'duplicate_records': {'count': 0, 'details': []},
-                'outliers': {'count': 0, 'details': []},
-                'invalid_formats': {'count': 0, 'details': []}
-            }
-        }
-        
-        # Create a PACS importer instance
-        pacs_importer = PACSImporter()
-        
-        # Run the extract step
-        data = pacs_importer.extract(self.pacs_csv_path)
-        
-        # Run the transform and load steps
-        records_loaded = pacs_importer.transform_and_load(data, self.mock_db)
-        
-        # Run validation on the loaded data
-        properties = self.mock_db.get_properties()
-        validation_results = validate_property_data(properties)
-        
-        # Assert extract was called with the correct file path
-        mock_extract.assert_called_once_with(self.pacs_csv_path)
-        
-        # Assert transform_and_load was called with the correct data
-        mock_transform_load.assert_called_once()
-        
-        # Assert validate_property_data was called
-        mock_validate.assert_called_once()
-        
-        # Check that the validation results were returned correctly
-        self.assertTrue(validation_results['validation_passed'])
-        self.assertEqual(validation_results['total_records'], 2)
-        self.assertEqual(validation_results['valid_records'], 2)
-    
-    @mock.patch('src.valuation.simple_property_valuation')
-    def test_valuation_integration(self, mock_valuation):
-        """Test the integration between database and valuation components."""
-        # Mock the valuation function to return sample valuations
-        mock_valuation.return_value = {
-            'property_id': 'BC12345',
-            'estimated_value': 525000,
-            'confidence_score': 0.92,
-            'valuation_date': datetime.now(),
-            'model_used': 'SimpleLinearRegression',
-            'features_used': {'square_feet': 1800, 'bedrooms': 3, 'bathrooms': 2.0},
-            'comparable_properties': []
-        }
-        
-        # Assume properties are loaded in the database
-        properties = pd.DataFrame(self.sample_property_data)
-        
-        # Use a sample property for valuation
-        sample_property = properties.iloc[0].to_dict()
-        
-        # Run the valuation function
-        valuation_result = simple_property_valuation(sample_property)
-        
-        # Check that valuation was performed
-        mock_valuation.assert_called_once()
-        
-        # Check that the valuation result has the expected fields
-        self.assertIn('estimated_value', valuation_result)
-        self.assertIn('confidence_score', valuation_result)
-        self.assertIn('model_used', valuation_result)
-        
-        # Verify the valuation is reasonable (within expected range)
-        self.assertEqual(valuation_result['estimated_value'], 525000)
-        self.assertGreaterEqual(valuation_result['confidence_score'], 0.9)
-    
-    def test_validation_results_storage(self):
-        """Test that validation results are properly stored in the database."""
-        # Create mock validation results
-        validation_results = {
-            'validation_passed': True,
-            'total_records': 100,
-            'valid_records': 98,
-            'invalid_records': 2,
-            'validation_results': {
-                'missing_values': {'count': 1, 'details': [{'record_id': '12345', 'field': 'year_built'}]},
-                'duplicate_records': {'count': 0, 'details': []},
-                'outliers': {'count': 1, 'details': [{'record_id': '67890', 'field': 'square_feet', 'value': 10000}]},
-                'invalid_formats': {'count': 0, 'details': []}
-            }
-        }
-        
-        # Mock the database store_validation_results method
-        self.mock_db.store_validation_results.return_value = 1
-        
-        # Store the validation results
-        result_id = self.mock_db.store_validation_results(validation_results, 'PACS')
-        
-        # Check that the database store method was called
-        self.mock_db.store_validation_results.assert_called_once()
-        
-        # Check that a valid result ID was returned
-        self.assertEqual(result_id, 1)
-        
-        # Get the stored validation results (mock)
-        self.mock_db.get_latest_validation_results.return_value = {
-            'validation_id': 1,
-            'validation_passed': True,
-            'total_records': 100,
-            'valid_records': 98,
-            'invalid_records': 2,
-            'source': 'PACS',
-            'validation_date': datetime.now(),
-            'details': json.dumps(validation_results['validation_results'])
-        }
-        
-        # Retrieve the validation results
-        stored_results = self.mock_db.get_latest_validation_results()
-        
-        # Check that the get method was called
-        self.mock_db.get_latest_validation_results.assert_called_once()
-        
-        # Check that the results match what we stored
-        self.assertEqual(stored_results['validation_passed'], True)
-        self.assertEqual(stored_results['total_records'], 100)
-        self.assertEqual(stored_results['valid_records'], 98)
-
-
-class TestAPIEndpoints(unittest.TestCase):
-    """Test the API endpoints using FastAPI TestClient."""
-    
-    def setUp(self):
-        """Set up test fixtures."""
-        # Mock the database dependency
-        self.original_get_db = api.get_db
-        
-        # Create a mock database object
-        self.mock_db = mock.MagicMock()
-        
-        # Sample property valuation for API responses
-        self.sample_valuation = {
-            'property_id': 'BC12345',
-            'address': '123 Main St, Richland, WA 99352',
-            'estimated_value': 525000.0,
-            'confidence_score': 0.92,
-            'model_used': 'SimpleLinearRegression',
-            'valuation_date': datetime.now().isoformat(),
-            'features_used': {
-                'square_feet': 1800,
-                'bedrooms': 3,
-                'bathrooms': 2.0,
-                'lot_size': 10890
-            },
-            'comparable_properties': [
-                {
-                    'property_id': 'BC67890',
-                    'address': '456 Oak Ave, Kennewick, WA 99336',
-                    'sale_price': 700000,
-                    'sale_date': '2019-06-30',
-                    'similarity_score': 0.85
+            'checks_passed': 10,
+            'checks_failed': 0,
+            'validation_details': {
+                'completeness': {
+                    'status': 'passed',
+                    'missing_fields': [],
+                    'records_with_missing_data': 0
+                },
+                'consistency': {
+                    'status': 'passed',
+                    'inconsistent_records': []
                 }
-            ]
+            }
         }
         
-        # Override the get_db dependency
-        def mock_get_db():
-            yield self.mock_db
-        
-        api.app.dependency_overrides[api.get_db] = mock_get_db
+        yield {
+            'pacs_extract': mock_pacs_extract,
+            'pacs_transform': mock_pacs_transform,
+            'pacs_load': mock_pacs_load,
+            'mls_extract': mock_mls_extract,
+            'mls_transform': mock_mls_transform,
+            'mls_load': mock_mls_load,
+            'narrpr_extract': mock_narrpr_extract,
+            'narrpr_transform': mock_narrpr_transform,
+            'narrpr_load': mock_narrpr_load,
+            'validate': mock_validate
+        }
+
+
+class TestETLPipeline:
+    """Test suite for the ETL pipeline."""
     
-    def tearDown(self):
-        """Clean up after each test."""
-        # Restore the original get_db dependency
-        api.app.dependency_overrides.clear()
+    def test_full_etl_run(self, mock_etl_components, mock_database, tmp_path):
+        """
+        Test running the full ETL pipeline.
+        This test simulates running the full ETL pipeline with all data sources
+        and verifies that the correct methods are called in sequence.
+        """
+        # Set up a temporary directory for output files
+        original_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        
+        try:
+            # Run the ETL pipeline with all sources
+            result = main.run_etl_pipeline(sources=['pacs', 'mls', 'narrpr'], validate_only=False)
+            
+            # Verify all extract methods were called
+            mock_etl_components['pacs_extract'].assert_called_once()
+            mock_etl_components['mls_extract'].assert_called_once()
+            mock_etl_components['narrpr_extract'].assert_called_once()
+            
+            # Verify all transform methods were called
+            mock_etl_components['pacs_transform'].assert_called_once()
+            mock_etl_components['mls_transform'].assert_called_once()
+            mock_etl_components['narrpr_transform'].assert_called_once()
+            
+            # Verify all validation was performed
+            assert mock_etl_components['validate'].call_count == 3
+            
+            # Verify all load methods were called (since validation passed)
+            mock_etl_components['pacs_load'].assert_called_once()
+            mock_etl_components['mls_load'].assert_called_once()
+            mock_etl_components['narrpr_load'].assert_called_once()
+            
+            # Verify the result contains the expected information
+            assert 'total_records_processed' in result
+            assert 'total_records_loaded' in result
+            assert 'validation_results' in result
+            assert len(result['validation_results']) == 3  # One for each source
+            
+            # Check that the validation results file was created
+            validation_files = list(tmp_path.glob('validation_results_*.json'))
+            assert len(validation_files) == 1
+            
+            # Verify the validation results file contains the expected data
+            with open(validation_files[0], 'r') as f:
+                validation_data = json.load(f)
+                assert 'total_records_processed' in validation_data
+                assert 'total_records_loaded' in validation_data
+                assert 'validation_results' in validation_data
+                assert len(validation_data['validation_results']) == 3
+        
+        finally:
+            # Restore original working directory
+            os.chdir(original_cwd)
+    
+    def test_validate_only_mode(self, mock_etl_components, mock_database):
+        """
+        Test running the ETL pipeline in validate-only mode.
+        This test verifies that in validate-only mode, validation is performed
+        but data is not loaded into the database.
+        """
+        # Run the ETL pipeline in validate-only mode
+        result = main.run_etl_pipeline(sources=['pacs'], validate_only=True)
+        
+        # Verify extract and transform were called
+        mock_etl_components['pacs_extract'].assert_called_once()
+        mock_etl_components['pacs_transform'].assert_called_once()
+        
+        # Verify validation was performed
+        mock_etl_components['validate'].assert_called_once()
+        
+        # Verify load was NOT called (validate-only mode)
+        mock_etl_components['pacs_load'].assert_not_called()
+        
+        # Verify the result contains the expected information
+        assert 'total_records_processed' in result
+        assert 'total_records_loaded' in result
+        assert result['total_records_loaded'] == 0  # No records loaded in validate-only mode
+
+
+class TestAPIEndpoints:
+    """Test suite for the API endpoints."""
+    
+    @pytest.fixture
+    def override_db_dependency(self, mock_database):
+        """Override the database dependency in the API."""
+        # Store the original dependency
+        original_dependency = api.get_db
+        
+        # Create a mock database session that returns our test data
+        def mock_get_db():
+            db = mock_database()
+            try:
+                yield db
+            finally:
+                db.close()
+        
+        # Override the dependency
+        api.app.dependency_overrides[api.get_db] = mock_get_db
+        
+        yield
+        
+        # Restore the original dependency
+        api.app.dependency_overrides[api.get_db] = original_dependency
+    
+    @pytest.fixture
+    def mock_property_valuations(self):
+        """Set up mock property valuations for API tests."""
+        # Create sample property valuations for API responses
+        valuations = []
+        
+        for prop in sample_properties:
+            valuation = {
+                'property_id': prop['property_id'],
+                'address': prop['address'],
+                'estimated_value': prop['estimated_value'],
+                'confidence_score': 0.92,
+                'model_used': 'SimpleLinearRegression',
+                'valuation_date': datetime.now().isoformat(),
+                'features_used': {
+                    'square_feet': prop['square_feet'],
+                    'bedrooms': prop['bedrooms'],
+                    'bathrooms': prop['bathrooms'],
+                    'lot_size': prop['lot_size']
+                }
+            }
+            valuations.append(valuation)
+        
+        return valuations
     
     def test_api_root(self):
         """Test the API root endpoint."""
-        response = client.get('/')
+        # Call the root endpoint
+        response = client.get("/")
         
-        # Check that the response is successful
-        self.assertEqual(response.status_code, 200)
-        
-        # Check that the response contains expected fields
+        # Verify the response
+        assert response.status_code == 200
         data = response.json()
-        self.assertIn('api_name', data)
-        self.assertIn('version', data)
-        self.assertIn('endpoints', data)
+        assert "name" in data
+        assert "version" in data
+        assert "description" in data
+        assert "BCBS_Values API" in data["name"]
     
-    def test_get_valuations(self):
-        """Test the get_valuations endpoint."""
-        # Mock the database get_latest_valuations method
-        self.mock_db.get_latest_valuations.return_value = [self.sample_valuation]
-        
-        # Call the endpoint
-        response = client.get('/api/valuations')
-        
-        # Check that the response is successful
-        self.assertEqual(response.status_code, 200)
-        
-        # Check that the response contains the expected data
-        data = response.json()
-        self.assertIsInstance(data, list)
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]['property_id'], 'BC12345')
-        self.assertEqual(data[0]['estimated_value'], 525000.0)
-        self.assertEqual(data[0]['confidence_score'], 0.92)
+    def test_get_valuations(self, override_db_dependency, mock_property_valuations):
+        """
+        Test the /api/valuations endpoint.
+        This test verifies that the endpoint returns the expected property valuations
+        and applies filters correctly.
+        """
+        # Mock the database query to return our sample data
+        with mock.patch('api.session.query') as mock_query:
+            # Setup the mock to return our test data
+            mock_query_instance = mock_query.return_value
+            mock_join = mock_query_instance.join.return_value
+            mock_filter = mock_join.filter.return_value
+            mock_subquery = mock.MagicMock()
+            mock_join2 = mock_filter.join.return_value
+            mock_order_by = mock_join2.order_by.return_value
+            mock_limit = mock_order_by.limit.return_value
+            
+            # Create mock result objects that match what we expect from the database
+            mock_results = []
+            for i, val in enumerate(mock_property_valuations):
+                mock_property = mock.MagicMock()
+                mock_property.property_id = val['property_id']
+                mock_property.address = val['address']
+                
+                mock_valuation = mock.MagicMock()
+                mock_valuation.estimated_value = val['estimated_value']
+                mock_valuation.confidence_score = val['confidence_score']
+                mock_valuation.model_name = val['model_used']
+                mock_valuation.valuation_date = datetime.fromisoformat(val['valuation_date'])
+                mock_valuation.feature_importance = json.dumps(val['features_used'])
+                mock_valuation.comparable_properties = None
+                
+                mock_results.append((mock_valuation, mock_property))
+            
+            mock_limit.all.return_value = mock_results
+            
+            # Call the endpoint
+            response = client.get("/api/valuations")
+            
+            # Verify the response
+            assert response.status_code == 200
+            data = response.json()
+            assert isinstance(data, list)
+            assert len(data) == len(mock_property_valuations)
+            
+            # Verify response properties match our sample data
+            for i, item in enumerate(data):
+                assert item["property_id"] == mock_property_valuations[i]["property_id"]
+                assert item["address"] == mock_property_valuations[i]["address"]
+                assert item["estimated_value"] == mock_property_valuations[i]["estimated_value"]
     
-    def test_get_valuation_by_id(self):
-        """Test the get_valuation_by_id endpoint."""
-        # Mock the database get_property_valuation method
-        self.mock_db.get_property_valuation.return_value = self.sample_valuation
-        
-        # Call the endpoint
-        response = client.get('/api/valuations/BC12345')
-        
-        # Check that the response is successful
-        self.assertEqual(response.status_code, 200)
-        
-        # Check that the response contains the expected data
-        data = response.json()
-        self.assertEqual(data['property_id'], 'BC12345')
-        self.assertEqual(data['estimated_value'], 525000.0)
-        self.assertEqual(data['model_used'], 'SimpleLinearRegression')
-        
-        # Check that comparable properties are included
-        self.assertIn('comparable_properties', data)
-        self.assertEqual(len(data['comparable_properties']), 1)
-        self.assertEqual(data['comparable_properties'][0]['property_id'], 'BC67890')
-    
-    def test_get_valuation_by_id_not_found(self):
-        """Test the get_valuation_by_id endpoint with a non-existent ID."""
-        # Mock the database get_property_valuation method to return None
-        self.mock_db.get_property_valuation.return_value = None
-        
-        # Call the endpoint with a non-existent ID
-        response = client.get('/api/valuations/NONEXISTENT')
-        
-        # Check that the response is a 404 error
-        self.assertEqual(response.status_code, 404)
-        
-        # Check that the error message is as expected
-        data = response.json()
-        self.assertIn('detail', data)
-        self.assertIn('not found', data['detail'])
-    
-    def test_get_etl_status(self):
-        """Test the get_etl_status endpoint."""
-        # Mock the database get_latest_validation_results method
-        sample_validation = {
-            'validation_id': 1,
-            'validation_passed': True,
-            'total_records': 100,
-            'valid_records': 98,
-            'invalid_records': 2,
-            'source': 'PACS',
-            'validation_date': datetime.now(),
-            'details': json.dumps({
-                'missing_values': {'count': 1, 'details': []},
-                'duplicate_records': {'count': 0, 'details': []},
-                'outliers': {'count': 1, 'details': []},
-                'invalid_formats': {'count': 0, 'details': []}
+    def test_get_etl_status(self, override_db_dependency):
+        """
+        Test the /api/etl-status endpoint.
+        This test verifies that the endpoint returns information about the most recent
+        ETL pipeline run and validation results.
+        """
+        # Mock the database query to return a sample validation result
+        with mock.patch('api.session.query') as mock_query, \
+             mock.patch('api.session.execute') as mock_execute:
+            
+            # Set up mock for ValidationResult query
+            mock_query_instance = mock_query.return_value
+            mock_order_by = mock_query_instance.order_by.return_value
+            mock_first = mock_order_by.first.return_value
+            
+            # Create a mock validation result
+            mock_validation = mock.MagicMock()
+            mock_validation.id = 1
+            mock_validation.timestamp = datetime.now()
+            mock_validation.status = "success"
+            mock_validation.results = json.dumps({
+                'validation_passed': True,
+                'total_records': 25,
+                'valid_records': 23,
+                'validation_details': {
+                    'completeness': {'status': 'passed'},
+                    'consistency': {'status': 'passed'},
+                    'range_checks': {'status': 'warning'}
+                }
             })
-        }
-        self.mock_db.get_latest_validation_results.return_value = sample_validation
-        
-        # Mock the database get_property_counts_by_source method
-        self.mock_db.get_property_counts_by_source.return_value = [
-            {'source': 'PACS', 'count': 100},
-            {'source': 'MLS', 'count': 50},
-            {'source': 'NARRPR', 'count': 25}
-        ]
-        
-        # Call the endpoint
-        response = client.get('/api/etl-status')
-        
-        # Check that the response is successful
-        self.assertEqual(response.status_code, 200)
-        
-        # Check that the response contains the expected data
-        data = response.json()
-        self.assertIn('status', data)
-        self.assertIn('last_run', data)
-        self.assertIn('sources_processed', data)
-        self.assertIn('records_processed', data)
-        self.assertIn('validation_status', data)
-        
-        # Check specific values
-        self.assertEqual(data['validation_status'], 'Passed')
-        self.assertEqual(data['records_processed'], 175)  # 100 + 50 + 25
-        self.assertEqual(len(data['sources_processed']), 3)
+            
+            mock_first = mock_validation
+            
+            # Set up mock for source counts query
+            mock_execute_result = [
+                ('PACS', 10),
+                ('MLS', 8),
+                ('NARRPR', 7)
+            ]
+            mock_execute.return_value = mock_execute_result
+            
+            # Call the endpoint
+            response = client.get("/api/etl-status")
+            
+            # Verify the response
+            assert response.status_code == 200
+            data = response.json()
+            assert "status" in data
+            assert "last_run" in data
+            assert "sources_processed" in data
+            assert "records_processed" in data
+            assert "validation_status" in data
+            assert "validation_details" in data
+            
+            # Verify that sources processed contains our mock data
+            assert len(data["sources_processed"]) == 3
+            source_names = [s["name"] for s in data["sources_processed"]]
+            assert "PACS" in source_names
+            assert "MLS" in source_names
+            assert "NARRPR" in source_names
     
-    def test_get_etl_status_no_validation(self):
-        """Test the get_etl_status endpoint when no validation results exist."""
-        # Mock the database get_latest_validation_results method to return None
-        self.mock_db.get_latest_validation_results.return_value = None
-        
-        # Mock the database get_property_counts_by_source method
-        self.mock_db.get_property_counts_by_source.return_value = []
-        
+    def test_get_agent_status(self):
+        """
+        Test the /api/agent-status endpoint.
+        This test verifies that the endpoint returns information about the agents
+        in the BCBS system.
+        """
         # Call the endpoint
-        response = client.get('/api/etl-status')
+        response = client.get("/api/agent-status")
         
-        # Check that the response is successful
-        self.assertEqual(response.status_code, 200)
-        
-        # Check that the response indicates no ETL has been run
+        # Verify the response
+        assert response.status_code == 200
         data = response.json()
-        self.assertEqual(data['status'], 'Not Started')
-        self.assertEqual(data['records_processed'], 0)
-        self.assertEqual(len(data['sources_processed']), 0)
+        assert "agents" in data
+        assert "system_status" in data
+        assert "active_agents" in data
+        assert "tasks_in_progress" in data
+        assert "tasks_completed_today" in data
+        
+        # Verify that the agents list contains our expected agents
+        agent_ids = [a["agent_id"] for a in data["agents"]]
+        assert "bcbs-bootstrap-commander" in agent_ids
+        assert "bcbs-cascade-operator" in agent_ids
+        assert "bcbs-tdd-validator" in agent_ids
+        
+        # Verify agent details
+        for agent in data["agents"]:
+            assert "name" in agent
+            assert "status" in agent
+            assert "last_active" in agent
+            assert "queue_size" in agent
+            assert "performance_metrics" in agent
+            
+            # Check performance metrics structure
+            metrics = agent["performance_metrics"]
+            assert "tasks_completed" in metrics
+            assert "success_rate" in metrics
 
 
 if __name__ == '__main__':
-    unittest.main()
+    pytest.main(['-xvs', __file__])

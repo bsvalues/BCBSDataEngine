@@ -1,12 +1,40 @@
+# GitHub Actions workflow file for the BCBS Values system
+# This workflow handles continuous integration and deployment tasks:
+# 1. Runs all tests (including integration tests)
+# 2. Checks code quality
+# 3. Creates artifacts for deployment
+# 4. Uploads module_config.json as an artifact when tests pass
+#
+# The workflow utilizes a PostgreSQL service container for database testing.
+
 name: BCBS Values CI/CD Pipeline
 
 # Workflow triggers: Run on push to main/develop, pull requests, or manual trigger
 on:
+  # Trigger on push to main or develop branches
   push:
     branches: [ main, develop ]
+    paths-ignore:
+      - '**.md'  # Ignore changes to markdown files
+      - 'docs/**'  # Ignore changes to documentation
+      
+  # Trigger on pull requests to main or develop
   pull_request:
     branches: [ main, develop ]
-  workflow_dispatch:  # Allows manual triggering of the workflow
+    types: [ opened, synchronize, reopened ]
+    
+  # Allow manual triggering of the workflow from GitHub UI
+  workflow_dispatch:  
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'test'
+        type: choice
+        options:
+          - test
+          - staging
+          - production
 
 jobs:
   test:
@@ -108,6 +136,7 @@ jobs:
     
     # Run all pytest tests including integration tests
     - name: Run pytest tests
+      id: pytest
       env:
         DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgresql://bcbs_test:bcbs_test@localhost:5432/bcbs_test' }}
         PGHOST: ${{ secrets.PGHOST || 'localhost' }}
@@ -116,13 +145,25 @@ jobs:
         PGUSER: ${{ secrets.PGUSER || 'bcbs_test' }}
         PGPASSWORD: ${{ secrets.PGPASSWORD || 'bcbs_test' }}
         FLASK_ENV: testing
+        PYTHONPATH: ${{ github.workspace }}
       run: |
+        # Print the test files that will be run
+        echo "===== Available Test Files ====="
+        find tests -name "test_*.py" | sort
+        echo "============================="
+        
         # Run pytest with coverage and generate coverage reports
-        pytest --cov=. --cov-report=xml --cov-report=html
+        # Include verbose flag to show detailed test output
+        # Force pytest to run integration tests even if they're marked as slow
+        python -m pytest tests/ --cov=. --cov-report=xml --cov-report=html -v
+        
+        # Specifically run the integration tests to ensure they're executed
+        echo "===== Running Integration Tests Specifically ====="
+        python -m pytest tests/test_integration.py -v
         
         # Print summary of test results
-        echo "Test results summary:"
-        pytest --collect-only -q
+        echo "===== Test Results Summary ====="
+        python -m pytest --collect-only -q
 
     # Run the ETL validation process
     - name: Test ETL Validation
@@ -143,11 +184,20 @@ jobs:
           validation_results*.json
         if-no-files-found: warn
     
-    # Upload config files for reference
-    - name: Upload config files
+    # Upload module_config.json file if all tests pass
+    - name: Upload module configuration
+      uses: actions/upload-artifact@v3
+      if: ${{ success() && steps.pytest.outcome == 'success' }}
+      with:
+        name: module-config
+        path: configs/module_config.json
+        if-no-files-found: warn
+        
+    # Upload all config files for reference
+    - name: Upload all config files
       uses: actions/upload-artifact@v3
       with:
-        name: config-files
+        name: all-config-files
         path: configs/
         if-no-files-found: warn
 

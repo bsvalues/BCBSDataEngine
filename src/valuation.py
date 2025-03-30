@@ -2,6 +2,12 @@
 Property valuation module for the BCBS_Values system.
 Implements valuation models for estimating property values based on features,
 including advanced GIS data integration for spatial analysis and location-based valuation.
+
+This module contains multiple valuation functions with different complexity levels:
+- train_basic_valuation_model: Basic linear regression for property valuation
+- train_multiple_regression_model: Enhanced multiple regression with feature selection and statistics
+- estimate_property_value: Standard valuation with feature engineering
+- advanced_property_valuation: Advanced modeling with multiple algorithms
 """
 import logging
 import numpy as np
@@ -23,6 +29,547 @@ logger = logging.getLogger(__name__)
 # Suppress specific warnings for cleaner output
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+
+def train_basic_valuation_model(properties_df):
+    """
+    Trains a basic linear regression model for property valuation.
+    
+    This function takes a Pandas DataFrame containing property data,
+    cleans and normalizes it, then trains a basic linear regression model
+    to predict property values. It returns the predicted values and model metrics.
+    
+    Args:
+        properties_df (pd.DataFrame): DataFrame containing property data.
+            Must include numerical features and a price column.
+            
+    Returns:
+        dict: Dictionary containing:
+            - 'predictions': DataFrame with original data and predicted values
+            - 'model': Trained linear regression model
+            - 'r2_score': R-squared score of the model
+            - 'feature_importance': Dictionary mapping feature names to importance scores
+    
+    Example:
+        >>> properties = pd.DataFrame({
+        ...     'property_id': ['P001', 'P002', 'P003', 'P004'],
+        ...     'square_feet': [1500, 2000, 1800, 2200],
+        ...     'bedrooms': [3, 4, 3, 4],
+        ...     'bathrooms': [2, 2.5, 2, 3],
+        ...     'year_built': [1990, 2005, 2000, 2010],
+        ...     'list_price': [300000, 400000, 350000, 450000]
+        ... })
+        >>> result = train_basic_valuation_model(properties)
+        >>> print(f"R² Score: {result['r2_score']:.4f}")
+        >>> print("Top features by importance:")
+        >>> for feature, importance in sorted(result['feature_importance'].items(), 
+        ...                                   key=lambda x: x[1], reverse=True)[:3]:
+        ...     print(f"  {feature}: {importance:.4f}")
+    """
+    logger.info("Starting basic property valuation model training")
+    
+    # Step 1: Make a copy of the input data to avoid modifying the original
+    df = properties_df.copy()
+    
+    # Step 2: Data cleaning and validation
+    logger.info("Cleaning and validating input data")
+    
+    # Identify the price column to use as target
+    price_columns = ['list_price', 'estimated_value', 'last_sale_price', 'total_value']
+    target_column = None
+    
+    for col in price_columns:
+        if col in df.columns:
+            target_column = col
+            logger.info(f"Using '{target_column}' as the target price column")
+            break
+    
+    if target_column is None:
+        raise ValueError("No price column found in data. Need one of: list_price, estimated_value, last_sale_price, or total_value")
+    
+    # Step 3: Select and prepare features for modeling
+    logger.info("Preparing features for modeling")
+    
+    # Filter out non-numeric columns except property_id
+    id_column = None
+    if 'property_id' in df.columns:
+        id_column = 'property_id'
+    elif 'id' in df.columns:
+        id_column = 'id'
+    
+    # Keep only numeric columns for modeling
+    numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+    
+    # Remove the target column from features
+    if target_column in numeric_cols:
+        numeric_cols.remove(target_column)
+    
+    # Check if we have any features left
+    if not numeric_cols:
+        raise ValueError("No numeric feature columns found in the data")
+    
+    logger.info(f"Selected {len(numeric_cols)} numeric features for modeling")
+    
+    # Step 4: Handle missing values
+    logger.info("Handling missing values")
+    
+    # Drop rows with missing target values
+    df = df.dropna(subset=[target_column])
+    
+    # For feature columns, fill missing values with median
+    for col in numeric_cols:
+        if df[col].isna().any():
+            median_val = df[col].median()
+            df[col].fillna(median_val, inplace=True)
+            logger.info(f"Filled {df[col].isna().sum()} missing values in '{col}' with median: {median_val}")
+    
+    # Step 5: Normalize the features
+    logger.info("Normalizing features")
+    
+    # Create a scaler and fit it to the features
+    scaler = StandardScaler()
+    X = df[numeric_cols].values
+    X_scaled = scaler.fit_transform(X)
+    
+    # Get the target values
+    y = df[target_column].values
+    
+    # Step 6: Train the linear regression model
+    logger.info("Training linear regression model")
+    
+    # Create and fit the model
+    model = LinearRegression()
+    model.fit(X_scaled, y)
+    
+    # Make predictions on the training data
+    y_pred = model.predict(X_scaled)
+    
+    # Step 7: Calculate model performance metrics
+    logger.info("Calculating model performance metrics")
+    
+    # Calculate R-squared score
+    r2 = r2_score(y, y_pred)
+    logger.info(f"Model R² score: {r2:.4f}")
+    
+    # Calculate Mean Absolute Error (MAE)
+    mae = mean_absolute_error(y, y_pred)
+    logger.info(f"Mean Absolute Error: {mae:.2f}")
+    
+    # Calculate Root Mean Squared Error (RMSE)
+    rmse = np.sqrt(mean_squared_error(y, y_pred))
+    logger.info(f"Root Mean Squared Error: {rmse:.2f}")
+    
+    # Step 8: Calculate feature importance
+    logger.info("Calculating feature importance")
+    
+    # Calculate feature importance from model coefficients
+    feature_importance = {}
+    
+    # Standardize coefficients to get relative importance
+    coef_abs = np.abs(model.coef_)
+    coef_sum = np.sum(coef_abs)
+    
+    if coef_sum > 0:  # Avoid division by zero
+        for i, col in enumerate(numeric_cols):
+            feature_importance[col] = coef_abs[i] / coef_sum
+    
+    # Step 9: Add predictions to the original DataFrame
+    df['predicted_value'] = y_pred
+    
+    # Calculate prediction error and error percentage
+    df['prediction_error'] = df[target_column] - df['predicted_value']
+    df['error_percentage'] = (df['prediction_error'] / df[target_column]) * 100
+    
+    # Step 10: Prepare the result
+    result = {
+        'predictions': df,
+        'model': model,
+        'r2_score': r2,
+        'mae': mae,
+        'rmse': rmse,
+        'feature_importance': feature_importance,
+        'feature_coefficients': dict(zip(numeric_cols, model.coef_)),
+        'scaler': scaler,
+        'features_used': numeric_cols
+    }
+    
+    logger.info("Basic property valuation model training completed")
+    return result
+
+
+def train_multiple_regression_model(properties_df, feature_selection=True, max_features=10, test_size=0.2, random_state=42):
+    """
+    Trains an enhanced multiple regression model for property valuation.
+    
+    This function expands on the basic valuation model by incorporating:
+    1. Advanced feature engineering
+    2. Feature selection to identify most predictive attributes
+    3. Multiple regression analysis with statistical significance reporting
+    4. Cross-validation for more robust performance evaluation
+    
+    Args:
+        properties_df (pd.DataFrame): DataFrame containing property data.
+            Must include numerical features and a price column.
+        feature_selection (bool, optional): Whether to perform feature selection
+            to identify most important predictors. Default is True.
+        max_features (int, optional): Maximum number of features to select
+            if feature_selection is True. Default is 10.
+        test_size (float, optional): Proportion of data to use for testing. Default is 0.2.
+        random_state (int, optional): Random seed for reproducibility. Default is 42.
+            
+    Returns:
+        dict: Dictionary containing:
+            - 'predictions': DataFrame with original data and predicted values
+            - 'model': Trained multiple regression model
+            - 'statsmodel': StatsModels regression result with statistical metrics
+            - 'r2_score': R-squared score of the model
+            - 'adj_r2_score': Adjusted R-squared score of the model
+            - 'feature_importance': Dictionary mapping feature names to importance scores
+            - 'p_values': Dictionary mapping feature names to p-values
+            - 'cross_val_scores': Cross-validation scores
+    
+    Example:
+        >>> properties = pd.DataFrame({
+        ...     'property_id': ['P001', 'P002', 'P003', 'P004'],
+        ...     'square_feet': [1500, 2000, 1800, 2200],
+        ...     'bedrooms': [3, 4, 3, 4],
+        ...     'bathrooms': [2, 2.5, 2, 3],
+        ...     'year_built': [1990, 2005, 2000, 2010],
+        ...     'list_price': [300000, 400000, 350000, 450000]
+        ... })
+        >>> result = train_multiple_regression_model(properties)
+        >>> print(f"R² Score: {result['r2_score']:.4f}")
+        >>> print(f"Adjusted R² Score: {result['adj_r2_score']:.4f}")
+        >>> # Display statistically significant features (p < 0.05)
+        >>> for feature, p_value in result['p_values'].items():
+        ...     if p_value < 0.05:
+        ...         print(f"  {feature}: p={p_value:.4f}")
+    """
+    logger.info("Starting enhanced multiple regression model training")
+    
+    # Step 1: Make a copy of the input data to avoid modifying the original
+    df = properties_df.copy()
+    
+    # Step 2: Data cleaning and validation
+    logger.info("Cleaning and validating input data")
+    
+    # Identify the price column to use as target
+    price_columns = ['list_price', 'estimated_value', 'last_sale_price', 'total_value']
+    target_column = None
+    
+    for col in price_columns:
+        if col in df.columns:
+            target_column = col
+            logger.info(f"Using '{target_column}' as the target price column")
+            break
+    
+    if target_column is None:
+        raise ValueError("No price column found in data. Need one of: list_price, estimated_value, last_sale_price, or total_value")
+    
+    # Step 3: Enhanced feature engineering
+    logger.info("Performing enhanced feature engineering")
+    
+    # Keep track of the property ID column if it exists
+    id_column = None
+    if 'property_id' in df.columns:
+        id_column = 'property_id'
+    elif 'id' in df.columns:
+        id_column = 'id'
+    
+    # 3.1 Calculate property age from year_built
+    if 'year_built' in df.columns:
+        current_year = pd.Timestamp.now().year
+        df['property_age'] = current_year - df['year_built']
+        logger.info("Created 'property_age' feature from 'year_built'")
+    
+    # 3.2 Create interaction terms (important for capturing combined effects)
+    if 'square_feet' in df.columns and 'bedrooms' in df.columns:
+        # Square footage per bedroom - indicator of room size
+        df['sqft_per_bedroom'] = df['square_feet'] / df['bedrooms'].clip(lower=1)
+        logger.info("Created 'sqft_per_bedroom' interaction feature")
+    
+    if 'square_feet' in df.columns and 'bathrooms' in df.columns:
+        # Square footage per bathroom - indicator of bathroom size/quality
+        df['sqft_per_bathroom'] = df['square_feet'] / df['bathrooms'].clip(lower=0.5)
+        logger.info("Created 'sqft_per_bathroom' interaction feature")
+    
+    if 'bedrooms' in df.columns and 'bathrooms' in df.columns:
+        # Ratio of bedrooms to bathrooms - indicator of property balance
+        df['bed_bath_ratio'] = df['bedrooms'] / df['bathrooms'].clip(lower=0.5)
+        logger.info("Created 'bed_bath_ratio' interaction feature")
+    
+    if 'square_feet' in df.columns and 'lot_size' in df.columns:
+        # Ratio of house to lot - indicator of property density
+        df['house_lot_ratio'] = df['square_feet'] / df['lot_size'].clip(lower=1)
+        logger.info("Created 'house_lot_ratio' interaction feature")
+    
+    # 3.3 Create nonlinear transformations for key numeric features
+    numeric_features_to_transform = [
+        'square_feet', 'bedrooms', 'bathrooms', 'lot_size', 
+        'property_age', 'garage_spaces'
+    ]
+    
+    for feature in numeric_features_to_transform:
+        if feature in df.columns and df[feature].dtype in ['int64', 'float64']:
+            # Log transformation - helps linearize relationships with diminishing returns
+            if (df[feature] > 0).all():
+                df[f'{feature}_log'] = np.log(df[feature])
+                logger.info(f"Created log transformation for '{feature}'")
+            
+            # Squared transformation - captures increasing returns
+            df[f'{feature}_squared'] = df[feature] ** 2
+            logger.info(f"Created squared transformation for '{feature}'")
+    
+    # 3.4 Create location-based features if lat/long are available
+    if 'latitude' in df.columns and 'longitude' in df.columns:
+        # Calculate distance from the center of the data (proxy for centrality)
+        center_lat = df['latitude'].mean()
+        center_lon = df['longitude'].mean()
+        
+        # Use Euclidean distance as a simplified proxy (actual haversine distance would be better)
+        df['distance_from_center'] = np.sqrt(
+            (df['latitude'] - center_lat)**2 + 
+            (df['longitude'] - center_lon)**2
+        )
+        logger.info("Created 'distance_from_center' feature from latitude/longitude")
+    
+    # 3.5 One-hot encode categorical variables
+    categorical_features = ['property_type', 'city', 'neighborhood', 'school_district']
+    
+    for feature in categorical_features:
+        if feature in df.columns:
+            # For categorical variables with many categories, limit to top N most frequent
+            if df[feature].nunique() > 10:
+                top_categories = df[feature].value_counts().nlargest(10).index
+                df[feature] = df[feature].apply(lambda x: x if x in top_categories else 'Other')
+            
+            # Create dummy variables (one-hot encoding)
+            dummies = pd.get_dummies(df[feature], prefix=feature, drop_first=True)
+            df = pd.concat([df, dummies], axis=1)
+            logger.info(f"One-hot encoded '{feature}' into {dummies.shape[1]} dummy variables")
+    
+    # Step 4: Select and prepare features for modeling
+    logger.info("Preparing features for modeling")
+    
+    # Keep only numeric columns for modeling
+    numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+    
+    # Remove the target column from features
+    if target_column in numeric_cols:
+        numeric_cols.remove(target_column)
+    
+    # Remove ID columns if they exist
+    if id_column and id_column in numeric_cols:
+        numeric_cols.remove(id_column)
+    
+    # Check if we have any features left
+    if not numeric_cols:
+        raise ValueError("No numeric feature columns found in the data")
+    
+    logger.info(f"Selected {len(numeric_cols)} potential features for modeling")
+    
+    # Step 5: Handle missing values
+    logger.info("Handling missing values")
+    
+    # Drop rows with missing target values
+    df = df.dropna(subset=[target_column])
+    
+    # For feature columns, fill missing values with median
+    for col in numeric_cols:
+        if df[col].isna().any():
+            median_val = df[col].median()
+            df[col].fillna(median_val, inplace=True)
+            logger.info(f"Filled {df[col].isna().sum()} missing values in '{col}' with median: {median_val}")
+    
+    # Step 6: Split data into training and testing sets
+    logger.info("Splitting data into training and testing sets")
+    
+    X = df[numeric_cols]
+    y = df[target_column]
+    
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=test_size, random_state=random_state
+    )
+    
+    logger.info(f"Training set: {X_train.shape[0]} samples, Test set: {X_test.shape[0]} samples")
+    
+    # Step 7: Normalize features
+    logger.info("Normalizing features")
+    
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+    
+    # Create feature names for the scaled data
+    feature_names = X.columns.tolist()
+    
+    # Step 8: Feature selection (if enabled)
+    selector = None  # Initialize selector to avoid "possibly unbound" error
+    if feature_selection and len(numeric_cols) > max_features:
+        logger.info(f"Performing feature selection to select top {max_features} features")
+        
+        # Use SelectKBest with f_regression to select features with strongest correlation to target
+        selector = SelectKBest(f_regression, k=max_features)
+        X_train_selected = selector.fit_transform(X_train_scaled, y_train)
+        X_test_selected = selector.transform(X_test_scaled)
+        
+        # Get selected feature indices and names
+        selected_indices = selector.get_support(indices=True)
+        selected_features = [feature_names[i] for i in selected_indices]
+        
+        logger.info(f"Selected features: {', '.join(selected_features)}")
+        
+        # Use the selected features
+        X_train_final = X_train_selected
+        X_test_final = X_test_selected
+        final_features = selected_features
+    else:
+        # Use all features
+        X_train_final = X_train_scaled
+        X_test_final = X_test_scaled
+        final_features = feature_names
+    
+    # Step 9: Train the multiple regression model using scikit-learn
+    logger.info("Training multiple regression model")
+    
+    # Train a linear regression model
+    model = LinearRegression()
+    model.fit(X_train_final, y_train)
+    
+    # Make predictions on the test set
+    y_pred = model.predict(X_test_final)
+    
+    # Calculate performance metrics
+    r2 = r2_score(y_test, y_pred)
+    mae = mean_absolute_error(y_test, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+    
+    logger.info(f"Test set R² score: {r2:.4f}")
+    logger.info(f"Test set MAE: {mae:.2f}")
+    logger.info(f"Test set RMSE: {rmse:.2f}")
+    
+    # Step 10: Perform cross-validation for more robust evaluation
+    logger.info("Performing cross-validation")
+    
+    # Combine feature scaling and model training in a pipeline
+    pipeline = Pipeline([
+        ('scaler', StandardScaler()),
+        ('model', LinearRegression())
+    ])
+    
+    # If feature selection is enabled, add it to the pipeline
+    if feature_selection and len(numeric_cols) > max_features:
+        pipeline = Pipeline([
+            ('scaler', StandardScaler()),
+            ('feature_selection', SelectKBest(f_regression, k=max_features)),
+            ('model', LinearRegression())
+        ])
+    
+    # Perform 5-fold cross-validation
+    cv_scores = cross_val_score(pipeline, X, y, cv=5, scoring='r2')
+    
+    logger.info(f"Cross-validation R² scores: {cv_scores}")
+    logger.info(f"Mean cross-validation R² score: {cv_scores.mean():.4f}")
+    
+    # Step 11: Fit a StatsModels OLS model for detailed statistical metrics
+    logger.info("Calculating detailed statistical metrics using StatsModels")
+    
+    # Prepare data for StatsModels (add constant term for intercept)
+    if feature_selection and len(numeric_cols) > max_features:
+        # Use only selected features for StatsModels
+        X_sm = sm.add_constant(X[final_features])
+    else:
+        # Use all features for StatsModels
+        X_sm = sm.add_constant(X)
+    
+    # Fit StatsModels OLS model
+    sm_model = sm.OLS(y, X_sm).fit()
+    
+    # Extract key statistical metrics
+    adj_r2 = sm_model.rsquared_adj
+    p_values = sm_model.pvalues.drop('const').to_dict()  # Drop the constant term
+    
+    logger.info(f"Adjusted R² score: {adj_r2:.4f}")
+    
+    # Display significant features (p < 0.05)
+    significant_features = {k: v for k, v in p_values.items() if v < 0.05}
+    if significant_features:
+        logger.info("Statistically significant features (p < 0.05):")
+        for feature, p_value in sorted(significant_features.items(), key=lambda x: x[1]):
+            logger.info(f"  {feature}: p={p_value:.4f}")
+    
+    # Step 12: Calculate feature importance
+    logger.info("Calculating feature importance")
+    
+    # Calculate feature importance from model coefficients
+    feature_importance = {}
+    
+    # Standardize coefficients to get relative importance
+    if feature_selection and len(numeric_cols) > max_features:
+        # Use only selected features for importance calculation
+        coef_abs = np.abs(model.coef_)
+        coef_sum = np.sum(coef_abs)
+        
+        if coef_sum > 0:  # Avoid division by zero
+            for i, feature in enumerate(final_features):
+                feature_importance[feature] = coef_abs[i] / coef_sum
+    else:
+        # Use all features for importance calculation
+        coef_abs = np.abs(model.coef_)
+        coef_sum = np.sum(coef_abs)
+        
+        if coef_sum > 0:  # Avoid division by zero
+            for i, feature in enumerate(feature_names):
+                feature_importance[feature] = coef_abs[i] / coef_sum
+    
+    # Display top features by importance
+    logger.info("Top features by importance:")
+    for feature, importance in sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)[:5]:
+        logger.info(f"  {feature}: {importance:.4f}")
+    
+    # Step 13: Make predictions on the full dataset
+    logger.info("Making predictions on the full dataset")
+    
+    # Transform all data using the same pipeline
+    if feature_selection and len(numeric_cols) > max_features:
+        # Scale all data
+        X_all_scaled = scaler.transform(X)
+        # Apply feature selection
+        X_all_selected = selector.transform(X_all_scaled)
+        # Make predictions
+        all_predictions = model.predict(X_all_selected)
+    else:
+        # Scale all data
+        X_all_scaled = scaler.transform(X)
+        # Make predictions
+        all_predictions = model.predict(X_all_scaled)
+    
+    # Add predictions to the original DataFrame
+    df['predicted_value'] = all_predictions
+    
+    # Calculate prediction error and error percentage
+    df['prediction_error'] = df[target_column] - df['predicted_value']
+    df['error_percentage'] = (df['prediction_error'] / df[target_column]) * 100
+    
+    # Step 14: Prepare the result
+    result = {
+        'predictions': df,
+        'model': model,
+        'statsmodel': sm_model,
+        'r2_score': r2,
+        'adj_r2_score': adj_r2,
+        'mae': mae,
+        'rmse': rmse,
+        'feature_importance': feature_importance,
+        'p_values': p_values,
+        'cross_val_scores': cv_scores,
+        'scaler': scaler,
+        'features_used': final_features if feature_selection and len(numeric_cols) > max_features else feature_names,
+        'summary_text': sm_model.summary().as_text()
+    }
+    
+    logger.info("Enhanced multiple regression model training completed")
+    return result
 
 def calculate_gis_features(properties_df, gis_data=None, ref_points=None, neighborhood_ratings=None):
     """
@@ -236,13 +783,14 @@ def calculate_gis_features(properties_df, gis_data=None, ref_points=None, neighb
         logger.error(f"Error in GIS feature calculation: {str(e)}", exc_info=True)
         return properties_df  # Return original DataFrame on error
 
-def estimate_property_value(property_data, target_property=None, test_size=0.2, random_state=42):
+def estimate_property_value(property_data, target_property=None, test_size=0.2, random_state=42,
+                       gis_data=None, ref_points=None, neighborhood_ratings=None, use_gis_features=True):
     """
-    Estimates property value using linear regression based on property features.
+    Estimates property value using linear regression with integrated GIS attributes.
     
-    This function trains a simple linear regression model on property data
-    to predict property values based on key features like square footage,
-    number of bedrooms, bathrooms, and property age.
+    This function trains a linear regression model on property data to predict property values
+    based on key features like square footage, bedrooms, bathrooms, property age, and now
+    including GIS/spatial data for enhanced location-based valuation.
     
     Args:
         property_data (pd.DataFrame): DataFrame containing property data with features and prices
@@ -250,10 +798,16 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
             If None, returns model performance metrics only.
         test_size (float, optional): Proportion of data to use for testing (default: 0.2)
         random_state (int, optional): Random seed for reproducibility (default: 42)
+        gis_data (pd.DataFrame, optional): GIS data with spatial attributes like flood zones, 
+            school districts, etc.
+        ref_points (dict, optional): Dictionary of reference points (downtown, schools, etc.) 
+            with latitude/longitude and importance weights
+        neighborhood_ratings (dict, optional): Dictionary mapping neighborhoods to quality ratings
+        use_gis_features (bool, optional): Whether to incorporate GIS features in the model (default: True)
     
     Returns:
         dict: Dictionary containing predicted value (if target_property provided),
-              model performance metrics, and feature importance
+              model performance metrics, feature importance, and GIS adjustment factors
     
     Example:
         >>> df = pd.DataFrame({
@@ -261,15 +815,22 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
         ...     'bedrooms': [3, 4, 3, 4],
         ...     'bathrooms': [2, 2.5, 2, 3],
         ...     'year_built': [1990, 2005, 2000, 2010],
-        ...     'list_price': [300000, 400000, 350000, 450000]
+        ...     'list_price': [300000, 400000, 350000, 450000],
+        ...     'latitude': [46.2543, 46.2671, 46.2812, 46.2953],
+        ...     'longitude': [-119.2681, -119.2344, -119.2876, -119.3012]
         ... })
         >>> target = pd.DataFrame({
         ...     'square_feet': [1750],
         ...     'bedrooms': [3],
         ...     'bathrooms': [2],
-        ...     'year_built': [1995]
+        ...     'year_built': [1995],
+        ...     'latitude': [46.2712],
+        ...     'longitude': [-119.2543]
         ... })
-        >>> estimate_property_value(df, target)
+        >>> ref_pts = {'downtown': {'lat': 46.2804, 'lon': -119.2752, 'weight': 1.0}}
+        >>> neighborhood_ratings = {'West Richland': 0.9, 'Kennewick': 0.8, 'Richland': 0.85}
+        >>> estimate_property_value(df, target, ref_points=ref_pts, 
+        ...                        neighborhood_ratings=neighborhood_ratings)
     """
     try:
         # Make a copy to avoid modifying original data
@@ -318,9 +879,79 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
         features = ['square_feet', 'bedrooms', 'bathrooms', 'property_age', 
                    'beds_baths_ratio', 'sqft_per_room']
         
+        # ******** GIS INTEGRATION ********
+        # Step 2b: Add GIS/spatial features if enabled
+        gis_features_available = False
+        if use_gis_features:
+            logger.info("Checking for GIS features")
+            
+            # Check if basic GIS coordinates are available
+            has_coordinates = 'latitude' in df.columns and 'longitude' in df.columns
+            
+            if has_coordinates:
+                logger.info("Coordinates found in dataset, calculating GIS features")
+                
+                # Calculate GIS features using the helper function
+                df = calculate_gis_features(df, gis_data, ref_points, neighborhood_ratings)
+                
+                # Check which GIS features were successfully calculated
+                gis_columns = [
+                    'centrality_km',          # Distance to center of dataset
+                    'location_price_index',   # Price index based on grid location
+                    'proximity_score',        # Proximity to reference points
+                    'neighborhood_rating',    # Quality rating of the neighborhood
+                    'gis_location_quality',   # Overall location quality score
+                    'gis_price_multiplier'    # Price adjustment multiplier based on location
+                ]
+                
+                available_gis_features = [col for col in gis_columns if col in df.columns]
+                
+                if available_gis_features:
+                    gis_features_available = True
+                    
+                    # Add available GIS features to the model features
+                    for feature in available_gis_features:
+                        # For any GIS feature, handle missing values by filling with median
+                        if df[feature].isna().any():
+                            median_value = df[feature].median()
+                            logger.info(f"Filling missing values in {feature} with median: {median_value:.4f}")
+                            df[feature].fillna(median_value, inplace=True)
+                    
+                    # Add core GIS features to the model if available
+                    if 'centrality_km' in available_gis_features:
+                        features.append('centrality_km')  # Distance from center
+                    
+                    if 'proximity_score' in available_gis_features:
+                        features.append('proximity_score')  # Proximity to reference points
+                    
+                    if 'neighborhood_rating' in available_gis_features:
+                        features.append('neighborhood_rating')  # Neighborhood quality
+                    
+                    # Note: We don't include gis_price_multiplier as a feature because
+                    # we'll use it as a post-prediction adjustment
+                    
+                    logger.info(f"Added {len(features) - 6} GIS features to the model")
+                else:
+                    logger.warning("No GIS features were successfully calculated")
+            else:
+                logger.warning("No latitude/longitude coordinates found for GIS feature calculation")
+        
         # Prepare feature matrix X and target vector y
         X = df[features]
         y = df[target_column]
+        
+        # Handle any remaining NaN values in features
+        if X.isna().any().any():
+            logger.warning("Detected NaN values in features, filling with median values")
+            for col in X.columns:
+                if X[col].isna().any():
+                    median_val = X[col].median()
+                    if pd.isna(median_val):  # If median is also NaN, use 0
+                        logger.warning(f"Median for {col} is NaN, using 0 instead")
+                        median_val = 0
+                    missing_count = X[col].isna().sum()
+                    logger.info(f"Filling {missing_count} missing values in {col} with {median_val:.4f}")
+                    X[col] = X[col].fillna(median_val)
         
         # Step 3: Data normalization with StandardScaler
         logger.info("Normalizing features")
@@ -358,6 +989,7 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
         
         # Step 8: Predict value for target property if provided
         predicted_value = None
+        gis_adjustment_factor = None
         if target_property is not None:
             logger.info("Predicting value for target property")
             
@@ -369,16 +1001,89 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
             target_df['beds_baths_ratio'] = target_df['bedrooms'] / target_df['bathrooms'].clip(lower=0.5)
             target_df['sqft_per_room'] = target_df['square_feet'] / (target_df['bedrooms'] + target_df['bathrooms']).clip(lower=1.0)
             
+            # ******** GIS INTEGRATION FOR TARGET PROPERTY ********
+            # If we used GIS features for modeling, we need them for prediction too
+            if gis_features_available and use_gis_features:
+                # Check if target property has coordinates
+                has_target_coords = 'latitude' in target_df.columns and 'longitude' in target_df.columns
+                
+                if has_target_coords:
+                    logger.info("Calculating GIS features for target property")
+                    
+                    # Calculate GIS features for the target property
+                    target_df = calculate_gis_features(target_df, gis_data, ref_points, neighborhood_ratings)
+                    
+                    # Extract the location quality multiplier if available
+                    if 'gis_price_multiplier' in target_df.columns:
+                        gis_adjustment_factor = float(target_df['gis_price_multiplier'].iloc[0])
+                        logger.info(f"GIS location adjustment factor: {gis_adjustment_factor:.4f}")
+                    
+                    # For missing GIS features in target property, fill with median from training data
+                    for feature in [f for f in features if f not in target_df.columns]:
+                        if feature in df.columns:
+                            median_value = df[feature].median()
+                            logger.info(f"Target property missing {feature}, using median: {median_value:.4f}")
+                            target_df[feature] = median_value
+                else:
+                    logger.warning("Target property missing coordinates, GIS features will be estimated")
+                    
+                    # For missing GIS features in target, fill with median from training data
+                    for feature in [f for f in features if f not in target_df.columns]:
+                        if feature in df.columns:
+                            median_value = df[feature].median()
+                            logger.info(f"Target property missing {feature}, using median: {median_value:.4f}")
+                            target_df[feature] = median_value
+            
+            # Make sure all required features are present
+            missing_features = [f for f in features if f not in target_df.columns]
+            if missing_features:
+                logger.warning(f"Target property missing features: {missing_features}")
+                for feature in missing_features:
+                    if feature in df.columns:
+                        target_df[feature] = df[feature].median()
+            
             # Extract features and scale them
             target_features = target_df[features]
+            
+            # Handle any NaN values in target features
+            if target_features.isna().any().any():
+                logger.warning("Detected NaN values in target property features, filling with median values")
+                for col in target_features.columns:
+                    if target_features[col].isna().any():
+                        median_val = df[col].median()
+                        if pd.isna(median_val):  # If median is also NaN, use 0
+                            logger.warning(f"Median for {col} is NaN, using 0 instead")
+                            median_val = 0
+                        logger.info(f"Filling missing values in target property's {col} with {median_val:.4f}")
+                        target_features[col] = target_features[col].fillna(median_val)
+            
             target_scaled = scaler.transform(target_features)
             
-            # Make prediction
-            predicted_value = float(model.predict(target_scaled)[0])
-            logger.info(f"Predicted property value: ${predicted_value:,.2f}")
+            # Make base prediction
+            base_prediction = float(model.predict(target_scaled)[0])
+            
+            # ******** APPLY GIS ADJUSTMENT ********
+            # Apply GIS-based location adjustment if available
+            if gis_adjustment_factor is not None:
+                # Apply the location quality multiplier
+                adjusted_prediction = base_prediction * gis_adjustment_factor
+                
+                # Log the adjustment effect
+                adjustment_amount = adjusted_prediction - base_prediction
+                adjustment_percent = (gis_adjustment_factor - 1.0) * 100
+                
+                logger.info(f"Base prediction: ${base_prediction:,.2f}")
+                logger.info(f"GIS adjustment: {adjustment_percent:+.2f}% (${adjustment_amount:+,.2f})")
+                logger.info(f"Adjusted prediction: ${adjusted_prediction:,.2f}")
+                
+                predicted_value = adjusted_prediction
+            else:
+                # If no GIS adjustment available, use base prediction
+                predicted_value = base_prediction
+                logger.info(f"Predicted property value: ${predicted_value:,.2f}")
         
         # Return results
-        return {
+        result = {
             'predicted_value': predicted_value,
             'r2_score': model_r2,
             'feature_importance': feature_importance.to_dict('records'),
@@ -395,6 +1100,16 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
                 'price_range': [float(df[target_column].min()), float(df[target_column].max())]
             }
         }
+        
+        # Add GIS-specific information to the results
+        if gis_features_available and use_gis_features:
+            result['gis_metrics'] = {
+                'features_used': [f for f in features if f in ['centrality_km', 'proximity_score', 'neighborhood_rating']],
+                'adjustment_factor': gis_adjustment_factor,
+                'location_quality_calculated': 'gis_location_quality' in df.columns
+            }
+        
+        return result
         
     except Exception as e:
         logger.error(f"Error in property valuation: {str(e)}", exc_info=True)

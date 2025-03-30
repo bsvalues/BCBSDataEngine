@@ -1,0 +1,2 @@
+#!/bin/bash
+python simple_valuation_api.py
