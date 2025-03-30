@@ -47,6 +47,39 @@ except ImportError:
 
 logger.info("API module initializing...")
 
+# Define GIS reference points for the Benton County, WA area
+REF_POINTS = {
+    'downtown_richland': {'lat': 46.2834, 'lon': -119.2786, 'weight': 1.0},
+    'downtown_kennewick': {'lat': 46.2113, 'lon': -119.1367, 'weight': 0.9},
+    'downtown_pasco': {'lat': 46.2395, 'lon': -119.0992, 'weight': 0.8},
+    'columbia_river': {'lat': 46.2442, 'lon': -119.2576, 'weight': 0.7},
+    'columbia_center': {'lat': 46.2185, 'lon': -119.2215, 'weight': 0.8},
+    'hanford_site': {'lat': 46.5506, 'lon': -119.4839, 'weight': 0.4},
+    'wsu_tri_cities': {'lat': 46.2734, 'lon': -119.2851, 'weight': 0.9},
+    'kadlec_hospital': {'lat': 46.2836, 'lon': -119.2833, 'weight': 0.8},
+    'howard_amon_park': {'lat': 46.2805, 'lon': -119.2738, 'weight': 0.9},
+    'columbia_point': {'lat': 46.2280, 'lon': -119.2363, 'weight': 0.8}
+}
+
+# Define neighborhood quality ratings for Benton County, WA area
+NEIGHBORHOOD_RATINGS = {
+    'south_richland': 0.95,
+    'west_richland': 0.85,
+    'central_richland': 0.80,
+    'north_richland': 0.75,
+    'south_kennewick': 0.85,
+    'west_kennewick': 0.80,
+    'central_kennewick': 0.75,
+    'east_kennewick': 0.70,
+    'west_pasco': 0.80,
+    'central_pasco': 0.70,
+    'east_pasco': 0.65,
+    'finley': 0.55,
+    'burbank': 0.60,
+    'benton_city': 0.65,
+    'prosser': 0.70
+}
+
 # Define security for API key authentication
 API_KEY_NAME = "X-API-KEY"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
@@ -84,43 +117,7 @@ async def verify_api_key(api_key: str = Security(api_key_header)):
     
     return api_key
 
-# Define reference points for GIS-enhanced valuation
-REF_POINTS = {
-    'downtown_richland': {
-        'lat': 46.2804, 
-        'lon': -119.2752, 
-        'weight': 1.0  # Downtown Richland
-    },
-    'downtown_kennewick': {
-        'lat': 46.2112, 
-        'lon': -119.1367, 
-        'weight': 0.9  # Downtown Kennewick
-    },
-    'downtown_pasco': {
-        'lat': 46.2395, 
-        'lon': -119.1005, 
-        'weight': 0.8  # Downtown Pasco
-    }
-}
-
-# Define neighborhood ratings for location quality adjustments
-NEIGHBORHOOD_RATINGS = {
-    'Richland': 1.15,       # Premium location
-    'West Richland': 1.05,  # Above average
-    'Kennewick': 1.0,       # Average
-    'Pasco': 0.95,          # Slightly below average
-    'Benton City': 0.9,     # Below average
-    'Prosser': 0.85,        # Further below average
-    
-    # Common neighborhoods
-    'Meadow Springs': 1.2,  # Premium Richland neighborhood
-    'Horn Rapids': 1.1,     # Above average Richland neighborhood
-    'Queensgate': 1.15,     # Premium West Richland neighborhood
-    'Southridge': 1.05,     # Above average Kennewick neighborhood
-    
-    # Default for unknown locations
-    'Unknown': 1.0
-}
+# Reference points and neighborhood ratings are defined at the top of this file
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -883,6 +880,211 @@ class WhatIfValuationRequest(BaseModel):
                 "model_type": "enhanced_gis"
             }
         }
+
+@app.post("/api/v1/valuations/advanced", response_model=PropertyValue, dependencies=[Depends(verify_api_key)])
+async def create_advanced_property_valuation(
+    request: PropertyValuationRequest,
+    db: Database = Depends(get_db)
+):
+    """
+    Generate an advanced property valuation with enhanced GIS integration.
+    
+    This endpoint extends the base valuation endpoint with additional capabilities:
+    1. Uses enhanced GIS features for better location-based valuations
+    2. Applies spatial clustering for improved neighborhood analysis
+    3. Utilizes advanced machine learning models with comprehensive metrics
+    4. Provides detailed statistical validation of the valuation results
+    
+    The response includes comprehensive metrics including:
+    - Advanced regression metrics with confidence intervals
+    - Feature importance and spatial factors
+    - Detailed location analysis with reference point distances
+    """
+    logger.info(f"Advanced valuation request received: {request.dict()}")
+    
+    try:
+        # Convert incoming request to pandas DataFrame for processing
+        import pandas as pd
+        
+        property_data = pd.DataFrame({
+            'square_feet': [request.square_feet],
+            'bedrooms': [request.bedrooms],
+            'bathrooms': [request.bathrooms],
+            'year_built': [request.year_built],
+            'latitude': [request.latitude] if request.latitude else [None],
+            'longitude': [request.longitude] if request.longitude else [None],
+            'property_type': [request.property_type],
+            'city': [request.city] if request.city else ["Richland"],
+            'state': [request.state] if request.state else ["WA"],
+            'zip_code': [request.zip_code] if request.zip_code else [None]
+        })
+        
+        # Use the enhanced GIS valuation model
+        from src.valuation import advanced_property_valuation, calculate_gis_features
+        
+        # Add GIS features if coordinates provided and requested
+        if request.use_gis and request.latitude and request.longitude:
+            logger.info("Enhancing property data with GIS features")
+            property_data = calculate_gis_features(
+                property_data, 
+                ref_points=REF_POINTS,
+                neighborhood_ratings=NEIGHBORHOOD_RATINGS
+            )
+        
+        # Load sample property data from CSV for training
+        import pandas as pd
+        import os
+        
+        # Check if test data file exists and load it
+        test_data_file = 'data/test_properties.csv'
+        if os.path.exists(test_data_file):
+            # Load training data
+            training_data = pd.read_csv(test_data_file)
+            logger.info(f"Loaded {len(training_data)} properties for valuation model training")
+        else:
+            # Create minimal training dataset if file doesn't exist
+            logger.warning(f"Test properties file not found at {test_data_file}, using synthetic training data")
+            # Create synthetic data
+            import numpy as np
+            
+            # Generate 100 synthetic properties with correlated features and target
+            n_samples = 100
+            np.random.seed(42)  # For reproducibility
+            
+            # Base characteristics
+            square_feet = np.random.normal(2000, 500, n_samples)
+            bedrooms = np.random.randint(2, 6, n_samples)
+            bathrooms = np.random.choice([1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0], n_samples)
+            years = np.random.randint(1950, 2020, n_samples)
+            
+            # Generate home prices with some correlation to features
+            base_price = 250000
+            sqft_factor = 100  # $ per sqft
+            bedroom_factor = 15000  # $ per bedroom
+            bathroom_factor = 25000  # $ per bathroom
+            age_discount = 500  # $ per year of age
+            
+            # Calculate prices based on features
+            current_year = 2025
+            property_age = current_year - years
+            prices = (base_price + 
+                     square_feet * sqft_factor / 1000 + 
+                     bedrooms * bedroom_factor + 
+                     bathrooms * bathroom_factor - 
+                     property_age * age_discount / 10)
+            
+            # Add some random variation
+            prices = prices * np.random.normal(1, 0.1, n_samples)
+            
+            # Create dataframe
+            training_data = pd.DataFrame({
+                'square_feet': square_feet,
+                'bedrooms': bedrooms,
+                'bathrooms': bathrooms,
+                'year_built': years,
+                'property_type': ['single_family'] * n_samples,
+                'city': ['Richland'] * n_samples,
+                'state': ['WA'] * n_samples,
+                'sale_price': prices
+            })
+            
+            # Add lat/lon for Benton County area (approximate)
+            lat_base, lon_base = 46.2503, -119.2536
+            training_data['latitude'] = lat_base + np.random.normal(0, 0.05, n_samples)
+            training_data['longitude'] = lon_base + np.random.normal(0, 0.05, n_samples)
+            logger.info(f"Created synthetic training dataset with {len(training_data)} properties")
+        
+        # Generate valuation using enhanced model
+        valuation_result = advanced_property_valuation(
+            property_data=training_data,
+            target_property=property_data,
+            use_gis_features=request.use_gis,
+            model_type='gbr' if request.model_type == 'enhanced_gis' else 'linear',
+            feature_selection_method='mutual_info',
+            spatial_adjustment_method='hybrid',
+            confidence_interval_level=0.95
+        )
+        
+        logger.info(f"Advanced valuation completed successfully")
+        
+        # Generate a unique property ID based on coordinates or address if available
+        property_id = f"PROP-{int(time.time())}-{hash(str(request.address)) % 10000:04d}" if request.address else f"PROP-{int(time.time())}-{int(abs(hash(str(request.dict()))) % 10000):04d}"
+        
+        # Extract additional metrics from valuation result
+        feature_importance = valuation_result.get('feature_importances', {})
+        feature_coefficients = valuation_result.get('model_coefficients', {})
+        p_values = valuation_result.get('p_values', {})
+        gis_factors = valuation_result.get('spatial_factors', {})
+        confidence_interval = valuation_result.get('confidence_interval', [None, None])
+        r_squared = valuation_result.get('r_squared', None)
+        adj_r_squared = valuation_result.get('adjusted_r_squared', None)
+        rmse = valuation_result.get('rmse', None)
+        mae = valuation_result.get('mae', None)
+        
+        # Check if we have a valid predicted_value
+        if 'predicted_value' not in valuation_result or valuation_result['predicted_value'] is None:
+            raise ValueError("Valuation model did not return a valid predicted value")
+        
+        # Prepare response
+        response = {
+            "property_id": property_id,
+            "address": request.address or "Unknown Address",
+            "estimated_value": valuation_result['predicted_value'],
+            "confidence_score": 0.90 if r_squared is None else min(0.99, max(0.5, r_squared)),
+            "model_used": f"Enhanced GIS Valuation ({request.model_type})",
+            "valuation_date": datetime.datetime.now(),
+            "features_used": {
+                "square_feet": request.square_feet,
+                "bedrooms": request.bedrooms,
+                "bathrooms": request.bathrooms,
+                "year_built": request.year_built,
+                "latitude": request.latitude,
+                "longitude": request.longitude,
+                "property_type": request.property_type,
+                "city": request.city,
+                "state": request.state
+            },
+            "comparable_properties": [],  # We don't have comparables in this simple implementation
+            
+            # Advanced model metrics
+            "adj_r2_score": adj_r_squared,
+            "rmse": rmse,
+            "mae": mae,
+            "feature_importance": feature_importance,
+            "feature_coefficients": feature_coefficients,
+            "p_values": p_values,
+            
+            # GIS adjustment factors
+            "gis_factors": gis_factors,
+            "location_quality": gis_factors.get('location_quality', 1.0) if gis_factors else 1.0,
+            "location_multiplier": gis_factors.get('location_multiplier', 1.0) if gis_factors else 1.0,
+            "amenity_score": gis_factors.get('amenity_score', 0.5) if gis_factors else 0.5,
+            "school_quality_score": gis_factors.get('school_quality_score', 0.5) if gis_factors else 0.5,
+            
+            # Model metrics
+            "model_metrics": {
+                "confidence_interval_lower": confidence_interval[0] if confidence_interval else None,
+                "confidence_interval_upper": confidence_interval[1] if confidence_interval else None,
+                "r_squared": r_squared,
+                "adjusted_r_squared": adj_r_squared,
+                "root_mean_squared_error": rmse,
+                "mean_absolute_error": mae
+            }
+        }
+        
+        # Add the valuation result to the database
+        # In a production environment, we would store this in the database
+        logger.info(f"Would store valuation in database: {property_id}")
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error generating advanced valuation: {str(e)}")
+        logger.exception(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating valuation: {str(e)}"
+        )
 
 @app.post("/api/what-if-valuation", response_model=PropertyValue)
 async def what_if_valuation(

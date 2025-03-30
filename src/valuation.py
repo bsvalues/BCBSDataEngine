@@ -4,7 +4,7 @@ Advanced property valuation module for the BCBS_Values system.
 This module provides sophisticated real estate valuation capabilities using
 multiple regression techniques, enhanced GIS integration, and advanced
 statistical analysis. It supports both linear models and gradient boosting
-for more accurate property valuations.
+for more accurate property valuations with comprehensive statistical outputs.
 """
 
 import logging
@@ -13,15 +13,19 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 import scipy
+from scipy import stats
 from sklearn.linear_model import LinearRegression, Ridge, Lasso, ElasticNet
-from sklearn.preprocessing import StandardScaler, RobustScaler
+from sklearn.preprocessing import StandardScaler, RobustScaler, MinMaxScaler, PolynomialFeatures
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.model_selection import train_test_split, cross_val_score, KFold, GridSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
-from sklearn.impute import SimpleImputer
-from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.impute import SimpleImputer, KNNImputer
+from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.exceptions import ConvergenceWarning
+from sklearn.feature_selection import SelectKBest, f_regression, mutual_info_regression
+from sklearn.decomposition import PCA
+import warnings
 
 # Configure logging
 logging.basicConfig(
@@ -44,12 +48,463 @@ except OSError as e:
     logger.warning(f"LightGBM found but could not be loaded due to OS error: {e}")
     logger.warning("Missing system dependencies for LightGBM - using GradientBoostingRegressor as fallback")
 
+# Function to check if LightGBM is available for tests
+def has_lightgbm():
+    """
+    Returns True if LightGBM is available, False otherwise.
+    
+    This function is used by tests to adjust expectations based on whether
+    LightGBM is available in the current environment.
+    """
+    return LIGHTGBM_AVAILABLE
+
+def calculate_gis_features(property_data, gis_data=None, ref_points=None, neighborhood_ratings=None):
+    """
+    Calculate GIS features for properties based on reference points, neighborhood ratings,
+    and other GIS data.
+    
+    This function processes raw property data and enhances it with GIS-derived features
+    such as proximity scores, neighborhood quality ratings, and spatial clusters.
+    It's designed to be used as a preprocessing step before valuation.
+    
+    Parameters:
+    -----------
+    property_data : pandas.DataFrame
+        Dataset containing property information including latitude and longitude coordinates.
+    
+    gis_data : dict or pandas.DataFrame, optional
+        Additional GIS data such as flood risk, school quality, etc.
+    
+    ref_points : dict, optional
+        Dictionary of reference points with lat/lon coordinates and weights.
+    
+    neighborhood_ratings : dict, optional
+        Dictionary mapping neighborhoods to quality ratings.
+    
+    Returns:
+    --------
+    pandas.DataFrame
+        The original property data enhanced with GIS features.
+    """
+    logger.info("Calculating GIS features for property data")
+    
+    # Create a copy of the input data to avoid modifying the original
+    result_data = property_data.copy()
+    
+    # Define placeholder for GIS features we'll add
+    gis_features = []
+    
+    # Check if we have coordinates for geospatial analysis
+    has_coordinates = ('latitude' in result_data.columns and 'longitude' in result_data.columns)
+    
+    if not has_coordinates:
+        logger.warning("No latitude/longitude coordinates found, GIS features will be limited")
+    
+    # 1. Calculate proximity scores if reference points are provided
+    if has_coordinates and ref_points is not None:
+        logger.info(f"Calculating proximity scores using {len(ref_points)} reference points")
+        
+        # List to store proximity scores for each property
+        proximity_scores = []
+        
+        # For each property, calculate proximity to each reference point
+        for idx, row in result_data.iterrows():
+            # Calculate proximity to each reference point
+            total_score = 0
+            total_weight = 0
+            
+            try:
+                for point_name, point_data in ref_points.items():
+                    # Skip points with missing data
+                    if 'lat' not in point_data or 'lon' not in point_data or 'weight' not in point_data:
+                        continue
+                        
+                    # Calculate distance in kilometers using Haversine formula
+                    lat1, lon1 = row['latitude'], row['longitude']
+                    lat2, lon2 = point_data['lat'], point_data['lon']
+                    
+                    # Simple version of Haversine formula
+                    dlat = math.radians(lat2 - lat1)
+                    dlon = math.radians(lon2 - lon1)
+                    a = (math.sin(dlat/2) * math.sin(dlat/2) + 
+                         math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * 
+                         math.sin(dlon/2) * math.sin(dlon/2))
+                    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+                    distance_km = 6371 * c  # Earth radius in km
+                    
+                    # Apply exponential decay to distance
+                    # Closer points have higher scores (1.0 at distance=0, ~0 at large distances)
+                    proximity = math.exp(-0.5 * distance_km)
+                    
+                    # Apply point weight
+                    weighted_proximity = proximity * point_data['weight']
+                    
+                    total_score += weighted_proximity
+                    total_weight += point_data['weight']
+                
+                # Normalize score by total weight
+                if total_weight > 0:
+                    final_score = total_score / total_weight
+                else:
+                    final_score = 0.5  # Default value if no valid reference points
+                    
+                proximity_scores.append(final_score)
+                
+            except Exception as e:
+                logger.warning(f"Error calculating proximity score for property {idx}: {str(e)}")
+                proximity_scores.append(0.5)  # Default value on error
+        
+        # Add proximity scores as a feature
+        result_data['proximity_score'] = proximity_scores
+        gis_features.append('proximity_score')
+        logger.info("Added 'proximity_score' feature based on reference points")
+    
+    # 2. Apply neighborhood quality ratings if available
+    if neighborhood_ratings is not None and 'neighborhood' in result_data.columns:
+        logger.info("Applying neighborhood quality ratings")
+        
+        # Create neighborhood quality feature
+        neighborhood_quality = []
+        
+        for idx, row in result_data.iterrows():
+            try:
+                neighborhood = row['neighborhood'] if 'neighborhood' in row else None
+                city = row['city'] if 'city' in row else None
+                
+                # First try exact neighborhood match
+                if neighborhood and neighborhood in neighborhood_ratings:
+                    quality = neighborhood_ratings[neighborhood]
+                # Then try city match
+                elif city and city in neighborhood_ratings:
+                    quality = neighborhood_ratings[city]
+                # Default to unknown
+                else:
+                    quality = neighborhood_ratings.get('Unknown', 1.0)
+                    
+                neighborhood_quality.append(quality)
+                
+            except Exception as e:
+                logger.warning(f"Error determining neighborhood quality for property {idx}: {str(e)}")
+                neighborhood_quality.append(1.0)  # Default neutral value on error
+        
+        # Add neighborhood quality as a feature
+        result_data['neighborhood_quality'] = neighborhood_quality
+        gis_features.append('neighborhood_quality')
+        logger.info("Added 'neighborhood_quality' feature based on neighborhood ratings")
+        
+        # Create interaction features between neighborhood quality and key property attributes
+        logger.info("Creating neighborhood interaction features")
+        
+        # Square footage × neighborhood quality interaction
+        if 'square_feet' in result_data.columns:
+            result_data['sqft_neighborhood_interaction'] = result_data['square_feet'] * result_data['neighborhood_quality']
+            gis_features.append('sqft_neighborhood_interaction')
+        
+        # Property age × neighborhood quality interaction (if available)
+        if 'property_age' in result_data.columns:
+            # Inverse age factor (newer properties get higher values)
+            epsilon = 1e-6  # Avoid division by zero
+            age_factor = 1.0 / (result_data['property_age'] + epsilon)
+            result_data['age_neighborhood_interaction'] = age_factor * result_data['neighborhood_quality']
+            gis_features.append('age_neighborhood_interaction')
+        
+        # Bedrooms × neighborhood quality interaction
+        if 'bedrooms' in result_data.columns:
+            result_data['bed_neighborhood_interaction'] = result_data['bedrooms'] * result_data['neighborhood_quality']
+            gis_features.append('bed_neighborhood_interaction')
+    
+    # 3. Create spatial clusters if we have coordinates
+    if has_coordinates:
+        try:
+            logger.info("Creating spatial clusters to identify geographic patterns")
+            from sklearn.cluster import KMeans
+            
+            # Extract coordinates for clustering
+            coords = result_data[['latitude', 'longitude']].copy()
+            
+            # Determine optimal number of clusters (between 2 and 10, based on data size)
+            max_clusters = min(10, len(result_data) // 5)  # Ensure enough data per cluster
+            if max_clusters >= 2:
+                # Use between 2 and max_clusters based on data size
+                n_clusters = max(2, min(max_clusters, int(np.sqrt(len(result_data)) / 2)))
+                logger.info(f"Using {n_clusters} spatial clusters based on data size")
+                
+                # Apply clustering
+                kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+                result_data['spatial_cluster'] = kmeans.fit_predict(coords)
+                
+                # Create one-hot encoding of clusters for the model
+                for cluster in range(n_clusters):
+                    col_name = f'spatial_cluster_{cluster}'
+                    result_data[col_name] = (result_data['spatial_cluster'] == cluster).astype(int)
+                    gis_features.append(col_name)
+                
+                # Log cluster information
+                for cluster, count in result_data['spatial_cluster'].value_counts().items():
+                    center = kmeans.cluster_centers_[cluster]
+                    logger.info(f"  - Spatial cluster {cluster}: {count} properties, " +
+                             f"center: ({center[0]:.4f}, {center[1]:.4f})")
+                
+                # Add cluster distance features (distance to each cluster center)
+                logger.info("Creating distance-to-cluster-center features")
+                for cluster in range(n_clusters):
+                    center = kmeans.cluster_centers_[cluster]
+                    col_name = f'dist_to_cluster_{cluster}'
+                    
+                    # Calculate distances using Haversine formula (earth curvature)
+                    distances = []
+                    for idx, row in result_data.iterrows():
+                        lat1, lon1 = row['latitude'], row['longitude']
+                        lat2, lon2 = center[0], center[1]
+                        
+                        # Simple version of Haversine formula
+                        dlat = math.radians(lat2 - lat1)
+                        dlon = math.radians(lon2 - lon1)
+                        a = (math.sin(dlat/2) * math.sin(dlat/2) + 
+                             math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * 
+                             math.sin(dlon/2) * math.sin(dlon/2))
+                        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+                        distance_km = 6371 * c  # Earth radius in km
+                        distances.append(distance_km)
+                    
+                    result_data[col_name] = distances
+                    gis_features.append(col_name)
+            else:
+                logger.warning("Not enough data for meaningful spatial clustering")
+        except Exception as e:
+            logger.warning(f"Spatial clustering failed: {str(e)}")
+            logger.warning("Continuing without spatial clustering features")
+    
+    # 4. Integrate additional GIS data if provided
+    if gis_data is not None:
+        logger.info("Integrating additional GIS data")
+        
+        try:
+            if isinstance(gis_data, dict):
+                # Process flood zone data if available
+                if 'flood_zones' in gis_data and has_coordinates:
+                    logger.info("Processing flood zone data")
+                    flood_zones = gis_data['flood_zones']
+                    
+                    # Calculate flood risk for each property
+                    flood_risks = []
+                    for idx, property_row in result_data.iterrows():
+                        prop_lat, prop_lon = property_row['latitude'], property_row['longitude']
+                        
+                        # Find closest flood zone
+                        min_dist = float('inf')
+                        closest_risk = 0
+                        
+                        for _, zone_row in flood_zones.iterrows():
+                            zone_lat, zone_lon = zone_row['latitude'], zone_row['longitude']
+                            
+                            # Simple Euclidean distance for speed
+                            dist = ((prop_lat - zone_lat)**2 + (prop_lon - zone_lon)**2)**0.5
+                            
+                            if dist < min_dist:
+                                min_dist = dist
+                                closest_risk = zone_row['risk_level'] / 5.0  # Normalize to 0-1
+                        
+                        flood_risks.append(closest_risk)
+                    
+                    result_data['flood_risk'] = flood_risks
+                    gis_features.append('flood_risk')
+                    logger.info("Added 'flood_risk' feature from GIS data")
+                
+                # Process school quality data if available
+                if 'schools' in gis_data and has_coordinates:
+                    logger.info("Processing school quality data")
+                    schools = gis_data['schools']
+                    
+                    # Calculate school quality for each property
+                    school_qualities = []
+                    for idx, property_row in result_data.iterrows():
+                        prop_lat, prop_lon = property_row['latitude'], property_row['longitude']
+                        
+                        # Find schools within 5km and calculate weighted quality
+                        total_quality = 0
+                        total_weight = 0
+                        
+                        for _, school_row in schools.iterrows():
+                            school_lat, school_lon = school_row['latitude'], school_row['longitude']
+                            
+                            # Calculate distance in km
+                            dlat = math.radians(school_lat - prop_lat)
+                            dlon = math.radians(school_lon - prop_lon)
+                            a = (math.sin(dlat/2) * math.sin(dlat/2) + 
+                                 math.cos(math.radians(prop_lat)) * math.cos(math.radians(school_lat)) * 
+                                 math.sin(dlon/2) * math.sin(dlon/2))
+                            c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+                            dist_km = 6371 * c
+                            
+                            # Schools within 5km affect quality, with closer ones having more weight
+                            if dist_km < 5:
+                                weight = math.exp(-0.5 * dist_km)  # Weight decreases with distance
+                                total_quality += school_row['quality_score'] * weight
+                                total_weight += weight
+                        
+                        # Normalize quality score
+                        if total_weight > 0:
+                            school_quality = total_quality / total_weight / 10.0  # Normalize to 0-1
+                        else:
+                            school_quality = 0.5  # Default neutral value
+                        
+                        school_qualities.append(school_quality)
+                    
+                    result_data['school_quality'] = school_qualities
+                    gis_features.append('school_quality')
+                    logger.info("Added 'school_quality' feature from GIS data")
+        
+        except Exception as e:
+            logger.warning(f"Error integrating GIS data: {str(e)}")
+    
+    logger.info(f"Added {len(gis_features)} GIS features to property data")
+    return result_data
+
+def advanced_property_valuation(property_data, target_property=None, **kwargs):
+    """
+    Advanced property valuation with enhanced GIS integration.
+    
+    This function is a wrapper around estimate_property_value that ensures the advanced
+    valuation features are used. It enforces use_multiple_regression=True and sets
+    appropriate defaults for advanced GIS processing.
+    
+    Parameters:
+    -----------
+    Same parameters as estimate_property_value, with these defaults enforced:
+    - use_multiple_regression = True
+    - include_advanced_metrics = True
+    
+    Returns:
+    --------
+    dict
+        Same return value as estimate_property_value, with enhanced GIS metrics.
+    """
+    logger.info("Running advanced property valuation with enhanced GIS integration")
+    
+    # Force advanced modeling options
+    kwargs['use_multiple_regression'] = True
+    kwargs['include_advanced_metrics'] = True
+    
+    # Set default model to ensemble if not specified
+    if 'model_type' not in kwargs:
+        if LIGHTGBM_AVAILABLE:
+            kwargs['model_type'] = 'ensemble'
+        else:
+            kwargs['model_type'] = 'gbr'
+    
+    # Enable GIS features by default
+    if 'use_gis_features' not in kwargs:
+        kwargs['use_gis_features'] = True
+    
+    # Handle feature_selection parameter (compatibility with older tests)
+    if 'feature_selection' in kwargs:
+        # Map old feature_selection parameter to new feature_selection_method parameter
+        feature_selection = kwargs.pop('feature_selection')
+        if feature_selection == 'none':
+            kwargs['feature_selection_method'] = 'all'
+        else:
+            kwargs['feature_selection_method'] = feature_selection
+    # Set feature selection method to mutual_info if not specified
+    elif 'feature_selection_method' not in kwargs:
+        kwargs['feature_selection_method'] = 'mutual_info'
+    
+    # Handle poly_degree parameter (compatibility with older tests)
+    if 'poly_degree' in kwargs:
+        # Store the polynomial degree for later reference
+        poly_degree = kwargs.pop('poly_degree')
+        # We'll add polynomial features if degree > 1
+        if poly_degree > 1:
+            kwargs['use_polynomial_features'] = True
+            kwargs['polynomial_degree'] = poly_degree
+        else:
+            kwargs['use_polynomial_features'] = False
+            
+    # Handle regularization parameter (compatibility with older tests)
+    if 'regularization' in kwargs:
+        regularization = kwargs.pop('regularization')
+        if regularization is None:
+            kwargs['model_type'] = 'linear'  # standard OLS
+        elif regularization == 'l1':
+            kwargs['model_type'] = 'lasso'
+        elif regularization == 'l2':
+            kwargs['model_type'] = 'ridge'
+        elif regularization == 'elastic':
+            kwargs['model_type'] = 'elastic_net'
+        
+    # Set spatial adjustment method
+    if 'spatial_adjustment_method' not in kwargs:
+        kwargs['spatial_adjustment_method'] = 'hybrid'
+    
+    # Call the main valuation function with all parameters
+    result = estimate_property_value(property_data, target_property, **kwargs)
+    
+    # Add some additional metrics for the advanced valuation
+    if isinstance(result, dict) and 'error' not in result:
+        # Add information about the advanced modeling techniques used
+        result['advanced_modeling'] = {
+            'model_type': kwargs.get('model_type', 'ensemble'),
+            'feature_selection': kwargs.get('feature_selection_method', 'mutual_info'),
+            'spatial_adjustment': kwargs.get('spatial_adjustment_method', 'hybrid'),
+            'handle_outliers': kwargs.get('handle_outliers', True),
+            'cross_validation_folds': kwargs.get('cross_validation_folds', 5)
+        }
+        
+        # If the target property has coordinates, add proximity information
+        if (target_property is not None and 
+            'latitude' in target_property.columns and 
+            'longitude' in target_property.columns):
+            
+            try:
+                lat = target_property['latitude'].iloc[0]
+                lon = target_property['longitude'].iloc[0]
+                
+                result['location_info'] = {
+                    'latitude': lat,
+                    'longitude': lon
+                }
+                
+                # Add reference point distances if available
+                if 'ref_points' in kwargs and kwargs['ref_points'] is not None:
+                    ref_points = kwargs['ref_points']
+                    distances = {}
+                    
+                    for point_name, point_data in ref_points.items():
+                        if 'lat' in point_data and 'lon' in point_data:
+                            # Calculate distance using Haversine formula
+                            dlat = math.radians(point_data['lat'] - lat)
+                            dlon = math.radians(point_data['lon'] - lon)
+                            a = (math.sin(dlat/2) * math.sin(dlat/2) + 
+                                math.cos(math.radians(lat)) * math.cos(math.radians(point_data['lat'])) * 
+                                math.sin(dlon/2) * math.sin(dlon/2))
+                            c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+                            dist_km = 6371 * c
+                            
+                            distances[point_name] = {
+                                'distance_km': round(dist_km, 2),
+                                'weight': point_data.get('weight', 1.0)
+                            }
+                    
+                    result['location_info']['reference_points'] = distances
+            except Exception as e:
+                logger.warning(f"Error adding location information: {str(e)}")
+    
+    # Rename estimated_value to predicted_value for consistency with test expectations
+    if 'estimated_value' in result:
+        result['predicted_value'] = result['estimated_value']
+    # If we don't have a predicted value, but we have a base_prediction, use that
+    elif result.get('base_prediction') is not None:
+        result['predicted_value'] = result['base_prediction']
+    
+    return result
+
 def estimate_property_value(property_data, target_property=None, test_size=0.2, random_state=42,
                        gis_data=None, ref_points=None, neighborhood_ratings=None, use_gis_features=True,
                        use_multiple_regression=True, include_advanced_metrics=True, gis_adjustment_factor=None,
                        model_type='linear', feature_selection_method='all', regularization_strength=0.01,
                        spatial_adjustment_method='multiplicative', confidence_interval_level=0.95,
-                       handle_outliers=True, handle_missing_values=True, cross_validation_folds=5):
+                       handle_outliers=True, handle_missing_values=True, cross_validation_folds=5,
+                       use_polynomial_features=False, polynomial_degree=2):
     """
     Estimates property value using advanced regression techniques with enhanced GIS integration.
     
@@ -328,7 +783,7 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
                 
                 # 3.2 Apply neighborhood quality ratings if available
                 if neighborhood_ratings is not None and 'neighborhood' in property_data.columns:
-                    logger.info("Applying neighborhood quality ratings")
+                    logger.info("Applying enhanced neighborhood quality ratings")
                     
                     # Create neighborhood quality feature
                     neighborhood_quality = []
@@ -359,6 +814,27 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
                     gis_features.append('neighborhood_quality')
                     logger.info("Added 'neighborhood_quality' feature based on neighborhood ratings")
                     
+                    # Create interaction features between neighborhood quality and key property attributes
+                    # This allows the model to capture that the effect of square footage may vary by neighborhood
+                    logger.info("Creating neighborhood interaction features")
+                    
+                    # Square footage × neighborhood quality interaction
+                    property_data['sqft_neighborhood_interaction'] = property_data['square_feet'] * property_data['neighborhood_quality']
+                    gis_features.append('sqft_neighborhood_interaction')
+                    
+                    # Property age × neighborhood quality interaction (if available)
+                    if 'property_age' in property_data.columns:
+                        # Inverse age factor (newer properties get higher values)
+                        age_factor = 1.0 / (property_data['property_age'] + epsilon)
+                        property_data['age_neighborhood_interaction'] = age_factor * property_data['neighborhood_quality']
+                        gis_features.append('age_neighborhood_interaction')
+                    
+                    # Bedrooms × neighborhood quality interaction
+                    property_data['bed_neighborhood_interaction'] = property_data['bedrooms'] * property_data['neighborhood_quality']
+                    gis_features.append('bed_neighborhood_interaction')
+                    
+                    logger.info(f"Added {len(gis_features) - 1} neighborhood interaction features")
+                    
                     # Store for spatial adjustments
                     spatial_adjustments['neighborhood_factor'] = {
                         'type': 'multiplicative',
@@ -366,7 +842,70 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
                         'average_impact': np.mean(neighborhood_quality)
                     }
                 
-                # 3.3 Calculate additional GIS-derived features using provided GIS data
+                # 3.3 Create spatial clusters based on geographic coordinates (if available)
+                # This helps identify natural groupings of properties by location
+                if has_coordinates:
+                    try:
+                        logger.info("Creating spatial clusters to identify geographic patterns")
+                        from sklearn.cluster import KMeans
+                        
+                        # Extract coordinates for clustering
+                        coords = property_data[['latitude', 'longitude']].copy()
+                        
+                        # Determine optimal number of clusters (between 2 and 10, based on data size)
+                        max_clusters = min(10, len(property_data) // 5)  # Ensure enough data per cluster
+                        if max_clusters >= 2:
+                            # Use between 2 and max_clusters based on data size
+                            n_clusters = max(2, min(max_clusters, int(np.sqrt(len(property_data)) / 2)))
+                            logger.info(f"Using {n_clusters} spatial clusters based on data size")
+                            
+                            # Apply clustering
+                            kmeans = KMeans(n_clusters=n_clusters, random_state=random_state)
+                            property_data['spatial_cluster'] = kmeans.fit_predict(coords)
+                            
+                            # Create one-hot encoding of clusters for the model
+                            for cluster in range(n_clusters):
+                                col_name = f'spatial_cluster_{cluster}'
+                                property_data[col_name] = (property_data['spatial_cluster'] == cluster).astype(int)
+                                gis_features.append(col_name)
+                            
+                            # Log cluster information
+                            for cluster, count in property_data['spatial_cluster'].value_counts().items():
+                                center = kmeans.cluster_centers_[cluster]
+                                logger.info(f"  - Spatial cluster {cluster}: {count} properties, " +
+                                         f"center: ({center[0]:.4f}, {center[1]:.4f})")
+                            
+                            # Add cluster distance features (distance to each cluster center)
+                            logger.info("Creating distance-to-cluster-center features")
+                            for cluster in range(n_clusters):
+                                center = kmeans.cluster_centers_[cluster]
+                                col_name = f'dist_to_cluster_{cluster}'
+                                
+                                # Calculate distances using Haversine formula (earth curvature)
+                                distances = []
+                                for idx, row in property_data.iterrows():
+                                    lat1, lon1 = row['latitude'], row['longitude']
+                                    lat2, lon2 = center[0], center[1]
+                                    
+                                    # Simple version of Haversine formula
+                                    dlat = math.radians(lat2 - lat1)
+                                    dlon = math.radians(lon2 - lon1)
+                                    a = (math.sin(dlat/2) * math.sin(dlat/2) + 
+                                         math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * 
+                                         math.sin(dlon/2) * math.sin(dlon/2))
+                                    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+                                    distance_km = 6371 * c  # Earth radius in km
+                                    distances.append(distance_km)
+                                
+                                property_data[col_name] = distances
+                                gis_features.append(col_name)
+                        else:
+                            logger.warning("Not enough data for meaningful spatial clustering")
+                    except Exception as e:
+                        logger.warning(f"Spatial clustering failed: {str(e)}")
+                        logger.warning("Continuing without spatial clustering features")
+                
+                # 3.4 Calculate additional GIS-derived features using provided GIS data
                 if gis_data is not None:
                     logger.info("Integrating additional GIS data")
                     
@@ -452,18 +991,110 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
                 model_features.extend(gis_features)
                 
         elif feature_selection_method == 'mutual_info':
-            # This would typically use sklearn's mutual_info_regression
-            # For simplicity, we'll just use all features with a note
-            logger.info("Mutual information feature selection requires sklearn.feature_selection")
-            model_features.extend(engineered_features)
-            model_features.extend(gis_features)
+            # Use mutual information to select the most informative features
+            try:
+                logger.info("Performing mutual information feature selection")
+                # Combine all potential features
+                all_additional_features = engineered_features + gis_features
+                
+                if len(all_additional_features) > 0:
+                    # Get feature matrix and ensure numeric
+                    X_for_selection = property_data[all_additional_features].copy()
+                    # Handle categorical features if any by one-hot encoding
+                    X_for_selection = pd.get_dummies(X_for_selection, drop_first=True)
+                    
+                    # Calculate mutual information scores
+                    mi_scores = mutual_info_regression(X_for_selection, property_data[price_col])
+                    # Create a DataFrame of features and their MI scores
+                    mi_df = pd.DataFrame({'feature': X_for_selection.columns, 'mi_score': mi_scores})
+                    mi_df = mi_df.sort_values('mi_score', ascending=False)
+                    
+                    # Select top features (either top 10 or features with MI score > 0.05)
+                    num_to_select = min(10, len(mi_df))
+                    selected_features = mi_df.head(num_to_select)
+                    selected_features = selected_features[selected_features['mi_score'] > 0.01]['feature'].tolist()
+                    
+                    if len(selected_features) > 0:
+                        model_features.extend(selected_features)
+                        logger.info(f"Selected {len(selected_features)} features using mutual information")
+                        # Log the top features and their scores
+                        for idx, row in mi_df.head(5).iterrows():
+                            logger.info(f"  - {row['feature']}: MI score = {row['mi_score']:.4f}")
+                    else:
+                        logger.warning("No features had sufficient mutual information scores")
+                        model_features.extend(engineered_features)
+                        model_features.extend(gis_features)
+                else:
+                    logger.warning("No additional features available for mutual information selection")
+            except Exception as e:
+                logger.warning(f"Error during mutual information feature selection: {str(e)}")
+                logger.warning("Falling back to all features")
+                model_features.extend(engineered_features)
+                model_features.extend(gis_features)
             
         elif feature_selection_method == 'recursive':
-            # This would typically use sklearn's RFE
-            # For simplicity, we'll just use all features with a note
-            logger.info("Recursive feature elimination requires sklearn.feature_selection")
-            model_features.extend(engineered_features)
-            model_features.extend(gis_features)
+            # Use RFE (Recursive Feature Elimination) to select features
+            try:
+                logger.info("Performing recursive feature elimination")
+                from sklearn.feature_selection import RFE
+                # Combine all potential features
+                all_additional_features = engineered_features + gis_features
+                
+                if len(all_additional_features) > 0:
+                    # Prepare feature matrix
+                    X_for_selection = property_data[all_additional_features].copy()
+                    X_for_selection = pd.get_dummies(X_for_selection, drop_first=True)
+                    
+                    # Create a base model for feature selection
+                    # Ridge regression is generally more stable for feature selection
+                    base_model = Ridge(alpha=0.1)
+                    
+                    # Determine number of features to select (at least 3, at most half of all features)
+                    n_features_to_select = min(
+                        max(3, len(X_for_selection.columns) // 2),
+                        len(X_for_selection.columns)
+                    )
+                    
+                    # Apply RFE to select features
+                    rfe = RFE(estimator=base_model, n_features_to_select=n_features_to_select, step=1)
+                    
+                    # Fit RFE
+                    try:
+                        rfe.fit(X_for_selection, property_data[price_col])
+                        
+                        # Get selected feature indices and names
+                        selected_features = X_for_selection.columns[rfe.support_].tolist()
+                        
+                        if len(selected_features) > 0:
+                            model_features.extend(selected_features)
+                            logger.info(f"Selected {len(selected_features)} features using RFE")
+                            
+                            # Get feature ranking
+                            feature_ranking = pd.DataFrame({
+                                'feature': X_for_selection.columns,
+                                'rank': rfe.ranking_
+                            }).sort_values('rank')
+                            
+                            # Log top features by rank
+                            logger.info("Top features by RFE ranking:")
+                            for idx, row in feature_ranking[feature_ranking['rank'] == 1].head(5).iterrows():
+                                logger.info(f"  - {row['feature']}: rank = 1")
+                        else:
+                            logger.warning("RFE did not select any features")
+                            model_features.extend(engineered_features)
+                            model_features.extend(gis_features)
+                    except Exception as inner_e:
+                        logger.warning(f"Error during RFE fitting: {str(inner_e)}")
+                        model_features.extend(engineered_features)
+                        model_features.extend(gis_features)
+                else:
+                    logger.warning("No additional features available for recursive feature elimination")
+                    
+            except Exception as e:
+                logger.warning(f"Error during recursive feature elimination: {str(e)}")
+                logger.warning("Falling back to using all features")
+                model_features.extend(engineered_features)
+                model_features.extend(gis_features)
             
         else:
             # Default to all features for unknown selection method
@@ -1238,6 +1869,7 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
         
         result = {
             'estimated_value': predicted_value,
+            'predicted_value': predicted_value,  # Add predicted_value key for test compatibility
             'confidence_interval': confidence_interval,
             'r_squared': float(test_r2),
             'adjusted_r_squared': float(adj_r2),
@@ -1432,6 +2064,7 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
         
         result = {
             'estimated_value': predicted_value,
+            'predicted_value': predicted_value,  # Add predicted_value key for test compatibility
             'r2_score': float(test_r2),
             'adj_r2_score': float(adj_r2),
             'feature_importance': feature_importance,
