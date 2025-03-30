@@ -1,0 +1,9 @@
+{
+  "command": "cd $REPL_HOME && python -m pytest tests/test_advanced_valuation.py -v",
+  "name": "Test Advanced Valuation",
+  "restartOn": {
+    "file": "tests/test_advanced_valuation.py",
+    "frequency": "watch"
+  },
+  "url": "http://localhost:3000"
+}

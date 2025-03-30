@@ -1,5 +1,6 @@
 {pkgs}: {
   deps = [
+    pkgs.gcc
     pkgs.opencl-headers
     pkgs.ocl-icd
     pkgs.xsimd

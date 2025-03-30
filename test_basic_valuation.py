@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 import logging
 import sys
-from src.valuation import train_basic_valuation_model
+from src.valuation import train_basic_valuation_model, has_lightgbm
 
 # Configure logging
 logging.basicConfig(
@@ -20,6 +20,9 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Log LightGBM availability status
+logger.info(f"LightGBM available: {has_lightgbm}")
 
 def main():
     """Test the basic property valuation model with sample data."""

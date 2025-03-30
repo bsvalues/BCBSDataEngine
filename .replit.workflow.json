@@ -1,46 +1,77 @@
 {
-  "deployment": {
-    "workflows": [
-      {
-        "name": "ValuationAPI",
-        "title": "Valuation API (Port 8000)",
-        "description": "Main valuation API with advanced models",
-        "environment": {
-          "enabledBy": "environment"
-        }
-      },
-      {
-        "name": "SimpleValuationAPI",
-        "title": "Simple Valuation API (Port 5001)",
-        "description": "Simple valuation API with basic features",
-        "environment": {
-          "enabledBy": "environment"
-        }
-      },
-      {
-        "name": "TestValuationAPI",
-        "title": "Test Valuation API",
-        "description": "Test script for the valuation API",
-        "environment": {
-          "enabledBy": "environment"
-        }
-      },
-      {
-        "name": "EnhancedAPI",
-        "title": "Enhanced API (Port 8000)",
-        "description": "Enhanced API with advanced metrics and GIS features",
-        "environment": {
-          "enabledBy": "environment"
-        }
-      },
-      {
-        "name": "TestEnhancedAPI",
-        "title": "Test Enhanced API",
-        "description": "Test script for the enhanced valuation API",
-        "environment": {
-          "enabledBy": "environment"
-        }
-      }
-    ]
+  "SimpleValuationAPI": {
+    "name": "SimpleValuationAPI",
+    "command": "python -u simple_valuation_api.py",
+    "share": true,
+    "secrets": [],
+    "environment": {
+      "envFiles": [".env"],
+      "path": [],
+      "env": {}
+    },
+    "rules": {
+      "port": 5001
+    }
+  },
+  "ValuationAPI": {
+    "name": "ValuationAPI",
+    "command": "python run_api.py",
+    "share": true,
+    "secrets": [],
+    "environment": {
+      "envFiles": [".env"],
+      "path": [],
+      "env": {}
+    },
+    "rules": {
+      "port": 8000
+    }
+  },
+  "TestValuationAPI": {
+    "name": "TestValuationAPI",
+    "command": "python test_valuation_api.sh",
+    "share": false,
+    "secrets": [],
+    "environment": {
+      "envFiles": [".env"],
+      "path": [],
+      "env": {}
+    }
+  },
+  "TestEnhancedAPI": {
+    "name": "TestEnhancedAPI",
+    "command": "python test_enhanced_api.sh",
+    "share": false,
+    "secrets": [],
+    "environment": {
+      "envFiles": [".env"],
+      "path": [],
+      "env": {}
+    }
+  },
+  "EnhancedAPI": {
+    "name": "EnhancedAPI",
+    "command": "python api.py",
+    "share": true,
+    "secrets": [],
+    "environment": {
+      "envFiles": [".env"],
+      "path": [],
+      "env": {}
+    },
+    "rules": {
+      "port": 8080
+    }
+  },
+  "TestAdvancedValuation": {
+    "name": "TestAdvancedValuation",
+    "command": "python test_advanced_valuation.py",
+    "share": false,
+    "secrets": [],
+    "environment": {
+      "envFiles": [".env"],
+      "path": [],
+      "env": {}
+    }
   }
 }

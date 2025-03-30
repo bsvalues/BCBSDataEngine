@@ -32,8 +32,14 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 import statsmodels.api as sm
 from scipy import stats
-# Import LightGBM for gradient boosting
-import lightgbm as lgb
+# Try to import LightGBM for gradient boosting, but continue without it if not available
+try:
+    import lightgbm as lgb
+    has_lightgbm = True
+except (ImportError, OSError) as e:
+    has_lightgbm = False
+    lgb = None
+    logging.warning(f"LightGBM not available: {str(e)}. LightGBM and ensemble models will be disabled.")
 import warnings
 import math
 import time
@@ -1790,11 +1796,23 @@ def advanced_property_valuation(property_data, target_property=None, test_size=0
         else:
             scaler = None
             
+        # Validate model_type parameter based on available models
+        valid_model_types = ['linear']
+        if has_lightgbm:
+            valid_model_types.extend(['lightgbm', 'ensemble'])
+            
+        if model_type not in valid_model_types:
+            if model_type in ['lightgbm', 'ensemble'] and not has_lightgbm:
+                logger.warning(f"Model type '{model_type}' requested but LightGBM is not available. Falling back to 'linear' model.")
+                model_type = 'linear'
+            else:
+                raise ValueError(f"Invalid model_type: {model_type}. Must be one of {valid_model_types}")
+        
         # Step 9: Train the model based on selected model type
         logger.info(f"Training model with type: {model_type}")
         
-        # Define default parameters for LightGBM if none provided
-        if model_type == 'lightgbm' and lightgbm_params is None:
+        # Define default parameters for LightGBM if none provided and LightGBM is available
+        if has_lightgbm and model_type == 'lightgbm' and lightgbm_params is None:
             lightgbm_params = {
                 'objective': 'regression',
                 'metric': 'rmse',
@@ -1810,7 +1828,7 @@ def advanced_property_valuation(property_data, target_property=None, test_size=0
             logger.info("Using default LightGBM parameters")
             
         # Create and train the model based on model_type
-        if model_type == 'lightgbm':
+        if model_type == 'lightgbm' and has_lightgbm:
             # Convert data to LightGBM dataset format for faster training
             logger.info("Training LightGBM model for gradient boosting regression")
             lgb_train = lgb.Dataset(X_train, y_train, feature_name=selected_features)
@@ -1829,7 +1847,7 @@ def advanced_property_valuation(property_data, target_property=None, test_size=0
             lgb_importance = model.feature_importance(importance_type='gain')
             feature_importance = dict(zip(selected_features, lgb_importance))
             
-        elif model_type == 'ensemble':
+        elif model_type == 'ensemble' and has_lightgbm:
             # For ensemble, we train both a linear model and LightGBM model
             # Then average their predictions (can be weighted)
             logger.info("Training ensemble of linear and LightGBM models")
