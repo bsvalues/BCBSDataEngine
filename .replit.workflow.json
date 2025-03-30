@@ -6,6 +6,9 @@
     "command": "echo 'Running validation...' && echo 'Validation complete with 148/150 records valid'"
   },
   "ValuationAPI": {
-    "command": "python simple_valuation_api.py"
+    "command": "chmod +x .replit.workflow/ValuationAPI/run && .replit.workflow/ValuationAPI/run"
+  },
+  "SimpleValuationAPI": {
+    "command": "chmod +x .replit.workflow/SimpleValuationAPI/run && .replit.workflow/SimpleValuationAPI/run"
   }
 }

@@ -1,0 +1,12 @@
+#!/bin/bash
+
+echo "=== Starting the BCBS_Values Simple Valuation API ==="
+
+# Set environment variables
+export PORT=5002
+export WORKERS=4
+export TIMEOUT=120
+export LOG_LEVEL="info"
+
+# Run the simple valuation API which doesn't require database access
+exec ./start_simple_api.sh

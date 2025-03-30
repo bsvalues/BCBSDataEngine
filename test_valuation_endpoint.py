@@ -1,44 +1,54 @@
 #!/usr/bin/env python3
 """
-Test script for the simple property valuation API.
-This script verifies the functionality of the POST /api/valuation endpoint.
+Test script for the new property valuation API endpoint.
+This script verifies the functionality of the POST /api/valuations endpoint.
 """
 import json
+import os
 import sys
 import requests
 import time
+import argparse
 from datetime import datetime
 
-def test_simple_valuation_api(base_url, debug=False):
+def test_valuation_api(base_url, api_key=None, debug=False):
     """
-    Test the simple valuation API endpoint by sending a sample request.
+    Test the property valuation API endpoint by sending a sample request.
     
     Args:
-        base_url (str): The base URL of the API (e.g., http://localhost:5002)
+        base_url (str): The base URL of the API (e.g., http://localhost:8000)
+        api_key (str, optional): The API key for authentication
         debug (bool, optional): Whether to print debug information
     
     Returns:
         dict: The API response and metadata
     """
-    endpoint = f"{base_url}/api/valuation"
+    endpoint = f"{base_url}/api/valuations"
     
     # Sample property data for valuation
     sample_property = {
-        "square_feet": 2200,
+        "address": "123 Test St",
+        "city": "Richland",
+        "state": "WA",
+        "zip_code": "99352",
+        "property_type": "Single Family",
         "bedrooms": 4,
         "bathrooms": 2.5,
+        "square_feet": 2200,
+        "lot_size": 8500,
         "year_built": 2005,
         "latitude": 46.2804,
         "longitude": -119.2752,
-        "city": "Richland",
-        "neighborhood": "Meadow Springs",
         "use_gis": True
     }
     
-    # Prepare headers
+    # Prepare headers with API key if provided
     headers = {
         "Content-Type": "application/json"
     }
+    
+    if api_key:
+        headers["X-API-KEY"] = api_key
     
     # Start the timer for performance measurement
     start_time = time.time()
@@ -87,11 +97,9 @@ def test_simple_valuation_api(base_url, debug=False):
         print(f"API Test Summary ({result['status']}):")
         print(f"Status Code: {result['status_code']}")
         print(f"Response Time: {result['response_time']:.2f} seconds")
-        predicted_value = result['data']['valuation']['predicted_value']
-        print(f"Predicted Value: ${predicted_value:,.2f}")
-        if 'r2_score' in result['data']['valuation']:
-            print(f"R² Score: {result['data']['valuation']['r2_score']:.4f}")
-        print(f"Model Type: {result['data']['valuation']['model_type']}")
+        print(f"Estimated Value: ${result['data']['estimated_value']:,.2f}")
+        print(f"Confidence Score: {result['data']['confidence_score']:.4f}")
+        print(f"Model Used: {result['data']['model_used']}")
         print(f"{'='*40}\n")
         
         return result
@@ -117,18 +125,38 @@ def test_simple_valuation_api(base_url, debug=False):
         
         return result
 
-if __name__ == "__main__":
-    # Get command line arguments
-    import argparse
+def main():
+    """Parse command line arguments and run the test"""
+    parser = argparse.ArgumentParser(description="Test the property valuation API endpoint")
     
-    parser = argparse.ArgumentParser(description="Test the simple valuation API")
-    parser.add_argument("--url", default="http://localhost:5002", help="Base URL of the API")
-    parser.add_argument("--debug", action="store_true", help="Print debug information")
+    parser.add_argument(
+        "--url", 
+        default="http://localhost:8000",
+        help="Base URL of the API (default: http://localhost:8000)"
+    )
+    
+    parser.add_argument(
+        "--key", 
+        default=os.environ.get("BCBS_VALUES_API_KEY", "sample_test_key"),
+        help="API key for authentication (default: value from BCBS_VALUES_API_KEY env var)"
+    )
+    
+    parser.add_argument(
+        "--debug", 
+        action="store_true",
+        help="Print debug information"
+    )
     
     args = parser.parse_args()
     
     # Run the test
-    result = test_simple_valuation_api(args.url, args.debug)
+    result = test_valuation_api(args.url, args.key, args.debug)
     
-    # Set exit code based on result
-    sys.exit(0 if result["status"] == "success" else 1)
+    # Exit with appropriate code
+    if result["status"] == "error":
+        sys.exit(1)
+    
+    sys.exit(0)
+
+if __name__ == "__main__":
+    main()

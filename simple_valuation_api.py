@@ -135,8 +135,9 @@ def valuation():
         # Load training data if not already loaded
         if TRAINING_DATA is None:
             try:
-                # Try to load from sample data path
+                # Try to load from test data path first, then fallback to sample paths
                 data_paths = [
+                    'data/test_properties.csv',  # Our new test data with price information
                     'data/benton_county_properties.csv',
                     'data/property_data.csv',
                     'data/pacs_sample.csv'
@@ -149,10 +150,11 @@ def valuation():
                         break
                 
                 if TRAINING_DATA is None:
-                    # If no files found, generate sample data
-                    logger.info("No data files found, generating sample data")
-                    from test_gis_valuation import create_sample_property_data
-                    TRAINING_DATA = create_sample_property_data(num_properties=150, with_gis=True)
+                    # If no files found, generate fresh test data
+                    logger.info("No data files found, generating fresh test data")
+                    from data.generate_test_data import generate_test_data
+                    test_data_path = generate_test_data(num_properties=50)
+                    TRAINING_DATA = pd.read_csv(test_data_path)
                     
                 logger.info(f"Training data loaded with {len(TRAINING_DATA)} properties")
             except Exception as e:

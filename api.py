@@ -6,22 +6,116 @@ import datetime
 import json
 import os
 import time
+import logging
+import pandas as pd
 from typing import Dict, List, Optional, Union
 
-from fastapi import FastAPI, HTTPException, Query, Path, Depends
+from fastapi import FastAPI, HTTPException, Query, Path, Depends, Security, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security.api_key import APIKeyHeader, APIKey
 from pydantic import BaseModel, Field
 
 # Import database and models
 from db.database import Database
 from db.models import PropertyValuation, Property, ValidationResult
 
+# Import valuation engine
+try:
+    from src.valuation import estimate_property_value, train_basic_valuation_model, train_multiple_regression_model
+    valuation_engine_available = True
+except ImportError:
+    # Log the error but don't crash - API can still work with other endpoints
+    valuation_engine_available = False
+    
 # Setup logging with our custom configuration
-from utils.logging_config import get_api_logger
+try:
+    from utils.logging_config import get_api_logger
+    # Get a configured logger for the API
+    logger = get_api_logger()
+except ImportError:
+    # Fallback to basic logging if custom logger not available
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    logger = logging.getLogger(__name__)
 
-# Get a configured logger for the API
-logger = get_api_logger()
 logger.info("API module initializing...")
+
+# Define security for API key authentication
+API_KEY_NAME = "X-API-KEY"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+# Training data cache
+TRAINING_DATA = None
+
+# Get API key from environment variables
+def get_api_key():
+    """Get API key from environment"""
+    return os.environ.get("BCBS_VALUES_API_KEY", "sample_test_key")
+
+# Authentication dependency
+async def verify_api_key(api_key: str = Security(api_key_header)):
+    """
+    Security dependency to verify API key.
+    This adds authentication to protected endpoints.
+    """
+    # In production, use more secure methods like OAuth or JWT
+    if api_key is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API Key is missing. Add X-API-KEY header to your request.",
+        )
+    
+    # Get expected API key
+    expected_key = get_api_key()
+    
+    # Compare provided key with expected key
+    if api_key != expected_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API Key. Please use a valid key.",
+        )
+    
+    return api_key
+
+# Define reference points for GIS-enhanced valuation
+REF_POINTS = {
+    'downtown_richland': {
+        'lat': 46.2804, 
+        'lon': -119.2752, 
+        'weight': 1.0  # Downtown Richland
+    },
+    'downtown_kennewick': {
+        'lat': 46.2112, 
+        'lon': -119.1367, 
+        'weight': 0.9  # Downtown Kennewick
+    },
+    'downtown_pasco': {
+        'lat': 46.2395, 
+        'lon': -119.1005, 
+        'weight': 0.8  # Downtown Pasco
+    }
+}
+
+# Define neighborhood ratings for location quality adjustments
+NEIGHBORHOOD_RATINGS = {
+    'Richland': 1.15,       # Premium location
+    'West Richland': 1.05,  # Above average
+    'Kennewick': 1.0,       # Average
+    'Pasco': 0.95,          # Slightly below average
+    'Benton City': 0.9,     # Below average
+    'Prosser': 0.85,        # Further below average
+    
+    # Common neighborhoods
+    'Meadow Springs': 1.2,  # Premium Richland neighborhood
+    'Horn Rapids': 1.1,     # Above average Richland neighborhood
+    'Queensgate': 1.15,     # Premium West Richland neighborhood
+    'Southridge': 1.05,     # Above average Kennewick neighborhood
+    
+    # Default for unknown locations
+    'Unknown': 1.0
+}
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -91,6 +185,41 @@ class AgentStatusList(BaseModel):
     active_agents: int = Field(..., description="Number of active agents")
     tasks_in_progress: int = Field(..., description="Number of tasks currently in progress")
     tasks_completed_today: int = Field(..., description="Number of tasks completed today")
+
+class PropertyValuationRequest(BaseModel):
+    """Property valuation request model."""
+    address: Optional[str] = Field(None, description="Property address")
+    city: Optional[str] = Field(None, description="Property city")
+    state: Optional[str] = Field("WA", description="Property state")
+    zip_code: Optional[str] = Field(None, description="Property zip code")
+    property_type: Optional[str] = Field("Single Family", description="Property type")
+    bedrooms: Optional[float] = Field(None, description="Number of bedrooms")
+    bathrooms: Optional[float] = Field(None, description="Number of bathrooms")
+    square_feet: Optional[float] = Field(None, description="Property size in square feet")
+    lot_size: Optional[float] = Field(None, description="Lot size in square feet")
+    year_built: Optional[int] = Field(None, description="Year the property was built")
+    latitude: Optional[float] = Field(None, description="Property latitude")
+    longitude: Optional[float] = Field(None, description="Property longitude")
+    use_gis: Optional[bool] = Field(True, description="Whether to use GIS features for valuation")
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "address": "123 Main St",
+                "city": "Richland",
+                "state": "WA",
+                "zip_code": "99352",
+                "property_type": "Single Family",
+                "bedrooms": 3,
+                "bathrooms": 2,
+                "square_feet": 1800,
+                "lot_size": 8500,
+                "year_built": 1995,
+                "latitude": 46.2804,
+                "longitude": -119.2752,
+                "use_gis": True
+            }
+        }
 
 # --- API Endpoints ---
 
@@ -529,6 +658,262 @@ async def get_agent_status():
     }
     
     return agent_status
+
+
+@app.post("/api/valuations", response_model=PropertyValue, dependencies=[Depends(verify_api_key)])
+async def create_property_valuation(
+    request: PropertyValuationRequest,
+    db: Database = Depends(get_db)
+):
+    """
+    Generate a property valuation based on provided property details.
+    
+    This endpoint:
+    1. Takes property details as input
+    2. Uses the valuation engine to estimate the property value
+    3. Returns the valuation with confidence metrics
+    
+    Authentication: Requires API key header (X-API-KEY)
+    """
+    logger.info(f"Property valuation request received for {request.address}")
+    
+    # Check if valuation engine is available
+    if not valuation_engine_available:
+        raise HTTPException(
+            status_code=503,
+            detail="Valuation engine is currently unavailable"
+        )
+        
+    try:
+        # Prepare data for valuation
+        property_data = {
+            'address': request.address,
+            'city': request.city,
+            'state': request.state,
+            'zip_code': request.zip_code,
+            'property_type': request.property_type or 'Single Family',
+            'bedrooms': request.bedrooms,
+            'bathrooms': request.bathrooms,
+            'square_feet': request.square_feet,
+            'lot_size': request.lot_size,
+            'year_built': request.year_built,
+            'latitude': request.latitude,
+            'longitude': request.longitude
+        }
+        
+        # Filter out None values
+        property_data = {k: v for k, v in property_data.items() if v is not None}
+        
+        # Check for required fields for valuation
+        required_fields = ['square_feet', 'bedrooms', 'bathrooms', 'year_built']
+        missing_fields = [field for field in required_fields if field not in property_data]
+        
+        if missing_fields:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Missing required property fields: {', '.join(missing_fields)}"
+            )
+            
+        # Get or create the session for database operations
+        session = db.Session()
+        
+        # Get training data from database for model training
+        # First try to use cached data if available
+        global TRAINING_DATA
+        
+        if TRAINING_DATA is None:
+            logger.info("Loading training data from database")
+            try:
+                # Query properties with valuations
+                properties = session.query(Property).filter(
+                    Property.square_feet.isnot(None),
+                    Property.bedrooms.isnot(None),
+                    Property.bathrooms.isnot(None),
+                    Property.year_built.isnot(None),
+                    Property.estimated_value.isnot(None)
+                ).limit(1000).all()  # Limit to reasonable size for API endpoint
+                
+                if not properties or len(properties) < 10:
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Insufficient training data for valuation"
+                    )
+                
+                # Convert SQLAlchemy objects to dictionaries
+                training_data = []
+                for prop in properties:
+                    prop_dict = {
+                        'square_feet': prop.square_feet,
+                        'bedrooms': prop.bedrooms,
+                        'bathrooms': prop.bathrooms,
+                        'year_built': prop.year_built,
+                        'estimated_value': prop.estimated_value
+                    }
+                    
+                    # Add GIS data if available
+                    if request.use_gis and prop.latitude and prop.longitude:
+                        prop_dict['latitude'] = prop.latitude
+                        prop_dict['longitude'] = prop.longitude
+                        
+                    # Add lot size if available
+                    if prop.lot_size:
+                        prop_dict['lot_size'] = prop.lot_size
+                        
+                    training_data.append(prop_dict)
+                
+                # Convert to DataFrame for the valuation model
+                TRAINING_DATA = pd.DataFrame(training_data)
+                
+            except Exception as e:
+                logger.error(f"Error loading training data: {str(e)}", exc_info=True)
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Database error while loading training data: {str(e)}"
+                )
+        
+        # Create a pandas DataFrame for the target property
+        target_property = pd.DataFrame([property_data])
+        
+        # Generate valuation using the valuation engine
+        logger.info("Generating property valuation")
+        try:
+            # Call the valuation function from src.valuation
+            valuation_result = estimate_property_value(
+                property_data=TRAINING_DATA,
+                target_property=target_property,
+                ref_points=REF_POINTS if request.use_gis else None,
+                neighborhood_ratings=NEIGHBORHOOD_RATINGS if request.use_gis else None,
+                use_gis_features=request.use_gis
+            )
+            
+            # Check if valuation was successful
+            if not valuation_result or 'predicted_value' not in valuation_result:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Valuation failed to produce a result"
+                )
+                
+            # Extract feature importance
+            feature_importance = {}
+            if 'feature_importance' in valuation_result:
+                for feature, importance in valuation_result['feature_importance']:
+                    feature_importance[feature] = importance
+            
+            # Get key metrics
+            estimated_value = valuation_result['predicted_value']
+            confidence_score = valuation_result.get('r2_score', 0.85)
+            model_used = valuation_result.get('model_type', 'advanced_property_valuation')
+            
+            # Get features used for valuation
+            features_used = {k: v for k, v in property_data.items() if k in ['square_feet', 'bedrooms', 'bathrooms', 'year_built', 'lot_size']}
+            
+            # Check if we have GIS features
+            if request.use_gis and 'gis_features' in valuation_result:
+                for feature, value in valuation_result['gis_features'].items():
+                    features_used[feature] = value
+            
+            # Get comparable properties if available
+            comparable_properties = []
+            if 'comparable_properties' in valuation_result:
+                comparable_properties = valuation_result['comparable_properties']
+                
+            # Build response object
+            response = {
+                "property_id": "temp-" + str(int(time.time())),
+                "address": f"{request.address or 'Custom Property'}, {request.city or 'Richland'}, {request.state} {request.zip_code or '99352'}",
+                "estimated_value": float(estimated_value),
+                "confidence_score": float(confidence_score),
+                "model_used": model_used,
+                "valuation_date": datetime.datetime.now(),
+                "features_used": features_used,
+                "comparable_properties": comparable_properties
+            }
+            
+            # Save the valuation to the database if we have all required data
+            if all(field in property_data for field in ['address', 'city', 'state', 'zip_code']):
+                try:
+                    # Check if the property already exists
+                    existing_property = session.query(Property).filter(
+                        Property.address == property_data['address'],
+                        Property.city == property_data['city'],
+                        Property.state == property_data['state'],
+                        Property.zip_code == property_data['zip_code']
+                    ).first()
+                    
+                    if existing_property:
+                        # Use the existing property
+                        property_obj = existing_property
+                        
+                        # Update missing fields if they're provided in the request
+                        for field, value in property_data.items():
+                            if hasattr(property_obj, field) and getattr(property_obj, field) is None:
+                                setattr(property_obj, field, value)
+                    else:
+                        # Create a new property
+                        property_obj = Property(
+                            **property_data,
+                            import_date=datetime.datetime.now(),
+                            data_source='API'
+                        )
+                        session.add(property_obj)
+                        
+                    # Save the property to get an ID
+                    session.commit()
+                    
+                    # Update the property_id in the response
+                    response["property_id"] = str(property_obj.id)
+                    
+                    # Create a new valuation record
+                    valuation_obj = PropertyValuation(
+                        property_id=property_obj.id,
+                        valuation_date=datetime.datetime.now(),
+                        estimated_value=estimated_value,
+                        confidence_score=confidence_score,
+                        model_name=model_used,
+                        model_version='1.0',
+                        model_r2_score=confidence_score,
+                        feature_importance=json.dumps(feature_importance),
+                        comparable_properties=json.dumps(comparable_properties) if comparable_properties else None
+                    )
+                    
+                    # Add location factors if available
+                    if 'location_factor' in valuation_result:
+                        valuation_obj.location_factor = valuation_result['location_factor']
+                    if 'size_factor' in valuation_result:
+                        valuation_obj.size_factor = valuation_result['size_factor']
+                        
+                    session.add(valuation_obj)
+                    session.commit()
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to save valuation to database: {str(e)}")
+                    # Continue with the response even if saving fails
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Valuation engine error: {str(e)}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Valuation engine error: {str(e)}"
+            )
+    
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+        
+    except Exception as e:
+        logger.error(f"Error processing valuation request: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error processing valuation request: {str(e)}"
+        )
+        
+    finally:
+        # Always close the session
+        if 'session' in locals():
+            session.close()
+
 
 # Run the application when called directly (development mode)
 if __name__ == "__main__":

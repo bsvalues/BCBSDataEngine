@@ -177,14 +177,38 @@ The API will be available at `http://localhost:8000` with the following endpoint
 
 - `GET /api/valuations`: Get property valuations with filtering options
 - `GET /api/valuations/{property_id}`: Get valuation for a specific property
+- `POST /api/valuations`: Generate a new property valuation (requires API key)
 - `GET /api/etl-status`: Get the current status of the ETL process
 - `GET /api/agent-status`: Get the status of the BS Army of Agents
 
-Example API call:
+Example API calls:
 
 ```bash
+# Get a list of property valuations with filtering
 curl "http://localhost:8000/api/valuations?limit=5&min_value=300000"
+
+# Generate a new property valuation (requires authentication)
+curl -X POST "http://localhost:8000/api/valuations" \
+  -H "Content-Type: application/json" \
+  -H "X-API-KEY: your_api_key_here" \
+  -d '{
+    "address": "123 Main St",
+    "city": "Richland",
+    "state": "WA",
+    "zip_code": "99352",
+    "property_type": "Single Family",
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "square_feet": 1800,
+    "lot_size": 8500,
+    "year_built": 1995,
+    "latitude": 46.2804,
+    "longitude": -119.2752,
+    "use_gis": true
+  }'
 ```
+
+The POST `/api/valuations` endpoint generates a new property valuation using our advanced valuation models, including GIS features when available. This endpoint requires authentication with an API key passed in the `X-API-KEY` header.
 
 ### Using the Dashboard
 

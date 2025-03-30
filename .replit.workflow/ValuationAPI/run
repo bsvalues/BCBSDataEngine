@@ -1,2 +1,13 @@
 #!/bin/bash
-python simple_valuation_api.py
+
+echo "=== Starting the BCBS_Values Valuation API ==="
+
+# Set environment variables
+export PORT=5002
+export WORKERS=2
+export TIMEOUT=120
+export LOG_LEVEL="info"
+export BCBS_VALUES_API_KEY="sample_test_key"
+
+# Use the simple valuation API which doesn't require database access
+exec ./start_simple_api.sh
