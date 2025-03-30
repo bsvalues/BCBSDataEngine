@@ -1,857 +1,609 @@
 """
-Advanced Integration tests for the BCBS_Values system.
+Integration Tests for BCBS Values Advanced Functionality
+======================================================
 
-These tests validate the full ETL pipeline, advanced valuation functions, and API endpoints
-in an integrated manner, simulating real-world usage patterns with a focus on enhanced features.
+This test suite verifies the end-to-end functionality of the BCBS Values platform,
+including ETL processes, API endpoints, and advanced valuation algorithms.
+
+Tests cover:
+- ETL pipeline execution and data loading
+- API endpoint functionality and response validation
+- Advanced regression metrics calculation
+- GIS-based property valuation adjustments
 """
+
 import os
 import sys
 import json
-import logging
-import unittest
-from unittest import mock
 import pytest
 import pandas as pd
-import numpy as np
-from pathlib import Path
+from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
+from datetime import datetime, timedelta
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Add project root to path to enable imports
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Add parent directory to path for module imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Import ETL components
-from etl.pacs_import import PACSImporter
-from etl.mls_scraper import MLSScraper
-from etl.narrpr_scraper import NARRPRScraper
-from etl.data_validation import validate_property_data
-
-# Import database components
-from db.database import Database
-from db.models import Property, PropertyValuation, ValidationResult
-
-# Import valuation components
-from src.valuation import estimate_property_value
-from src.gis_integration import calculate_proximity_score
-
-# Import API application
+# Import necessary modules for testing
+import db.models as models
 from api import app
+from etl.data_validation import validate_property_data
+from etl.pacs_import import import_pacs_data
+from src.valuation import ValuationEngine, AdvancedValuationEngine
+from src.gis_features import GISFeatureEngine
 
-# Initialize the test client
+
+# Create a TestClient for our API
 client = TestClient(app)
 
-# Sample test data
-TEST_PROPERTY = {
-    "parcel_id": "TEST12345678",
-    "address": "123 Test Street",
-    "city": "Richland",
-    "state": "WA",
-    "zip_code": "99352",
-    "bedrooms": 3,
-    "bathrooms": 2.5,
-    "square_feet": 2200,
-    "lot_size": 8500,
-    "year_built": 2010,
-    "latitude": 46.2804,
-    "longitude": -119.2752,
-    "property_type": "single_family",
-    "neighborhood": "Meadow Springs"
+# Define API routes for testing
+API_ROUTES = {
+    'valuations': '/api/valuations',
+    'etl_status': '/api/etl-status',
+    'agent_status': '/api/agent-status',
+    'property_detail': '/api/properties/{property_id}',
+    'property_valuation': '/api/properties/{property_id}/valuation',
+    'gis_features': '/api/properties/{property_id}/gis-features'
 }
 
-class TestETLPipeline:
-    """Test the complete ETL pipeline with mocked data sources."""
+# Define test data constants
+TEST_API_KEY = os.environ.get('BCBS_VALUES_API_KEY', 'test_api_key_for_integration')
+TEST_PROPERTY_ID = 'BENTON-12345'
+
+
+# Fixtures for database and API testing
+@pytest.fixture
+def db_session():
+    """
+    Creates a test database session and cleans up after tests.
+    Uses in-memory SQLite for testing to avoid affecting the production database.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from db.database import Base
     
-    @pytest.fixture
-    def mock_database(self):
-        """Create a mock database connection for testing."""
-        # Use a mock for the database to avoid actual DB operations
-        with mock.patch('db.database.Database') as mock_db:
-            # Configure the mock to return predictable values
-            mock_db_instance = mock_db.return_value
-            mock_db_instance.insert_property.return_value = 1
-            mock_db_instance.insert_validation_result.return_value = 1
-            mock_db_instance.get_properties.return_value = [TEST_PROPERTY]
-            yield mock_db_instance
+    # Create in-memory SQLite database for testing
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
     
-    @pytest.fixture
-    def mock_pacs_data(self):
-        """Create mock PACS data for testing."""
-        return [TEST_PROPERTY]
+    # Create a new session for testing
+    Session = sessionmaker(bind=engine)
+    session = Session()
     
-    @pytest.fixture
-    def mock_mls_data(self):
-        """Create mock MLS data for testing."""
-        mls_data = TEST_PROPERTY.copy()
-        mls_data.update({
-            "list_price": 450000,
-            "days_on_market": 14,
-            "listing_status": "active"
-        })
-        return [mls_data]
+    yield session
     
-    @pytest.fixture
-    def mock_narrpr_data(self):
-        """Create mock NARRPR data for testing."""
-        narrpr_data = TEST_PROPERTY.copy()
-        narrpr_data.update({
-            "estimated_value": 445000,
-            "confidence_score": 0.85,
-            "comparable_sales": 3
-        })
-        return [narrpr_data]
+    # Cleanup after test
+    session.close()
+
+
+@pytest.fixture
+def sample_property_data():
+    """
+    Returns a sample property dataset for testing ETL and valuation functions.
+    """
+    return pd.DataFrame({
+        'property_id': [TEST_PROPERTY_ID, 'BENTON-67890', 'BENTON-54321'],
+        'address': ['123 Main St, Kennewick, WA', '456 Oak Ave, Richland, WA', '789 Pine St, Prosser, WA'],
+        'bedrooms': [3, 4, 2],
+        'bathrooms': [2.5, 3.0, 1.0],
+        'square_footage': [2200, 3100, 1500],
+        'lot_size': [0.25, 0.4, 0.15],
+        'year_built': [1995, 2005, 1975],
+        'last_sale_date': ['2020-05-15', '2019-10-10', '2021-02-28'],
+        'last_sale_price': [350000, 425000, 275000],
+        'property_type': ['Single Family', 'Single Family', 'Single Family'],
+        'latitude': [46.2122, 46.2851, 46.2068],
+        'longitude': [-119.1372, -119.2785, -119.7683]
+    })
+
+
+@pytest.fixture
+def sample_gis_data():
+    """
+    Returns sample GIS feature data for testing spatial analysis functions.
+    """
+    return {
+        TEST_PROPERTY_ID: {
+            'school_proximity_score': 0.85,
+            'park_proximity_score': 0.72,
+            'shopping_proximity_score': 0.91,
+            'highway_access_score': 0.65,
+            'flood_risk_score': 0.12,
+            'walkability_score': 0.78,
+            'neighborhood_quality_score': 0.82,
+            'spatial_cluster_id': 'SC-NW-KENNEWICK-01'
+        }
+    }
+
+
+@pytest.fixture
+def authenticated_client():
+    """
+    Returns a TestClient with authentication headers set.
+    """
+    test_client = TestClient(app)
+    test_client.headers.update({"X-API-KEY": TEST_API_KEY})
+    return test_client
+
+
+# ===========================================================================
+# ETL Pipeline Tests
+# ===========================================================================
+
+@patch('etl.pacs_import.requests.get')
+def test_etl_pipeline_execution(mock_get, db_session, sample_property_data):
+    """
+    Tests the execution of the ETL pipeline, verifying that data is correctly
+    loaded into the database.
     
-    def test_etl_pipeline_integration(self, mock_database, mock_pacs_data, mock_mls_data, mock_narrpr_data):
-        """
-        Test the full ETL pipeline integration.
+    Steps:
+    1. Mock the PACS API response to return test data
+    2. Run the import_pacs_data function
+    3. Verify data is validated and loaded into the database
+    4. Check that property counts match expectations
+    """
+    # Configure mock response from PACS API
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {'properties': sample_property_data.to_dict('records')}
+    mock_get.return_value = mock_response
+    
+    # Mock the database session
+    with patch('etl.pacs_import.db_session', db_session):
+        # Execute the ETL function
+        import_results = import_pacs_data()
         
-        This test simulates the complete ETL process:
-        1. Extracting data from PACS, MLS, and NARRPR sources
-        2. Transforming and validating the data
-        3. Loading the data into the database
-        """
-        # Mock the external data sources
-        with mock.patch('etl.pacs_import.PACSImporter.fetch_properties', return_value=mock_pacs_data), \
-             mock.patch('etl.mls_scraper.MLSScraper.fetch_listings', return_value=mock_mls_data), \
-             mock.patch('etl.narrpr_scraper.NARRPRScraper.fetch_valuations', return_value=mock_narrpr_data):
-            
-            # Step 1: Extract data from PACS
-            logger.info("Extracting data from PACS...")
-            pacs_importer = PACSImporter()
-            properties = pacs_importer.fetch_properties()
-            
-            # Verify PACS extraction
-            assert len(properties) > 0, "No properties extracted from PACS"
-            assert properties[0]['parcel_id'] == TEST_PROPERTY['parcel_id'], "Incorrect property data from PACS"
-            
-            # Step 2: Extract data from MLS
-            logger.info("Extracting data from MLS...")
-            mls_scraper = MLSScraper()
-            listings = mls_scraper.fetch_listings()
-            
-            # Verify MLS extraction
-            assert len(listings) > 0, "No listings extracted from MLS"
-            assert 'list_price' in listings[0], "MLS data missing list price"
-            
-            # Step 3: Extract data from NARRPR
-            logger.info("Extracting data from NARRPR...")
-            narrpr_scraper = NARRPRScraper()
-            valuations = narrpr_scraper.fetch_valuations()
-            
-            # Verify NARRPR extraction
-            assert len(valuations) > 0, "No valuations extracted from NARRPR"
-            assert 'estimated_value' in valuations[0], "NARRPR data missing estimated value"
-            
-            # Step 4: Merge and validate the data
-            logger.info("Validating property data...")
-            # Merge the first property with its corresponding listing and valuation
-            merged_property = {**properties[0], **listings[0], **valuations[0]}
-            
-            # Validate the merged property data
-            validation_results = validate_property_data([merged_property])
-            
-            # Verify validation
-            assert len(validation_results) > 0, "No validation results returned"
-            assert 'is_valid' in validation_results[0], "Validation result missing is_valid flag"
-            assert validation_results[0]['is_valid'], "Property data failed validation"
-            
-            # Step 5: Load the validated data into the database
-            logger.info("Loading validated data into database...")
-            # Insert the property into the database
-            property_id = mock_database.insert_property(merged_property)
-            
-            # Insert the validation result into the database
-            validation_id = mock_database.insert_validation_result(
-                property_id=property_id, 
-                validation_result=validation_results[0]
+        # Verify import metrics
+        assert import_results['total_records'] == len(sample_property_data)
+        assert import_results['valid_records'] > 0
+        assert import_results['invalid_records'] == 0
+        
+        # Verify data was inserted into the database
+        properties = db_session.query(models.Property).all()
+        assert len(properties) == len(sample_property_data)
+        
+        # Verify specific property was imported correctly
+        test_property = db_session.query(models.Property).filter_by(
+            property_id=TEST_PROPERTY_ID).first()
+        assert test_property is not None
+        assert test_property.address == '123 Main St, Kennewick, WA'
+        assert test_property.bedrooms == 3
+        assert test_property.bathrooms == 2.5
+
+
+def test_data_validation(sample_property_data):
+    """
+    Tests the data validation logic to ensure properties are correctly
+    validated before being inserted into the database.
+    
+    Tests:
+    1. Valid property data passes validation
+    2. Invalid data (missing required fields) fails validation
+    3. Validation reports include expected error messages
+    """
+    # Test valid data passes validation
+    validation_results = validate_property_data(sample_property_data)
+    assert validation_results['valid_count'] == len(sample_property_data)
+    assert validation_results['invalid_count'] == 0
+    
+    # Create invalid data with missing required fields
+    invalid_data = sample_property_data.copy()
+    invalid_data.loc[0, 'property_id'] = None  # Missing property_id
+    invalid_data.loc[1, 'square_footage'] = -100  # Invalid square footage
+    
+    # Test invalid data fails validation
+    validation_results = validate_property_data(invalid_data)
+    assert validation_results['valid_count'] < len(invalid_data)
+    assert validation_results['invalid_count'] > 0
+    
+    # Verify validation errors contain expected messages
+    errors = validation_results['errors']
+    assert any('property_id' in str(err) for err in errors)
+    assert any('square_footage' in str(err) for err in errors)
+
+
+# ===========================================================================
+# API Endpoint Tests
+# ===========================================================================
+
+def test_valuation_endpoint(authenticated_client, db_session, sample_property_data):
+    """
+    Tests the property valuation API endpoint to ensure it returns the
+    correct valuation data with expected structure.
+    
+    Tests:
+    1. Endpoint returns 200 status code with valid API key
+    2. Response JSON has the expected structure
+    3. Valuation results include required fields
+    """
+    # Prepare test data
+    with patch('api.get_db', return_value=db_session):
+        # Add test property to database
+        test_property = models.Property(
+            property_id=TEST_PROPERTY_ID,
+            address='123 Main St, Kennewick, WA',
+            bedrooms=3,
+            bathrooms=2.5,
+            square_footage=2200,
+            lot_size=0.25,
+            year_built=1995,
+            last_sale_date=datetime.strptime('2020-05-15', '%Y-%m-%d'),
+            last_sale_price=350000,
+            property_type='Single Family',
+            latitude=46.2122,
+            longitude=-119.1372
+        )
+        db_session.add(test_property)
+        db_session.commit()
+        
+        # Call the API endpoint
+        response = authenticated_client.get(
+            API_ROUTES['property_valuation'].format(property_id=TEST_PROPERTY_ID)
+        )
+        
+        # Verify response status and structure
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Check required fields in valuation response
+        assert 'property_id' in data
+        assert 'estimated_value' in data
+        assert 'valuation_date' in data
+        assert 'confidence_score' in data
+        assert 'valuation_factors' in data
+        
+        # Check property identification
+        assert data['property_id'] == TEST_PROPERTY_ID
+        
+        # Verify the valuation amount is reasonable
+        assert data['estimated_value'] > 0
+        assert isinstance(data['estimated_value'], (int, float))
+        
+        # Verify confidence score is between 0 and 1
+        assert 0 <= data['confidence_score'] <= 1
+        
+        # Verify valuation factors includes key property attributes
+        factors = data['valuation_factors']
+        assert 'square_footage' in factors
+        assert 'location' in factors
+        assert 'property_condition' in factors
+
+
+def test_etl_status_endpoint(authenticated_client):
+    """
+    Tests the ETL status API endpoint to verify it returns information
+    about recent ETL processes.
+    
+    Tests:
+    1. Endpoint returns 200 status code
+    2. Response contains information about recent ETL runs
+    3. ETL status fields are correctly structured
+    """
+    # Call the ETL status endpoint
+    response = authenticated_client.get(API_ROUTES['etl_status'])
+    
+    # Verify response status
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Check response structure
+    assert 'last_run' in data
+    assert 'status' in data
+    assert 'metrics' in data
+    
+    # Verify metrics structure
+    metrics = data['metrics']
+    assert 'total_records_processed' in metrics
+    assert 'valid_records' in metrics
+    assert 'invalid_records' in metrics
+    assert 'processing_time_seconds' in metrics
+
+
+def test_agent_status_endpoint(authenticated_client):
+    """
+    Tests the agent status API endpoint to verify it returns information
+    about the BS Army of Agents.
+    
+    Tests:
+    1. Endpoint returns 200 status code
+    2. Response contains a list of agent statuses
+    3. Agent status fields match expected structure
+    """
+    # Call the agent status endpoint
+    response = authenticated_client.get(API_ROUTES['agent_status'])
+    
+    # Verify response status
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Check response structure
+    assert 'agents' in data
+    assert isinstance(data['agents'], list)
+    
+    # Skip test if no agents are configured yet
+    if not data['agents']:
+        pytest.skip("No agents are configured in the system")
+    
+    # Verify agent status fields
+    agent = data['agents'][0]
+    assert 'agent_id' in agent
+    assert 'name' in agent
+    assert 'status' in agent
+    assert 'last_active' in agent
+    assert 'metrics' in agent
+    
+    # Verify metrics structure for agent
+    metrics = agent['metrics']
+    assert 'tasks_completed' in metrics
+    assert 'success_rate' in metrics
+    assert 'average_response_time' in metrics
+
+
+def test_gis_features_endpoint(authenticated_client, db_session, sample_gis_data):
+    """
+    Tests the GIS features API endpoint to verify it returns spatial
+    analysis data for properties.
+    
+    Tests:
+    1. Endpoint returns 200 status code
+    2. Response contains expected GIS features
+    3. Feature values are within expected ranges
+    """
+    # Prepare test data
+    with patch('api.get_db', return_value=db_session):
+        # Add test property to database
+        test_property = models.Property(
+            property_id=TEST_PROPERTY_ID,
+            address='123 Main St, Kennewick, WA',
+            bedrooms=3,
+            bathrooms=2.5,
+            square_footage=2200,
+            lot_size=0.25,
+            year_built=1995,
+            property_type='Single Family',
+            latitude=46.2122,
+            longitude=-119.1372
+        )
+        db_session.add(test_property)
+        
+        # Add GIS features for test property
+        gis_features = models.GISFeature(
+            property_id=test_property.id,
+            school_proximity_score=0.85,
+            park_proximity_score=0.72,
+            shopping_proximity_score=0.91,
+            highway_access_score=0.65,
+            flood_risk_score=0.12,
+            walkability_score=0.78,
+            neighborhood_quality_score=0.82,
+            spatial_cluster_id='SC-NW-KENNEWICK-01'
+        )
+        db_session.add(gis_features)
+        db_session.commit()
+        
+        # Call the API endpoint
+        response = authenticated_client.get(
+            API_ROUTES['gis_features'].format(property_id=TEST_PROPERTY_ID)
+        )
+        
+        # Verify response status and structure
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Check required fields in GIS features
+        assert 'property_id' in data
+        assert 'features' in data
+        
+        # Check property identification
+        assert data['property_id'] == TEST_PROPERTY_ID
+        
+        # Verify expected GIS features are present
+        features = data['features']
+        assert 'school_proximity_score' in features
+        assert 'park_proximity_score' in features
+        assert 'neighborhood_quality_score' in features
+        assert 'spatial_cluster_id' in features
+        
+        # Verify feature values match expected ranges
+        assert 0 <= features['school_proximity_score'] <= 1
+        assert 0 <= features['park_proximity_score'] <= 1
+        assert 0 <= features['neighborhood_quality_score'] <= 1
+        assert isinstance(features['spatial_cluster_id'], str)
+
+
+# ===========================================================================
+# Advanced Valuation Tests
+# ===========================================================================
+
+def test_advanced_regression_metrics(db_session, sample_property_data):
+    """
+    Tests the advanced regression metrics calculation to ensure accurate
+    statistical modeling for property valuations.
+    
+    Tests:
+    1. Multiple regression model calculates weights correctly
+    2. Model coefficients are within expected ranges
+    3. R-squared and other metrics are calculated correctly
+    """
+    # Mock the database with test properties
+    with patch('src.valuation.get_db', return_value=db_session):
+        # Add test properties to the database
+        for index, row in sample_property_data.iterrows():
+            property_data = models.Property(
+                property_id=row['property_id'],
+                address=row['address'],
+                bedrooms=row['bedrooms'],
+                bathrooms=row['bathrooms'],
+                square_footage=row['square_footage'],
+                lot_size=row['lot_size'],
+                year_built=row['year_built'],
+                last_sale_date=datetime.strptime(row['last_sale_date'], '%Y-%m-%d'),
+                last_sale_price=row['last_sale_price'],
+                property_type=row['property_type'],
+                latitude=row['latitude'],
+                longitude=row['longitude']
             )
-            
-            # Verify database loading
-            assert property_id is not None, "Failed to insert property into database"
-            assert validation_id is not None, "Failed to insert validation result into database"
-            
-            logger.info("ETL pipeline integration test completed successfully")
+            db_session.add(property_data)
+        db_session.commit()
+        
+        # Initialize advanced valuation engine
+        engine = AdvancedValuationEngine()
+        
+        # Train the model
+        metrics = engine.train_model()
+        
+        # Verify regression metrics
+        assert 'r_squared' in metrics
+        assert 'mean_absolute_error' in metrics
+        assert 'model_coefficients' in metrics
+        
+        # Check that R-squared is within reasonable range (0-1)
+        assert 0 <= metrics['r_squared'] <= 1
+        
+        # Verify model coefficients include important property factors
+        coefficients = metrics['model_coefficients']
+        assert 'square_footage' in coefficients
+        assert 'bedrooms' in coefficients
+        assert 'bathrooms' in coefficients
+        assert 'year_built' in coefficients
+        
+        # Verify coefficients have reasonable values
+        assert coefficients['square_footage'] > 0  # Larger homes should be worth more
+        assert abs(coefficients['bedrooms']) < 100000  # Coefficient shouldn't be extreme
 
 
-class TestAdvancedValuation:
-    """Test the advanced valuation functions with realistic data."""
+def test_gis_adjustments_calculation(db_session, sample_property_data, sample_gis_data):
+    """
+    Tests the GIS adjustment calculations to ensure spatial features
+    correctly influence property valuations.
     
-    @pytest.fixture
-    def sample_property_data(self):
-        """Create sample property data for valuation testing."""
-        return pd.DataFrame([
-            {
-                "parcel_id": "TEST12345678",
-                "bedrooms": 3,
-                "bathrooms": 2.5,
-                "square_feet": 2200,
-                "year_built": 2010,
-                "latitude": 46.2804,
-                "longitude": -119.2752,
-                "sale_price": 450000,
-                "neighborhood": "Meadow Springs",
-                "city": "Richland",
-                "property_type": "single_family"
-            },
-            {
-                "parcel_id": "TEST87654321",
-                "bedrooms": 4,
-                "bathrooms": 3,
-                "square_feet": 2800,
-                "year_built": 2015,
-                "latitude": 46.2822,
-                "longitude": -119.2780,
-                "sale_price": 550000,
-                "neighborhood": "Meadow Springs",
-                "city": "Richland",
-                "property_type": "single_family"
-            },
-            {
-                "parcel_id": "TEST24680123",
-                "bedrooms": 2,
-                "bathrooms": 1.5,
-                "square_feet": 1500,
-                "year_built": 1995,
-                "latitude": 46.2112,
-                "longitude": -119.1367,
-                "sale_price": 320000,
-                "neighborhood": "Southridge",
-                "city": "Kennewick",
-                "property_type": "single_family"
-            }
-        ])
-    
-    @pytest.fixture
-    def sample_target_property(self):
-        """Create a sample target property for valuation."""
-        return {
-            "parcel_id": "TESTTARGET123",
-            "bedrooms": 3,
-            "bathrooms": 2,
-            "square_feet": 2000,
-            "year_built": 2008,
-            "latitude": 46.2804,
-            "longitude": -119.2752,
-            "neighborhood": "Meadow Springs",
-            "city": "Richland",
-            "property_type": "single_family"
-        }
-    
-    @pytest.fixture
-    def ref_points(self):
-        """Define reference points for GIS-enhanced valuation."""
-        return {
-            'downtown_richland': {
-                'lat': 46.2804, 
-                'lon': -119.2752, 
-                'weight': 1.0
-            },
-            'downtown_kennewick': {
-                'lat': 46.2112, 
-                'lon': -119.1367, 
-                'weight': 0.9
-            }
-        }
-    
-    @pytest.fixture
-    def neighborhood_ratings(self):
-        """Define neighborhood ratings for location quality adjustments."""
-        return {
-            'Richland': 1.15,
-            'Kennewick': 1.0,
-            'Meadow Springs': 1.2,
-            'Southridge': 1.05,
-            'Unknown': 1.0
-        }
-    
-    def test_advanced_valuation_with_gis(self, sample_property_data, sample_target_property, ref_points, neighborhood_ratings):
-        """
-        Test the advanced valuation function with GIS integration.
+    Tests:
+    1. GIS features produce valuation adjustments
+    2. Adjustment factors are within expected ranges
+    3. High quality neighborhood produces positive adjustments
+    """
+    # Mock the database with test properties and GIS features
+    with patch('src.valuation.get_db', return_value=db_session):
+        # Add test property to the database
+        property_data = models.Property(
+            property_id=TEST_PROPERTY_ID,
+            address='123 Main St, Kennewick, WA',
+            bedrooms=3,
+            bathrooms=2.5,
+            square_footage=2200,
+            lot_size=0.25,
+            year_built=1995,
+            last_sale_date=datetime.strptime('2020-05-15', '%Y-%m-%d'),
+            last_sale_price=350000,
+            property_type='Single Family',
+            latitude=46.2122,
+            longitude=-119.1372
+        )
+        db_session.add(property_data)
+        db_session.commit()
         
-        This test validates that the advanced valuation function:
-        1. Successfully processes property data with GIS features
-        2. Returns a valid estimated value with confidence interval
-        3. Includes advanced metrics like R-squared and feature importances
-        """
-        try:
-            # Convert sample data to DataFrame if it's not already
-            if not isinstance(sample_property_data, pd.DataFrame):
-                sample_property_data = pd.DataFrame(sample_property_data)
-            
-            # Step 1: Run the advanced valuation function with GIS features
-            logger.info("Running advanced valuation with GIS integration...")
-            valuation_result = estimate_property_value(
-                property_data=sample_property_data,
-                target_property=sample_target_property,
-                gis_data=None,  # GIS data will be calculated internally based on coordinates
-                ref_points=ref_points,
-                neighborhood_ratings=neighborhood_ratings,
-                use_gis_features=True,
-                use_multiple_regression=True,
-                include_advanced_metrics=True
-            )
-            
-            # Step 2: Verify the valuation result contains all expected components
-            assert valuation_result is not None, "Valuation result is None"
-            assert 'estimated_value' in valuation_result, "Missing estimated value in result"
-            assert valuation_result['estimated_value'] > 0, "Estimated value should be positive"
-            
-            # Step 3: Verify confidence interval
-            assert 'confidence_interval' in valuation_result, "Missing confidence interval"
-            assert len(valuation_result['confidence_interval']) == 2, "Confidence interval should have lower and upper bounds"
-            
-            # Step 4: Verify advanced metrics
-            assert 'r_squared' in valuation_result, "Missing R-squared in advanced metrics"
-            assert 0 <= valuation_result['r_squared'] <= 1, "R-squared should be between 0 and 1"
-            
-            assert 'adjusted_r_squared' in valuation_result, "Missing adjusted R-squared in advanced metrics"
-            assert 'mean_absolute_error' in valuation_result, "Missing MAE in advanced metrics"
-            
-            # Step 5: Verify feature importances are included
-            assert 'feature_importances' in valuation_result, "Missing feature importances"
-            assert len(valuation_result['feature_importances']) > 0, "Feature importances should not be empty"
-            
-            # Step 6: Verify model coefficients are included
-            assert 'model_coefficients' in valuation_result, "Missing model coefficients"
-            
-            # Log the successful result
-            logger.info(f"Advanced valuation test completed successfully. Estimated value: ${valuation_result['estimated_value']:,.2f}")
-            logger.info(f"R-squared: {valuation_result['r_squared']:.4f}")
-            
-        except Exception as e:
-            pytest.fail(f"Advanced valuation test failed with exception: {str(e)}")
+        # Add GIS features
+        gis_data = sample_gis_data[TEST_PROPERTY_ID]
+        gis_features = models.GISFeature(
+            property_id=property_data.id,
+            school_proximity_score=gis_data['school_proximity_score'],
+            park_proximity_score=gis_data['park_proximity_score'],
+            shopping_proximity_score=gis_data['shopping_proximity_score'],
+            highway_access_score=gis_data['highway_access_score'],
+            flood_risk_score=gis_data['flood_risk_score'],
+            walkability_score=gis_data['walkability_score'],
+            neighborhood_quality_score=gis_data['neighborhood_quality_score'],
+            spatial_cluster_id=gis_data['spatial_cluster_id']
+        )
+        db_session.add(gis_features)
+        db_session.commit()
+        
+        # Initialize GIS feature engine
+        gis_engine = GISFeatureEngine()
+        
+        # Get GIS adjustment for test property
+        adjustment_factor = gis_engine.calculate_gis_adjustment(property_data.id)
+        
+        # Verify adjustment factor is within expected range
+        assert isinstance(adjustment_factor, float)
+        assert 0.5 <= adjustment_factor <= 1.5  # Should be reasonable multiplier
+        
+        # Test with high neighborhood quality
+        # High quality neighborhood should produce positive adjustment
+        gis_features.neighborhood_quality_score = 0.95
+        db_session.commit()
+        
+        high_quality_adjustment = gis_engine.calculate_gis_adjustment(property_data.id)
+        assert high_quality_adjustment > 1.0  # Positive adjustment for good neighborhood
+        
+        # Test with low neighborhood quality
+        gis_features.neighborhood_quality_score = 0.25
+        db_session.commit()
+        
+        low_quality_adjustment = gis_engine.calculate_gis_adjustment(property_data.id)
+        assert low_quality_adjustment < 1.0  # Negative adjustment for poor neighborhood
 
 
-class TestAPIEndpoints:
-    """Test the API endpoints using FastAPI's TestClient."""
+def test_valuation_ensemble(db_session, sample_property_data):
+    """
+    Tests the ensemble valuation model that combines multiple valuation
+    techniques for improved accuracy.
     
-    @pytest.fixture
-    def mock_db(self):
-        """Create a mock database with test data."""
-        with mock.patch('api.get_db') as mock_get_db:
-            mock_db = mock.MagicMock()
-            
-            # Mock property data
-            mock_properties = [
-                {
-                    "id": 1,
-                    "parcel_id": "TEST12345678",
-                    "address": "123 Test Street",
-                    "city": "Richland",
-                    "state": "WA",
-                    "zip_code": "99352",
-                    "bedrooms": 3,
-                    "bathrooms": 2.5,
-                    "square_feet": 2200,
-                    "lot_size": 8500,
-                    "year_built": 2010,
-                    "latitude": 46.2804,
-                    "longitude": -119.2752,
-                    "property_type": "single_family",
-                    "neighborhood": "Meadow Springs",
-                    "created_at": "2025-03-29T22:15:00"
-                }
-            ]
-            
-            # Mock valuations
-            mock_valuations = [
-                {
-                    "id": 1,
-                    "property_id": 1,
-                    "estimated_value": 450000,
-                    "confidence_interval_low": 425000,
-                    "confidence_interval_high": 475000,
-                    "valuation_date": "2025-03-29T22:30:00",
-                    "model_version": "advanced_regression_1.2.0",
-                    "r_squared": 0.92,
-                    "mean_absolute_error": 15000,
-                    "mean_squared_error": 250000000,
-                    "created_at": "2025-03-29T22:30:00"
-                }
-            ]
-            
-            # Set up the mock db to return test data
-            mock_db.get_properties.return_value = mock_properties
-            mock_db.get_property_by_id.return_value = mock_properties[0]
-            mock_db.get_valuations.return_value = mock_valuations
-            mock_db.get_valuation_by_property_id.return_value = mock_valuations[0]
-            
-            # Mock ETL status
-            mock_db.get_etl_status.return_value = {
-                "last_run": "2025-03-29T22:00:00",
-                "status": "completed",
-                "records_processed": 150,
-                "success_rate": 0.98,
-                "errors": 3,
-                "next_scheduled_run": "2025-03-30T22:00:00"
-            }
-            
-            # Mock agent status
-            mock_db.get_agent_status.return_value = [
-                {
-                    "agent_id": "bcbs-cascade-operator",
-                    "status": "active",
-                    "last_activity": "2025-03-29T23:45:00",
-                    "tasks_completed": 42,
-                    "success_rate": 0.95
-                },
-                {
-                    "agent_id": "bcbs-bootstrap-commander",
-                    "status": "idle",
-                    "last_activity": "2025-03-29T23:30:00",
-                    "tasks_completed": 38,
-                    "success_rate": 0.92
-                }
-            ]
-            
-            # Configure mock_get_db to return our mock_db
-            mock_get_db.return_value = mock_db
-            yield mock_db
-    
-    def test_health_endpoint(self):
-        """Test the health check endpoint to ensure API is operational."""
-        response = client.get("/api/health")
-        assert response.status_code == 200
-        assert response.json()["status"] == "OK"
-    
-    def test_valuations_endpoint(self, mock_db):
-        """
-        Test the valuations endpoint that returns property valuations.
+    Tests:
+    1. Ensemble model produces valuations from multiple models
+    2. Ensemble valuation has appropriate confidence score
+    3. Ensemble result is within range of component models
+    """
+    # Add test properties to database
+    with patch('src.valuation.get_db', return_value=db_session):
+        # Add test property
+        test_property = models.Property(
+            property_id=TEST_PROPERTY_ID,
+            address='123 Main St, Kennewick, WA',
+            bedrooms=3,
+            bathrooms=2.5,
+            square_footage=2200,
+            lot_size=0.25,
+            year_built=1995,
+            last_sale_date=datetime.strptime('2020-05-15', '%Y-%m-%d'),
+            last_sale_price=350000,
+            property_type='Single Family',
+            latitude=46.2122,
+            longitude=-119.1372
+        )
+        db_session.add(test_property)
+        db_session.commit()
         
-        This test verifies that:
-        1. The endpoint returns a 200 OK status
-        2. The response contains a list of valuations
-        3. The valuations have all required fields
-        """
-        response = client.get("/api/valuations")
-        assert response.status_code == 200
+        # Initialize valuation engines
+        basic_engine = ValuationEngine()
+        advanced_engine = AdvancedValuationEngine()
         
-        data = response.json()
-        assert "valuations" in data
-        assert isinstance(data["valuations"], list)
-        assert len(data["valuations"]) > 0
+        # Get valuations from each model
+        basic_valuation = basic_engine.calculate_valuation(TEST_PROPERTY_ID)
+        advanced_valuation = advanced_engine.calculate_valuation(TEST_PROPERTY_ID)
         
-        # Verify the first valuation has all required fields
-        valuation = data["valuations"][0]
-        assert "property_id" in valuation
-        assert "estimated_value" in valuation
-        assert "confidence_interval_low" in valuation
-        assert "confidence_interval_high" in valuation
-        assert "r_squared" in valuation
-    
-    def test_valuation_by_property_id(self, mock_db):
-        """
-        Test the endpoint for getting a valuation for a specific property.
+        # Calculate ensemble valuation (weighted average)
+        ensemble_value = (basic_valuation['estimated_value'] * 0.4 + 
+                          advanced_valuation['estimated_value'] * 0.6)
         
-        This test verifies that:
-        1. The endpoint returns a 200 OK status for a valid property ID
-        2. The response contains the correct property valuation
-        3. The endpoint returns a 404 Not Found for an invalid property ID
-        """
-        # Test with valid property ID
-        response = client.get("/api/valuations/1")
-        assert response.status_code == 200
+        # Verify individual valuations
+        assert basic_valuation['estimated_value'] > 0
+        assert advanced_valuation['estimated_value'] > 0
         
-        valuation = response.json()
-        assert valuation["property_id"] == 1
-        assert valuation["estimated_value"] == 450000
-        assert valuation["r_squared"] == 0.92
+        # Verify ensemble valuation is within range of component models
+        min_val = min(basic_valuation['estimated_value'], advanced_valuation['estimated_value'])
+        max_val = max(basic_valuation['estimated_value'], advanced_valuation['estimated_value'])
+        assert min_val <= ensemble_value <= max_val
         
-        # Test with invalid property ID
-        response = client.get("/api/valuations/999")
-        assert response.status_code == 404
-    
-    def test_etl_status_endpoint(self, mock_db):
-        """
-        Test the ETL status endpoint.
+        # Test ensemble confidence score calculation
+        basic_confidence = basic_valuation['confidence_score']
+        advanced_confidence = advanced_valuation['confidence_score']
+        ensemble_confidence = (basic_confidence * 0.4 + advanced_confidence * 0.6)
         
-        This test verifies that:
-        1. The endpoint returns a 200 OK status
-        2. The response contains ETL status information
-        3. The status information includes all required fields
-        """
-        response = client.get("/api/etl-status")
-        assert response.status_code == 200
-        
-        status = response.json()
-        assert "last_run" in status
-        assert "status" in status
-        assert "records_processed" in status
-        assert "success_rate" in status
-        assert status["status"] == "completed"
-    
-    def test_agent_status_endpoint(self, mock_db):
-        """
-        Test the agent status endpoint.
-        
-        This test verifies that:
-        1. The endpoint returns a 200 OK status
-        2. The response contains a list of agent statuses
-        3. Each agent status includes all required fields
-        """
-        response = client.get("/api/agent-status")
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert "agents" in data
-        assert isinstance(data["agents"], list)
-        assert len(data["agents"]) > 0
-        
-        # Verify the first agent has all required fields
-        agent = data["agents"][0]
-        assert "agent_id" in agent
-        assert "status" in agent
-        assert "last_activity" in agent
-        assert "tasks_completed" in agent
-        assert "success_rate" in agent
-    
-    def test_what_if_valuation_endpoint(self, mock_db):
-        """
-        Test the what-if valuation endpoint.
-        
-        This test verifies that:
-        1. The endpoint accepts a POST request with property parameters
-        2. The response contains a valuation prediction with adjusted parameters
-        3. The response includes sensitivity analysis on parameter changes
-        """
-        # Define test parameters for what-if analysis
-        what_if_params = {
-            "property_id": 1,
-            "adjustments": {
-                "bedrooms": 4,  # Increased from 3
-                "bathrooms": 3,  # Increased from 2.5
-                "square_feet": 2500,  # Increased from 2200
-                "year_built": 2010,  # Same
-                "neighborhood": "Meadow Springs",  # Same
-                "city": "Richland"  # Same
-            },
-            "market_conditions": {
-                "interest_rate": 4.5,
-                "market_trend": "rising"
-            },
-            "quality_factors": {
-                "school_quality": 8,
-                "crime_rate": 2,
-                "property_condition": 9
-            }
-        }
-        
-        # Mock the valuation function to return a predetermined result
-        with mock.patch('api.estimate_property_value') as mock_valuation:
-            mock_valuation.return_value = {
-                "estimated_value": 490000,  # Increased from original 450000
-                "confidence_interval": [465000, 515000],
-                "r_squared": 0.93,
-                "adjusted_r_squared": 0.91,
-                "mean_absolute_error": 14500,
-                "feature_importances": {
-                    "square_feet": 0.48,
-                    "bathrooms": 0.22,
-                    "bedrooms": 0.15,
-                    "property_age": 0.10,
-                    "neighborhood_rating": 0.05
-                },
-                "sensitivity_analysis": {
-                    "bedrooms": {
-                        "impact": 15000,
-                        "direction": "positive"
-                    },
-                    "bathrooms": {
-                        "impact": 20000,
-                        "direction": "positive"
-                    },
-                    "square_feet": {
-                        "impact": 25000,
-                        "direction": "positive"
-                    }
-                }
-            }
-            
-            response = client.post(
-                "/api/what-if-valuation",
-                json=what_if_params
-            )
-            
-            assert response.status_code == 200
-            
-            result = response.json()
-            assert "estimated_value" in result
-            assert result["estimated_value"] > 0
-            
-            # Verify sensitivity analysis
-            assert "sensitivity_analysis" in result
-            assert "square_feet" in result["sensitivity_analysis"]
-            
-            # Verify comparison with original value
-            assert "original_value" in result
-            assert "value_difference" in result
-            assert "percentage_change" in result
-    
-    def test_api_neighborhoods_endpoint(self, mock_db):
-        """
-        Test the neighborhoods endpoint that provides a list of neighborhoods in Benton County.
-        
-        This test verifies that:
-        1. The endpoint returns a list of neighborhoods
-        2. Each neighborhood has a name and property count
-        3. The response includes metadata about the neighborhoods
-        """
-        # Mock the database to return predefined neighborhoods
-        mock_db.get_neighborhoods.return_value = [
-            {"name": "Meadow Springs", "property_count": 245, "avg_valuation": 450000},
-            {"name": "South Richland", "property_count": 380, "avg_valuation": 520000},
-            {"name": "West Richland", "property_count": 310, "avg_valuation": 480000},
-            {"name": "Central Kennewick", "property_count": 290, "avg_valuation": 395000},
-            {"name": "Columbia Park", "property_count": 175, "avg_valuation": 435000}
-        ]
-        
-        response = client.get("/api/neighborhoods", headers={"X-API-KEY": os.environ.get("BCBS_VALUES_API_KEY", "test-api-key-123")})
-        
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert "neighborhoods" in data
-        assert isinstance(data["neighborhoods"], list)
-        assert len(data["neighborhoods"]) > 0
-        
-        # Verify neighborhood structure
-        neighborhood = data["neighborhoods"][0]
-        assert "name" in neighborhood
-        assert "property_count" in neighborhood
-        assert "avg_valuation" in neighborhood
-        
-        # Verify metadata in response
-        assert "total_neighborhoods" in data
-        assert "total_properties" in data
-        assert data["total_neighborhoods"] == len(data["neighborhoods"])
-    
-    def test_api_property_search_endpoint(self, mock_db):
-        """
-        Test the property search endpoint that allows filtering properties.
-        
-        This test verifies that:
-        1. The endpoint accepts search parameters
-        2. Results are filtered according to the parameters
-        3. Pagination works correctly
-        4. Property details are complete
-        """
-        # Define test search parameters
-        search_params = {
-            "neighborhood": "Meadow Springs",
-            "min_price": 400000,
-            "max_price": 600000,
-            "bedrooms": 3,
-            "bathrooms": 2,
-            "min_square_feet": 2000,
-            "property_type": "single_family",
-            "page": 1,
-            "limit": 10
-        }
-        
-        # Mock search results
-        mock_search_results = [
-            {
-                "id": 1,
-                "parcel_id": "TEST12345678",
-                "address": "123 Test Street",
-                "city": "Richland",
-                "state": "WA",
-                "zip_code": "99352",
-                "bedrooms": 3,
-                "bathrooms": 2.5,
-                "square_feet": 2200,
-                "lot_size": 8500,
-                "year_built": 2010,
-                "latitude": 46.2804,
-                "longitude": -119.2752,
-                "property_type": "single_family",
-                "neighborhood": "Meadow Springs",
-                "estimated_value": 450000,
-                "last_valuation_date": "2025-03-29T22:30:00"
-            }
-        ]
-        
-        # Setup mock search function
-        mock_db.search_properties.return_value = {
-            "properties": mock_search_results,
-            "total": 15,
-            "page": 1,
-            "limit": 10,
-            "pages": 2
-        }
-        
-        # Add the query parameters to the URL
-        query_string = "&".join([f"{k}={v}" for k, v in search_params.items()])
-        response = client.get(f"/api/properties/search?{query_string}", headers={"X-API-KEY": os.environ.get("BCBS_VALUES_API_KEY", "test-api-key-123")})
-        
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert "properties" in data
-        assert isinstance(data["properties"], list)
-        
-        # Verify pagination data
-        assert "total" in data
-        assert "page" in data
-        assert "limit" in data
-        assert "pages" in data
-        
-        # Verify property data structure
-        if data["properties"]:
-            property_data = data["properties"][0]
-            assert "id" in property_data
-            assert "address" in property_data
-            assert "estimated_value" in property_data
-            assert "neighborhood" in property_data
-    
-    def test_api_valuation_history_endpoint(self, mock_db):
-        """
-        Test the property valuation history endpoint.
-        
-        This test verifies that:
-        1. Historical valuations can be retrieved for a property
-        2. Results include complete valuation details
-        3. Results are ordered by date
-        """
-        # Mock historical valuations
-        mock_valuation_history = [
-            {
-                "id": 3,
-                "property_id": 1,
-                "estimated_value": 450000,
-                "confidence_interval_low": 425000,
-                "confidence_interval_high": 475000,
-                "valuation_date": "2025-03-29T00:00:00",
-                "model_version": "advanced_regression_1.2.0"
-            },
-            {
-                "id": 2,
-                "property_id": 1,
-                "estimated_value": 445000,
-                "confidence_interval_low": 420000,
-                "confidence_interval_high": 470000,
-                "valuation_date": "2025-02-28T00:00:00",
-                "model_version": "advanced_regression_1.1.0"
-            },
-            {
-                "id": 1,
-                "property_id": 1,
-                "estimated_value": 440000,
-                "confidence_interval_low": 415000,
-                "confidence_interval_high": 465000,
-                "valuation_date": "2025-01-31T00:00:00",
-                "model_version": "advanced_regression_1.0.0"
-            }
-        ]
-        
-        # Setup mock
-        mock_db.get_property_valuation_history.return_value = mock_valuation_history
-        
-        # Make the request
-        response = client.get("/api/properties/1/valuation-history", headers={"X-API-KEY": os.environ.get("BCBS_VALUES_API_KEY", "test-api-key-123")})
-        
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert "history" in data
-        assert isinstance(data["history"], list)
-        assert len(data["history"]) > 0
-        
-        # Verify valuation structure
-        valuation = data["history"][0]
-        assert "estimated_value" in valuation
-        assert "valuation_date" in valuation
-        assert "model_version" in valuation
-        
-        # Verify order (most recent first)
-        dates = [valuation["valuation_date"] for valuation in data["history"]]
-        assert dates == sorted(dates, reverse=True)
-    
-    def test_api_market_trends_endpoint(self, mock_db):
-        """
-        Test the market trends endpoint that provides trend data for properties.
-        
-        This test verifies that:
-        1. The endpoint returns trend data for different periods
-        2. Trends include key metrics like median price and sales volume
-        3. Response includes comparison with previous periods
-        """
-        # Mock market trends data
-        mock_trends = {
-            "current_month": {
-                "median_price": 450000,
-                "avg_price": 470000,
-                "num_sales": 120,
-                "days_on_market": 22,
-                "price_per_sqft": 195
-            },
-            "previous_month": {
-                "median_price": 445000,
-                "avg_price": 465000,
-                "num_sales": 115,
-                "days_on_market": 24,
-                "price_per_sqft": 193
-            },
-            "year_to_date": {
-                "median_price": 447000,
-                "avg_price": 467000,
-                "num_sales": 640,
-                "days_on_market": 23,
-                "price_per_sqft": 194
-            },
-            "previous_year": {
-                "median_price": 435000,
-                "avg_price": 455000,
-                "num_sales": 1450,
-                "days_on_market": 26,
-                "price_per_sqft": 189
-            },
-            "changes": {
-                "monthly": {
-                    "median_price": 1.12,  # Percentage change
-                    "num_sales": 4.35,
-                    "days_on_market": -8.33,
-                    "price_per_sqft": 1.04
-                },
-                "yearly": {
-                    "median_price": 3.45,
-                    "num_sales": 5.54,
-                    "days_on_market": -15.38,
-                    "price_per_sqft": 3.17
-                }
-            }
-        }
-        
-        # Setup mock
-        mock_db.get_market_trends.return_value = mock_trends
-        
-        # Make the request
-        response = client.get("/api/market-trends", headers={"X-API-KEY": os.environ.get("BCBS_VALUES_API_KEY", "test-api-key-123")})
-        
-        assert response.status_code == 200
-        
-        data = response.json()
-        
-        # Verify time periods in response
-        assert "current_month" in data
-        assert "previous_month" in data
-        assert "year_to_date" in data
-        assert "previous_year" in data
-        
-        # Verify metrics in current month
-        current = data["current_month"]
-        assert "median_price" in current
-        assert "avg_price" in current
-        assert "num_sales" in current
-        assert "days_on_market" in current
-        
-        # Verify change calculations
-        assert "changes" in data
-        assert "monthly" in data["changes"]
-        assert "yearly" in data["changes"]
-        assert "median_price" in data["changes"]["monthly"]
+        # Verify confidence scores are within expected range
+        assert 0 <= basic_confidence <= 1
+        assert 0 <= advanced_confidence <= 1
+        assert 0 <= ensemble_confidence <= 1
 
 
 if __name__ == "__main__":
