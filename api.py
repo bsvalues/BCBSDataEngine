@@ -257,6 +257,24 @@ async def root():
         "description": "Real estate valuation API for Benton County, WA"
     }
 
+@app.get("/api/health")
+async def health_check():
+    """
+    Health check endpoint to verify API is operational.
+    
+    This endpoint performs simple verification that the API is running
+    and can be used for monitoring and health checks.
+    
+    Returns:
+        dict: Status message indicating API is operational and version information
+    """
+    return {
+        "status": "ok",
+        "message": "API is operational",
+        "timestamp": datetime.datetime.now().isoformat(),
+        "version": "1.0.0"
+    }
+
 @app.get("/api/valuations", response_model=List[PropertyValue])
 async def get_valuations(
     limit: int = Query(10, description="Maximum number of results to return"),

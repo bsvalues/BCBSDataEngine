@@ -1,13 +1,14 @@
 """
 Database models for the property valuation system.
 """
+import os
 from sqlalchemy import Column, Integer, String, Float, DateTime, Text, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 
-# Import db and Base from app
-from app import db
+# Import Base from db package
+from db import Base
 
-class Property(db.Model):
+class Property(Base):
     """
     Property model representing real estate properties.
     """
@@ -79,7 +80,7 @@ class Property(db.Model):
         return f"<Property(id={self.id}, address='{self.address}', city='{self.city}', state='{self.state}')>"
 
 
-class ValidationResult(db.Model):
+class ValidationResult(Base):
     """
     Validation result model for storing data validation history.
     """
@@ -100,7 +101,7 @@ class ValidationResult(db.Model):
         return f"<ValidationResult(id={self.id}, timestamp='{self.timestamp}', status='{self.status}')>"
 
 
-class PropertyValuation(db.Model):
+class PropertyValuation(Base):
     """
     Property valuation model for storing valuation results from the various models.
     """

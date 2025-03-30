@@ -7,10 +7,10 @@ import logging
 import json
 from datetime import datetime
 import pandas as pd
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from db.models import Base, Property, ValidationResult, PropertyValuation
+from db import Base, engine, SessionLocal
+from db.models import Property, ValidationResult, PropertyValuation
 
 logger = logging.getLogger(__name__)
 
@@ -24,25 +24,21 @@ class Database:
         """
         Initialize database connection.
         """
-        self.database_url = os.getenv("DATABASE_URL")
+        # Use the shared engine and session
+        self.engine = engine
+        self.Session = SessionLocal
         
-        if not self.database_url:
-            logger.warning("DATABASE_URL not found in environment variables")
-            # Use a default PostgreSQL connection string
-            self.database_url = f"postgresql://{os.getenv('PGUSER')}:{os.getenv('PGPASSWORD')}@{os.getenv('PGHOST')}:{os.getenv('PGPORT')}/{os.getenv('PGDATABASE')}"
-        
-        try:
-            self.engine = create_engine(
-                self.database_url,
-                pool_recycle=300,
-                pool_pre_ping=True
-            )
-            Base.metadata.create_all(self.engine)
-            self.Session = sessionmaker(bind=self.engine)
-            logger.info("Database connection established")
-        except SQLAlchemyError as e:
-            logger.error(f"Database connection failed: {str(e)}", exc_info=True)
-            raise
+        # Create tables if they don't exist
+        if self.engine:
+            try:
+                Base.metadata.create_all(self.engine)
+                logger.info("Database connection established")
+            except SQLAlchemyError as e:
+                logger.error(f"Database connection failed: {str(e)}", exc_info=True)
+                raise
+        else:
+            logger.error("Database engine not available - check DATABASE_URL")
+            raise SQLAlchemyError("Database engine not available")
     
     def insert_properties(self, properties_df, source):
         """

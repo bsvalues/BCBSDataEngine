@@ -3,6 +3,30 @@
     {
       "name": "WebApp",
       "type": "web"
+    },
+    {
+      "name": "API",
+      "type": "web",
+      "command": "python run_api.py",
+      "restartOn": {
+        "files": ["./api.py", "./run_api.py", "./db/models.py", "./db/database.py", "./db/__init__.py"]
+      }
+    },
+    {
+      "name": "BasicAPI",
+      "type": "web",
+      "command": "./run_basic_api.sh",
+      "restartOn": {
+        "files": ["./basic_api.py"]
+      }
+    },
+    {
+      "name": "SimpleValuationAPI",
+      "type": "web",
+      "command": "./run_simple_api.sh",
+      "restartOn": {
+        "files": ["./simple_valuation_api.py"]
+      }
     }
   ]
 }
