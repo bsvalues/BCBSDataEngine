@@ -1,0 +1,15 @@
+{
+  "name": "WebApp",
+  "language": "python3",
+  "run": "python -m flask --app main run --host 0.0.0.0 --port 5000",
+  "templates": [],
+  "nix": {
+    "channel": "stable-23_11",
+    "packages": ["python311", "python311Packages.flask", "python311Packages.flask-sqlalchemy", "python311Packages.flask-login", "python311Packages.flask-migrate", "python311Packages.werkzeug", "python311Packages.sqlalchemy", "python311Packages.psycopg2", "python311Packages.flask-wtf"]
+  },
+  "port": 5000,
+  "env": {
+    "PYTHONPATH": ".",
+    "FLASK_APP": "main"
+  }
+}

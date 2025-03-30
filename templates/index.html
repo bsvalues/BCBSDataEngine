@@ -1,143 +1,88 @@
 {% extends 'base.html' %}
 
-{% block title %}BCBS Values - Benton County Property Valuation{% endblock %}
+{% block title %}Welcome{% endblock %}
 
 {% block content %}
+<div class="px-4 py-5 my-5 text-center">
+    <i class="bi bi-houses display-1 text-primary mb-3"></i>
+    <h1 class="display-5 fw-bold">BCBS Values</h1>
+    <div class="col-lg-8 mx-auto">
+        <p class="lead mb-4">
+            Advanced real estate valuation platform for Benton County, Washington. 
+            Combining machine learning with comprehensive property data to deliver accurate valuations.
+        </p>
+        <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+            {% if current_user.is_authenticated %}
+            <a href="{{ url_for('main.dashboard') }}" class="btn btn-primary btn-lg px-4 gap-3">Go to Dashboard</a>
+            {% else %}
+            <a href="{{ url_for('auth.login') }}" class="btn btn-primary btn-lg px-4 gap-3">Log In</a>
+            <a href="{{ url_for('auth.register') }}" class="btn btn-outline-secondary btn-lg px-4">Register</a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="container py-5">
+    <div class="row g-4 py-5 row-cols-1 row-cols-lg-3">
+        <div class="col d-flex align-items-start">
+            <div class="icon-square text-body-emphasis bg-body-secondary d-inline-flex align-items-center justify-content-center fs-4 flex-shrink-0 me-3 p-3 rounded">
+                <i class="bi bi-graph-up-arrow"></i>
+            </div>
+            <div>
+                <h3 class="fs-2 text-body-emphasis">Accurate Valuations</h3>
+                <p>Using advanced machine learning algorithms trained on extensive Benton County property data to provide precise valuations.</p>
+            </div>
+        </div>
+        <div class="col d-flex align-items-start">
+            <div class="icon-square text-body-emphasis bg-body-secondary d-inline-flex align-items-center justify-content-center fs-4 flex-shrink-0 me-3 p-3 rounded">
+                <i class="bi bi-geo-alt"></i>
+            </div>
+            <div>
+                <h3 class="fs-2 text-body-emphasis">GIS Integration</h3>
+                <p>Incorporates Geographic Information System data for advanced spatial analysis and neighborhood quality assessment.</p>
+            </div>
+        </div>
+        <div class="col d-flex align-items-start">
+            <div class="icon-square text-body-emphasis bg-body-secondary d-inline-flex align-items-center justify-content-center fs-4 flex-shrink-0 me-3 p-3 rounded">
+                <i class="bi bi-database-check"></i>
+            </div>
+            <div>
+                <h3 class="fs-2 text-body-emphasis">Comprehensive Data</h3>
+                <p>Leveraging data from multiple sources including MLS, NARRPR, and PACS to ensure complete property insights.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="container">
-    <div class="row align-items-center py-5">
-        <div class="col-md-6">
-            <h1 class="display-4 fw-bold mb-4">Benton County Property Valuation</h1>
-            <p class="lead mb-4">Accurate and up-to-date property valuations for Benton County, Washington using advanced machine learning and spatial analysis.</p>
-            <div class="d-grid gap-2 d-md-flex justify-content-md-start">
-                {% if current_user.is_authenticated %}
-                <a href="{{ url_for('dashboard') }}" class="btn btn-primary btn-lg px-4 me-md-2">Dashboard</a>
-                <a href="{{ url_for('valuation') }}" class="btn btn-outline-secondary btn-lg px-4">New Valuation</a>
-                {% else %}
-                <a href="{{ url_for('login') }}" class="btn btn-primary btn-lg px-4 me-md-2">Log In</a>
-                <a href="{{ url_for('register') }}" class="btn btn-outline-secondary btn-lg px-4">Register</a>
-                {% endif %}
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="bg-dark p-4 rounded-3 shadow-sm">
-                <h2 class="mb-3">Quick Property Search</h2>
-                <div class="bg-secondary p-3 rounded mb-3">
-                    <form action="{{ url_for('search') }}" method="GET">
-                        <div class="mb-3">
-                            <label for="address" class="form-label">Address or Parcel ID</label>
-                            <input type="text" class="form-control" id="address" name="address" placeholder="Enter address or parcel ID">
-                        </div>
-                        <div class="d-grid">
-                            <button type="submit" class="btn btn-primary">Search</button>
-                        </div>
-                    </form>
-                </div>
-                <div class="small">
-                    <p class="mb-1">Examples:</p>
-                    <ul class="small">
-                        <li>1234 Main St, Kennewick, WA</li>
-                        <li>135722-123-4567-890</li>
-                        <li>Neighborhood: Southridge</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="row py-4">
-        <div class="col-md-12">
-            <hr class="my-4">
-            <h2 class="text-center mb-4">Our Valuation Services</h2>
-        </div>
-    </div>
-    
-    <div class="row">
-        <div class="col-md-4 mb-4">
-            <div class="card bg-dark shadow-sm h-100">
-                <div class="card-body">
-                    <div class="d-flex justify-content-center mb-3">
-                        <div class="bg-primary text-white rounded-circle p-3">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" class="bi bi-graph-up" viewBox="0 0 16 16">
-                                <path fill-rule="evenodd" d="M0 0h1v15h15v1H0zm10 3.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-1 0V4.9l-3.613 4.417a.5.5 0 0 1-.74.037L7.06 6.767l-3.656 5.027a.5.5 0 0 1-.808-.588l4-5.5a.5.5 0 0 1 .758-.06l2.609 2.61L13.445 4H10.5a.5.5 0 0 1-.5-.5"/>
-                            </svg>
+    <div class="p-5 mb-4 bg-dark rounded-3">
+        <div class="container-fluid py-5">
+            <h2 class="display-5 fw-bold">How It Works</h2>
+            <p class="col-md-8 fs-4">Our system combines data extraction, machine learning, and spatial analysis to deliver accurate property valuations.</p>
+            <div class="row mt-4">
+                <div class="col-md-4 mb-3">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title"><i class="bi bi-1-circle"></i> Add Your Property</h5>
+                            <p class="card-text">Enter your property details or import from county records.</p>
                         </div>
                     </div>
-                    <h3 class="card-title text-center mb-3">Basic Valuation</h3>
-                    <p class="card-text">Accurate property valuations based on property characteristics, recent sales, and market trends.</p>
-                    <ul class="list-unstyled">
-                        <li class="mb-2"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle-fill text-success me-2" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0m-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/></svg> Square footage analysis</li>
-                        <li class="mb-2"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle-fill text-success me-2" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0m-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/></svg> Bedroom/bathroom count</li>
-                        <li class="mb-2"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle-fill text-success me-2" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0m-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/></svg> Property age adjustment</li>
-                    </ul>
                 </div>
-                <div class="card-footer text-center">
-                    <a href="#" class="btn btn-primary">Learn More</a>
-                </div>
-            </div>
-        </div>
-        
-        <div class="col-md-4 mb-4">
-            <div class="card bg-dark shadow-sm h-100">
-                <div class="card-body">
-                    <div class="d-flex justify-content-center mb-3">
-                        <div class="bg-success text-white rounded-circle p-3">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" class="bi bi-houses" viewBox="0 0 16 16">
-                                <path d="M5.793 1a1 1 0 0 1 1.414 0l.647.646a.5.5 0 1 1-.708.708L6.5 1.707 2 6.207V12.5a.5.5 0 0 0 .5.5.5.5 0 0 1 0 1A1.5 1.5 0 0 1 1 12.5V7.207l-.146.147a.5.5 0 0 1-.708-.708zm3 1a1 1 0 0 1 1.414 0L12 3.793V2.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v3.293l1.854 1.853a.5.5 0 0 1-.708.708L15 8.207V13.5a1.5 1.5 0 0 1-1.5 1.5h-8A1.5 1.5 0 0 1 4 13.5V8.207l-.146.147a.5.5 0 1 1-.708-.708zm.707.707L8 5.207 6.707 3.707 4 6.414v7.086a.5.5 0 0 0 .5.5h7a.5.5 0 0 0 .5-.5V6.414zm1-4.414-.646-.647.646-.647.646.647zm-3-3 .646.647-.646.647-.646-.647zm5 5 .646.647-.646.647-.646-.647z"/>
-                            </svg>
+                <div class="col-md-4 mb-3">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title"><i class="bi bi-2-circle"></i> Choose Valuation Method</h5>
+                            <p class="card-text">Select from basic, enhanced ML, or advanced GIS valuation methods.</p>
                         </div>
                     </div>
-                    <h3 class="card-title text-center mb-3">Advanced Valuation</h3>
-                    <p class="card-text">Enhanced accuracy with machine learning models and advanced neighborhood analysis.</p>
-                    <ul class="list-unstyled">
-                        <li class="mb-2"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle-fill text-success me-2" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0m-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/></svg> Multiple regression models</li>
-                        <li class="mb-2"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle-fill text-success me-2" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0m-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/></svg> School district quality</li>
-                        <li class="mb-2"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle-fill text-success me-2" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0m-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/></svg> Comprehensive comps analysis</li>
-                    </ul>
                 </div>
-                <div class="card-footer text-center">
-                    <a href="#" class="btn btn-success">Learn More</a>
-                </div>
-            </div>
-        </div>
-        
-        <div class="col-md-4 mb-4">
-            <div class="card bg-dark shadow-sm h-100">
-                <div class="card-body">
-                    <div class="d-flex justify-content-center mb-3">
-                        <div class="bg-info text-white rounded-circle p-3">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" class="bi bi-pin-map" viewBox="0 0 16 16">
-                                <path fill-rule="evenodd" d="M3.1 11.2a.5.5 0 0 1 .4-.2H6a.5.5 0 0 1 0 1H3.75L1.5 15h13l-2.25-3H10a.5.5 0 0 1 0-1h2.5a.5.5 0 0 1 .4.2l3 4a.5.5 0 0 1-.4.8H.5a.5.5 0 0 1-.4-.8z"/>
-                                <path fill-rule="evenodd" d="M8 1a3 3 0 1 0 0 6 3 3 0 0 0 0-6M4 4a4 4 0 1 1 4.5 3.969V13.5a.5.5 0 0 1-1 0V7.97A4 4 0 0 1 4 3.999z"/>
-                            </svg>
+                <div class="col-md-4 mb-3">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title"><i class="bi bi-3-circle"></i> Get Your Valuation</h5>
+                            <p class="card-text">Receive detailed valuation with confidence scores and market insights.</p>
                         </div>
                     </div>
-                    <h3 class="card-title text-center mb-3">GIS-Enhanced Valuation</h3>
-                    <p class="card-text">Spatial analysis incorporating location-specific data and geographic information systems.</p>
-                    <ul class="list-unstyled">
-                        <li class="mb-2"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle-fill text-success me-2" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0m-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/></svg> Proximity to amenities</li>
-                        <li class="mb-2"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle-fill text-success me-2" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0m-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/></svg> Neighborhood quality ratings</li>
-                        <li class="mb-2"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-check-circle-fill text-success me-2" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0m-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/></svg> Spatial clustering algorithms</li>
-                    </ul>
-                </div>
-                <div class="card-footer text-center">
-                    <a href="#" class="btn btn-info">Learn More</a>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="row py-5">
-        <div class="col-md-12">
-            <div class="bg-dark p-5 rounded-3 shadow-sm text-center">
-                <h2>Ready to get started?</h2>
-                <p class="lead mb-4">Create your account today to access our property valuation tools.</p>
-                <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
-                    {% if current_user.is_authenticated %}
-                    <a href="{{ url_for('dashboard') }}" class="btn btn-primary btn-lg px-4 gap-3">Go to Dashboard</a>
-                    {% else %}
-                    <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg px-4 gap-3">Register Now</a>
-                    <a href="{{ url_for('login') }}" class="btn btn-outline-secondary btn-lg px-4">Log In</a>
-                    {% endif %}
                 </div>
             </div>
         </div>

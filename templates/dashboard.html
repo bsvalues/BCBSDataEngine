@@ -1,93 +1,146 @@
 {% extends 'base.html' %}
 
-{% block title %}BCBS Values - Dashboard{% endblock %}
+{% block title %}Dashboard{% endblock %}
 
 {% block content %}
-<div class="container">
-    <div class="row mt-4">
-        <div class="col-md-12">
-            <h1 class="mb-4">Welcome, {{ current_user.username }}</h1>
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="display-6 fw-bold">Welcome, {{ current_user.username }}!</h1>
+            <p class="lead">Manage your properties and valuation requests.</p>
+        </div>
+        <div class="col-auto">
+            <a href="{{ url_for('main.add_property') }}" class="btn btn-primary">
+                <i class="bi bi-plus-circle"></i> Add Property
+            </a>
         </div>
     </div>
-    
-    <div class="row">
-        <div class="col-md-4">
-            <div class="card bg-dark shadow-sm mb-4">
-                <div class="card-header">
-                    <h5 class="card-title mb-0">Account Information</h5>
+
+    <div class="row g-4">
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">My Properties</h5>
+                    <a href="{{ url_for('main.properties') }}" class="btn btn-sm btn-outline-primary">View All</a>
                 </div>
                 <div class="card-body">
-                    <p><strong>Username:</strong> {{ current_user.username }}</p>
-                    <p><strong>Email:</strong> {{ current_user.email }}</p>
-                    <p><strong>Member Since:</strong> {{ current_user.created_at.strftime('%B %d, %Y') }}</p>
-                    <p><strong>Last Login:</strong> 
-                        {% if current_user.last_login %}
-                            {{ current_user.last_login.strftime('%B %d, %Y at %H:%M') }}
-                        {% else %}
-                            N/A
-                        {% endif %}
-                    </p>
-                    <a href="{{ url_for('profile') }}" class="btn btn-outline-primary">Edit Profile</a>
+                    {% if properties %}
+                    <div class="list-group">
+                        {% for property in properties[:3] %}
+                        <a href="{{ url_for('main.property_detail', property_id=property.id) }}" class="list-group-item list-group-item-action">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h5 class="mb-1">{{ property.address }}</h5>
+                                <small>{{ property.property_type | replace('_', ' ') | title }}</small>
+                            </div>
+                            <p class="mb-1">{{ property.city }}, {{ property.state }} {{ property.zip_code }}</p>
+                            <small>{{ property.bedrooms }} bed, {{ property.bathrooms }} bath{% if property.square_feet %}, {{ property.square_feet }} sq.ft.{% endif %}</small>
+                        </a>
+                        {% endfor %}
+                    </div>
+                    {% if properties|length > 3 %}
+                    <div class="text-center mt-3">
+                        <a href="{{ url_for('main.properties') }}" class="btn btn-sm btn-outline-secondary">View {{ properties|length - 3 }} more properties</a>
+                    </div>
+                    {% endif %}
+                    {% else %}
+                    <div class="text-center py-5">
+                        <i class="bi bi-house-slash display-1 text-muted"></i>
+                        <p class="lead mt-3">You haven't added any properties yet.</p>
+                        <a href="{{ url_for('main.add_property') }}" class="btn btn-primary mt-2">
+                            <i class="bi bi-plus-circle"></i> Add Your First Property
+                        </a>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
-        
-        <div class="col-md-8">
-            <div class="card bg-dark shadow-sm mb-4">
+
+        <div class="col-md-6">
+            <div class="card h-100">
                 <div class="card-header">
-                    <h5 class="card-title mb-0">Recent Valuations</h5>
+                    <h5 class="mb-0">Recent Valuations</h5>
                 </div>
                 <div class="card-body">
+                    {% if valuations %}
                     <div class="table-responsive">
-                        <table class="table table-dark">
+                        <table class="table table-hover align-middle">
                             <thead>
                                 <tr>
                                     <th>Property</th>
-                                    <th>Estimated Value</th>
+                                    <th>Value</th>
                                     <th>Date</th>
-                                    <th>Actions</th>
+                                    <th>Method</th>
                                 </tr>
                             </thead>
                             <tbody>
+                                {% for valuation in valuations %}
                                 <tr>
-                                    <td>No recent valuations</td>
-                                    <td></td>
-                                    <td></td>
-                                    <td></td>
+                                    <td>
+                                        <a href="{{ url_for('main.property_detail', property_id=valuation.property_id) }}">
+                                            {{ valuation.property.address[:20] }}{% if valuation.property.address|length > 20 %}...{% endif %}
+                                        </a>
+                                    </td>
+                                    <td>${{ "{:,.2f}".format(valuation.estimated_value) }}</td>
+                                    <td>{{ valuation.valuation_date.strftime('%b %d, %Y') }}</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'primary' if valuation.valuation_method == 'basic' else 'success' if valuation.valuation_method == 'enhanced' else 'info' }}">
+                                            {{ valuation.valuation_method | replace('_', ' ') | title }}
+                                        </span>
+                                    </td>
                                 </tr>
+                                {% endfor %}
                             </tbody>
                         </table>
                     </div>
-                    <a href="{{ url_for('valuation') }}" class="btn btn-outline-success">New Valuation</a>
+                    {% else %}
+                    <div class="text-center py-5">
+                        <i class="bi bi-graph-down display-1 text-muted"></i>
+                        <p class="lead mt-3">No valuations have been requested yet.</p>
+                        {% if properties %}
+                        <a href="{{ url_for('main.properties') }}" class="btn btn-primary mt-2">
+                            View Properties to Request Valuation
+                        </a>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                 </div>
             </div>
-            
-            <div class="card bg-dark shadow-sm">
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
                 <div class="card-header">
-                    <h5 class="card-title mb-0">Saved Properties</h5>
+                    <h5 class="mb-0">Quick Actions</h5>
                 </div>
                 <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-dark">
-                            <thead>
-                                <tr>
-                                    <th>Property ID</th>
-                                    <th>Address</th>
-                                    <th>Last Updated</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td>No saved properties</td>
-                                    <td></td>
-                                    <td></td>
-                                    <td></td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <div class="d-grid">
+                                <a href="{{ url_for('main.add_property') }}" class="btn btn-outline-primary">
+                                    <i class="bi bi-house-add fs-4 d-block mb-2"></i>
+                                    Add New Property
+                                </a>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="d-grid">
+                                <a href="{{ url_for('main.properties') }}" class="btn btn-outline-primary">
+                                    <i class="bi bi-buildings fs-4 d-block mb-2"></i>
+                                    View All Properties
+                                </a>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="d-grid">
+                                <a href="{{ url_for('main.profile') }}" class="btn btn-outline-primary">
+                                    <i class="bi bi-person-gear fs-4 d-block mb-2"></i>
+                                    Manage Profile
+                                </a>
+                            </div>
+                        </div>
                     </div>
-                    <a href="{{ url_for('properties') }}" class="btn btn-outline-info">Browse Properties</a>
                 </div>
             </div>
         </div>

@@ -1,16 +1,22 @@
 {
-  "id": "Start",
   "name": "Start",
-  "icon": "🚀",
-  "description": "Install dependencies and set up the environment",
-  "documentation": "Initializes the project dependencies",
-  "type": "script",
-  "run_command": [
-    "echo", "Starting setup..."
-  ],
-  "entrypoint": "main.py",
-  "restart_policy": "on-failure",
-  "categories": [
-    "utility"
+  "language": "python3",
+  "run": "python3 main.py",
+  "templates": [],
+  "nix": {
+    "channel": "stable-22_11"
+  },
+  "backgroundProcesses": [],
+  "ports": [
+    {
+      "port": 5000,
+      "internalPort": 5000,
+      "name": "WebApp",
+      "description": "Web user interface",
+      "isProduction": false,
+      "isProdExposed": false,
+      "isDev": true,
+      "isDevExposed": true
+    }
   ]
 }

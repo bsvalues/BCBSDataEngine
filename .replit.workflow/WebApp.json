@@ -1,6 +1,22 @@
 {
-  "type": "task",
-  "command": "python main.py",
   "name": "WebApp",
-  "icon": "globe"
+  "language": "python3",
+  "run": "python3 main.py",
+  "templates": [],
+  "nix": {
+    "channel": "stable-22_11"
+  },
+  "backgroundProcesses": [],
+  "ports": [
+    {
+      "port": 5000,
+      "internalPort": 5000,
+      "name": "WebApp",
+      "description": "Web user interface",
+      "isProduction": false,
+      "isProdExposed": false,
+      "isDev": true,
+      "isDevExposed": true
+    }
+  ]
 }
