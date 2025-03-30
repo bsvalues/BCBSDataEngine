@@ -12,10 +12,12 @@ jobs:
     # Run on the latest Ubuntu runner
     runs-on: ubuntu-latest
     
-    # Define environment variables available to all steps
+    # Define environment variables available to all steps in the workflow
     env:
+      # Set PYTHONPATH to ensure modules can be imported correctly
       PYTHONPATH: ${{ github.workspace }}
       # Default database URL for tests (will be overridden by test fixtures)
+      # This helps with test isolation and ensures tests don't touch production data
       DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
     
     steps:
@@ -75,14 +77,20 @@ jobs:
           python -c "from app import app; from db.models import *; app.app_context().push(); db.create_all()"
       
       # Run unit tests with pytest
+      # These are faster tests that focus on individual components
       - name: Run unit tests
         run: |
+          # The --exclude-integration flag skips tests marked as integration tests
+          # This allows us to run unit tests quickly without database dependencies
           python -m pytest tests/ -v --exclude-integration
       
-      # Run integration tests
+      # Run integration tests (both standard and advanced)
+      # These tests verify end-to-end functionality including ETL processes and API endpoints
       - name: Run integration tests
         run: |
-          python -m pytest tests/test_integration_advanced.py -v
+          # test_integration_advanced.py contains tests for comprehensive system validation
+          # test_new_integration.py focuses on ETL pipeline and API endpoint testing
+          python -m pytest tests/test_integration_advanced.py tests/test_new_integration.py -v
       
       # Generate test coverage report
       - name: Generate coverage report
@@ -98,15 +106,19 @@ jobs:
           fail_ci_if_error: false
       
       # Upload configuration artifacts if tests pass
+      # These artifacts will be available for download or for use in the deployment job
       - name: Upload artifacts
         if: success()
         uses: actions/upload-artifact@v3
         with:
+          # Name used to identify this artifact in the GitHub UI and for downloads
           name: configuration-files
+          # Multiple files can be specified using the pipe syntax
           path: |
-            configs/module_config.json
-            configs/database_config.json
-            configs/etl_config.json
+            configs/module_config.json  # Valuation model configuration
+            configs/database_config.json  # Database connection settings
+            configs/etl_config.json  # ETL pipeline configuration
+          # Keep these artifacts for 7 days before automatic deletion
           retention-days: 7
       
   deploy:

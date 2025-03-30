@@ -1,7 +1,7 @@
 {
   "name": "WebApp",
-  "language": "python3",
-  "run": "python3 main.py",
+  "language": "nodejs",
+  "run": "node simple_http_server.js",
   "templates": [],
   "nix": {
     "channel": "stable-22_11"
@@ -12,7 +12,7 @@
       "port": 5000,
       "internalPort": 5000,
       "name": "WebApp",
-      "description": "Web user interface",
+      "description": "Dashboard web interface",
       "isProduction": false,
       "isProdExposed": false,
       "isDev": true,

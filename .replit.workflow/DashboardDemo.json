@@ -1,7 +1,7 @@
 {
-  "name": "Start",
+  "name": "DashboardDemo",
   "language": "python3",
-  "run": "python -m flask --app start_webapp run --host 0.0.0.0 --port 5002",
+  "run": "python serve_dashboard.py",
   "templates": [],
   "nix": {
     "channel": "stable-22_11"
@@ -9,9 +9,9 @@
   "backgroundProcesses": [],
   "ports": [
     {
-      "port": 5002,
-      "internalPort": 5002,
-      "name": "WebApp",
+      "port": 5000,
+      "internalPort": 5000,
+      "name": "DashboardDemo",
       "description": "Dashboard demo web interface",
       "isProduction": false,
       "isProdExposed": false,

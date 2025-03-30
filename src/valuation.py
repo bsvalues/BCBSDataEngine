@@ -49,13 +49,6 @@ logger = logging.getLogger(__name__)
 # Import enhanced GIS features module
 from src.enhanced_gis_features import calculate_enhanced_gis_features
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
 # Try to import LightGBM if available
 LIGHTGBM_AVAILABLE = False
 try:
@@ -70,7 +63,20 @@ except OSError as e:
     logger.warning(f"LightGBM found but could not be loaded due to OS error: {e}")
     logger.warning("Missing system dependencies for LightGBM - using GradientBoostingRegressor as fallback")
 
-# Function to check if LightGBM is available for tests
+# Try to import XGBoost as an alternative option
+XGBOOST_AVAILABLE = False
+try:
+    import xgboost as xgb
+    XGBOOST_AVAILABLE = True
+    logger.info("XGBoost is available for advanced regression models")
+except ImportError:
+    logger.warning("XGBoost not available - will use GradientBoostingRegressor if LightGBM is not available")
+except OSError as e:
+    XGBOOST_AVAILABLE = False
+    logger.warning(f"XGBoost found but could not be loaded due to OS error: {e}")
+    logger.warning("Missing system dependencies for XGBoost")
+
+# Functions to check if advanced models are available for tests
 def has_lightgbm():
     """
     Returns True if LightGBM is available, False otherwise.
@@ -79,6 +85,37 @@ def has_lightgbm():
     LightGBM is available in the current environment.
     """
     return LIGHTGBM_AVAILABLE
+
+def has_xgboost():
+    """
+    Returns True if XGBoost is available, False otherwise.
+    
+    This function is used by tests to adjust expectations based on whether
+    XGBoost is available in the current environment.
+    """
+    return XGBOOST_AVAILABLE
+
+def get_available_advanced_models():
+    """
+    Returns a list of available advanced models.
+    
+    This function is used to determine which advanced models can be used
+    for training and prediction.
+    
+    Returns:
+    --------
+    list
+        List of available advanced model types ['lightgbm', 'xgboost', 'sklearn_gbm']
+    """
+    available_models = ['sklearn_gbm']  # Always available
+    
+    if LIGHTGBM_AVAILABLE:
+        available_models.append('lightgbm')
+    
+    if XGBOOST_AVAILABLE:
+        available_models.append('xgboost')
+        
+    return available_models
 
 def haversine_distance(lat1, lon1, lat2, lon2):
     """
@@ -768,7 +805,7 @@ class AdvancedValuationEngine(ValuationEngine):
         self.feature_selector = None
         self.statsmodels_result = None  # For storing statsmodels regression results
     
-    def train_model(self, property_data=None):
+    def train_model(self, property_data=None, **kwargs):
         """
         Train an advanced multiple regression model for property valuation.
         
@@ -783,6 +820,10 @@ class AdvancedValuationEngine(ValuationEngine):
         Parameters:
             property_data (pandas.DataFrame, optional): Property data for training.
                 If None, data will be loaded from the database.
+            **kwargs: Additional parameters including:
+                - model_type (str): Type of model to train ('linear', 'lightgbm', 'xgboost', 'gbr')
+                - feature_selection_method (str): Method for selecting features
+                - n_features (int): Number of features to select
                 
         Returns:
             dict: Comprehensive model metrics and performance statistics
@@ -895,29 +936,129 @@ class AdvancedValuationEngine(ValuationEngine):
             ridge_model = Ridge(alpha=1.0)
             ridge_model.fit(X_train_selected, y_train)
             
-            # Choose best model based on performance
+            # Choose best model based on performance and availability
+            best_model = None
+            best_score = -float('inf')
+            best_model_type = ""
+            best_metrics = {}
+
+            # Train and evaluate linear models
             lr_score = r2_score(y_test, lr_model.predict(X_test_selected))
             ridge_score = r2_score(y_test, ridge_model.predict(X_test_selected))
             
             if ridge_score > lr_score:
-                self.regression_model = ridge_model
-                model_type = "Ridge Regression"
+                best_model = ridge_model
+                best_score = ridge_score
+                best_model_type = "Ridge Regression"
             else:
-                self.regression_model = lr_model
-                model_type = "Linear Regression"
+                best_model = lr_model
+                best_score = lr_score
+                best_model_type = "Linear Regression"
+                
+            # Try advanced models if requested in kwargs or model_type parameter
+            requested_model_type = kwargs.get('model_type', 'linear')
+            
+            # Check if we should try LightGBM
+            if requested_model_type == 'lightgbm' and LIGHTGBM_AVAILABLE:
+                self.logger.info("Requested LightGBM model - attempting to train")
+                lgbm_model, lgbm_type, lgbm_metrics = self.train_lightgbm_model(
+                    X_train_selected, X_test_selected, y_train, y_test, selected_feature_names
+                )
+                
+                if lgbm_model is not None and 'r_squared' in lgbm_metrics:
+                    lgbm_score = lgbm_metrics['r_squared']
+                    self.logger.info(f"LightGBM model R² = {lgbm_score:.4f}")
+                    
+                    if lgbm_score > best_score:
+                        best_model = lgbm_model
+                        best_score = lgbm_score
+                        best_model_type = lgbm_type
+                        best_metrics = lgbm_metrics
+            
+            # Check if we should try XGBoost
+            elif requested_model_type == 'xgboost' and XGBOOST_AVAILABLE:
+                self.logger.info("Requested XGBoost model - attempting to train")
+                xgb_model, xgb_type, xgb_metrics = self.train_xgboost_model(
+                    X_train_selected, X_test_selected, y_train, y_test, selected_feature_names
+                )
+                
+                if xgb_model is not None and 'r_squared' in xgb_metrics:
+                    xgb_score = xgb_metrics['r_squared']
+                    self.logger.info(f"XGBoost model R² = {xgb_score:.4f}")
+                    
+                    if xgb_score > best_score:
+                        best_model = xgb_model
+                        best_score = xgb_score
+                        best_model_type = xgb_type
+                        best_metrics = xgb_metrics
+            
+            # Check if we should try scikit-learn's GBM as fallback
+            elif requested_model_type in ['gbm', 'gbr', 'gradient_boosting']:
+                self.logger.info("Requested Gradient Boosting model - attempting to train")
+                gbm_model, gbm_type, gbm_metrics = self.train_sklearn_gbm(
+                    X_train_selected, X_test_selected, y_train, y_test, selected_feature_names
+                )
+                
+                if gbm_model is not None and 'r_squared' in gbm_metrics:
+                    gbm_score = gbm_metrics['r_squared']
+                    self.logger.info(f"Scikit-learn GBM model R² = {gbm_score:.4f}")
+                    
+                    if gbm_score > best_score:
+                        best_model = gbm_model
+                        best_score = gbm_score
+                        best_model_type = gbm_type
+                        best_metrics = gbm_metrics
+            
+            # Update the class model with the best model
+            self.regression_model = best_model
+            model_type = best_model_type
             
             # Step 10: Calculate predictions and performance metrics
-            y_pred = self.regression_model.predict(X_test_selected)
+            if hasattr(self.regression_model, 'predict'):
+                # Standard scikit-learn interface
+                y_pred = self.regression_model.predict(X_test_selected)
+            elif hasattr(self.regression_model, 'best_iteration'):
+                # LightGBM interface
+                y_pred = self.regression_model.predict(X_test_selected, num_iteration=self.regression_model.best_iteration)
+            else:
+                # Try XGBoost interface
+                try:
+                    y_pred = self.regression_model.predict(xgb.DMatrix(X_test_selected))
+                except Exception as e:
+                    self.logger.error(f"Error making predictions with selected model: {e}")
+                    # Fallback to linear model
+                    self.regression_model = lr_model
+                    model_type = "Linear Regression (Fallback)"
+                    y_pred = self.regression_model.predict(X_test_selected)
             
             r2 = r2_score(y_test, y_pred)
             mae = mean_absolute_error(y_test, y_pred)
             mse = mean_squared_error(y_test, y_pred)
             rmse = np.sqrt(mse)
             
-            # Step 11: Get feature importance (coefficients)
+            # Step 11: Get feature importance or coefficients
             coefficients = {}
-            for feature, coef in zip(selected_feature_names, self.regression_model.coef_):
-                coefficients[feature] = coef
+            if hasattr(self.regression_model, 'coef_'):
+                # Linear models
+                for feature, coef in zip(selected_feature_names, self.regression_model.coef_):
+                    coefficients[feature] = coef
+            elif hasattr(self.regression_model, 'feature_importance'):
+                # LightGBM
+                importances = self.regression_model.feature_importance(importance_type='gain')
+                for i, feature in enumerate(selected_feature_names):
+                    if i < len(importances):
+                        coefficients[feature] = float(importances[i])
+            elif hasattr(self.regression_model, 'get_score'):
+                # XGBoost
+                importance_scores = self.regression_model.get_score(importance_type='gain')
+                for i, feature in enumerate(selected_feature_names):
+                    feature_key = f"f{i}"
+                    if feature_key in importance_scores:
+                        coefficients[feature] = importance_scores[feature_key]
+            elif hasattr(self.regression_model, 'feature_importances_'):
+                # Scikit-learn tree-based models
+                for feature, importance in zip(selected_feature_names, self.regression_model.feature_importances_):
+                    coefficients[feature] = float(importance)
                 
             # Step 12: Calculate detailed statistics using statsmodels
             try:
@@ -994,6 +1135,194 @@ class AdvancedValuationEngine(ValuationEngine):
                 'mean_absolute_error': 0.0,
                 'model_coefficients': {}
             }
+    
+    def train_lightgbm_model(self, X_train, X_test, y_train, y_test, selected_feature_names):
+        """
+        Train a LightGBM model for property valuation.
+        
+        Parameters:
+            X_train (pandas.DataFrame): Training features
+            X_test (pandas.DataFrame): Testing features
+            y_train (pandas.Series): Training target values
+            y_test (pandas.Series): Testing target values
+            selected_feature_names (list): List of selected feature names
+            
+        Returns:
+            tuple: (fitted model, model type string, performance metrics dictionary)
+        """
+        try:
+            self.logger.info("Training LightGBM model")
+            
+            # Create LightGBM datasets
+            lgb_train = lgb.Dataset(X_train, y_train)
+            lgb_eval = lgb.Dataset(X_test, y_test, reference=lgb_train)
+            
+            # Parameters for LightGBM
+            params = {
+                'boosting_type': 'gbdt',
+                'objective': 'regression',
+                'metric': {'l2', 'l1'},
+                'num_leaves': 31,
+                'learning_rate': 0.05,
+                'feature_fraction': 0.9,
+                'bagging_fraction': 0.8,
+                'bagging_freq': 5,
+                'verbose': 0
+            }
+            
+            # Train LightGBM model
+            gbm = lgb.train(
+                params,
+                lgb_train,
+                num_boost_round=500,
+                valid_sets=[lgb_train, lgb_eval],
+                early_stopping_rounds=50,
+                verbose_eval=False
+            )
+            
+            # Make predictions on test set
+            y_pred = gbm.predict(X_test, num_iteration=gbm.best_iteration)
+            
+            # Calculate metrics
+            r2 = r2_score(y_test, y_pred)
+            mae = mean_absolute_error(y_test, y_pred)
+            rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+            
+            # Get feature importances
+            importances = gbm.feature_importance(importance_type='gain')
+            feature_importances = {selected_feature_names[i]: importances[i] for i in range(len(selected_feature_names))}
+            
+            self.logger.info(f"LightGBM model trained successfully with R² = {r2:.4f}")
+            
+            return gbm, "LightGBM", {
+                'r_squared': r2,
+                'mean_absolute_error': mae,
+                'root_mean_squared_error': rmse,
+                'feature_importances': feature_importances
+            }
+        except Exception as e:
+            self.logger.error(f"Error training LightGBM model: {e}")
+            return None, "LightGBM (Failed)", {'error': str(e)}
+    
+    def train_xgboost_model(self, X_train, X_test, y_train, y_test, selected_feature_names):
+        """
+        Train an XGBoost model for property valuation.
+        
+        Parameters:
+            X_train (pandas.DataFrame): Training features
+            X_test (pandas.DataFrame): Testing features
+            y_train (pandas.Series): Training target values
+            y_test (pandas.Series): Testing target values
+            selected_feature_names (list): List of selected feature names
+            
+        Returns:
+            tuple: (fitted model, model type string, performance metrics dictionary)
+        """
+        try:
+            self.logger.info("Training XGBoost model")
+            
+            # Create DMatrix objects
+            dtrain = xgb.DMatrix(X_train, label=y_train)
+            dtest = xgb.DMatrix(X_test, label=y_test)
+            
+            # Parameters for XGBoost
+            params = {
+                'objective': 'reg:squarederror',
+                'eval_metric': 'rmse',
+                'eta': 0.05,
+                'max_depth': 6,
+                'subsample': 0.8,
+                'colsample_bytree': 0.9
+            }
+            
+            # Train XGBoost model
+            evals = [(dtrain, 'train'), (dtest, 'eval')]
+            num_round = 500
+            bst = xgb.train(
+                params, 
+                dtrain, 
+                num_round, 
+                evals=evals,
+                early_stopping_rounds=50,
+                verbose_eval=False
+            )
+            
+            # Make predictions on test set
+            y_pred = bst.predict(dtest)
+            
+            # Calculate metrics
+            r2 = r2_score(y_test, y_pred)
+            mae = mean_absolute_error(y_test, y_pred)
+            rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+            
+            # Get feature importances
+            importance_scores = bst.get_score(importance_type='gain')
+            feature_importances = {name: importance_scores.get(f"f{i}", 0) 
+                                 for i, name in enumerate(selected_feature_names) 
+                                 if f"f{i}" in importance_scores}
+            
+            self.logger.info(f"XGBoost model trained successfully with R² = {r2:.4f}")
+            
+            return bst, "XGBoost", {
+                'r_squared': r2,
+                'mean_absolute_error': mae,
+                'root_mean_squared_error': rmse,
+                'feature_importances': feature_importances
+            }
+        except Exception as e:
+            self.logger.error(f"Error training XGBoost model: {e}")
+            return None, "XGBoost (Failed)", {'error': str(e)}
+    
+    def train_sklearn_gbm(self, X_train, X_test, y_train, y_test, selected_feature_names):
+        """
+        Train a Gradient Boosting Regressor from scikit-learn as a fallback.
+        
+        Parameters:
+            X_train (pandas.DataFrame): Training features
+            X_test (pandas.DataFrame): Testing features
+            y_train (pandas.Series): Training target values
+            y_test (pandas.Series): Testing target values
+            selected_feature_names (list): List of selected feature names
+            
+        Returns:
+            tuple: (fitted model, model type string, performance metrics dictionary)
+        """
+        try:
+            self.logger.info("Training scikit-learn GBM model as fallback")
+            
+            # Create and train GBM model
+            gbm = GradientBoostingRegressor(
+                n_estimators=200,
+                learning_rate=0.05,
+                max_depth=4,
+                subsample=0.8,
+                random_state=42
+            )
+            gbm.fit(X_train, y_train)
+            
+            # Make predictions on test set
+            y_pred = gbm.predict(X_test)
+            
+            # Calculate metrics
+            r2 = r2_score(y_test, y_pred)
+            mae = mean_absolute_error(y_test, y_pred)
+            rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+            
+            # Get feature importances
+            importances = gbm.feature_importances_
+            feature_importances = {selected_feature_names[i]: importances[i] for i in range(len(selected_feature_names))}
+            
+            self.logger.info(f"scikit-learn GBM model trained successfully with R² = {r2:.4f}")
+            
+            return gbm, "Gradient Boosting Regressor", {
+                'r_squared': r2,
+                'mean_absolute_error': mae,
+                'root_mean_squared_error': rmse,
+                'feature_importances': feature_importances
+            }
+        except Exception as e:
+            self.logger.error(f"Error training scikit-learn GBM model: {e}")
+            return None, "Gradient Boosting Regressor (Failed)", {'error': str(e)}
     
     def preprocess_property_data(self, property_data):
         """
@@ -1105,10 +1434,43 @@ class AdvancedValuationEngine(ValuationEngine):
             db = self.get_db()
             
             # In a real implementation, this would query the database
-            # Here we'll use a placeholder based on the provided property ID and optional parameters
+            # Here we'll simulate fetching property data
+            property_data = self.fetch_property_data(property_id)
             
-            # Create a base property valuation
-            base_valuation = 350000  # Base value for example
+            # If we have a trained regression model, use it to predict the value
+            base_valuation = 350000  # Default fallback value
+            
+            if hasattr(self, 'regression_model') and self.regression_model is not None:
+                try:
+                    # Prepare property data for prediction (same preprocessing as in training)
+                    features = self.prepare_features_for_prediction(property_data)
+                    
+                    # Make prediction using the appropriate method based on model type
+                    if hasattr(self.regression_model, 'predict'):
+                        # scikit-learn, LightGBM native, or scikit-learn GBM models
+                        predicted_value = self.regression_model.predict([features])[0]
+                    elif hasattr(self.regression_model, 'predict_proba'):
+                        # Some models use predict_proba instead
+                        predicted_value = self.regression_model.predict_proba([features])[0]
+                    elif hasattr(self.regression_model, '__call__'):
+                        # XGBoost models sometimes require XGBoost.DMatrix
+                        dmatrix = xgb.DMatrix([features])
+                        predicted_value = self.regression_model(dmatrix)[0]
+                    else:
+                        # Fallback to default value
+                        self.logger.warning("Unknown model type, using default valuation")
+                        predicted_value = base_valuation
+                    
+                    # Replace base valuation with predicted value
+                    if predicted_value > 0:
+                        base_valuation = predicted_value
+                        self.logger.info(f"Predicted value from model: {base_valuation}")
+                    else:
+                        self.logger.warning(f"Model predicted invalid value: {predicted_value}. Using default.")
+                
+                except Exception as e:
+                    self.logger.error(f"Error predicting value with regression model: {e}")
+                    # Continue with default base_valuation
             
             # Initialize factors dictionary to track valuation components
             valuation_factors = {
@@ -1167,20 +1529,59 @@ class AdvancedValuationEngine(ValuationEngine):
             # Apply GIS adjustment to base valuation
             adjusted_valuation = base_valuation * gis_adjustment
             
-            # Calculate confidence score based on available data
-            # Higher when we have more specific data about the property
+            # Calculate confidence score based on available data and model metrics
+            # Higher when we have more specific data about the property and better model performance
+            
+            # Base model performance confidence depends on the model type and metrics
+            model_performance = 0.85  # Default confidence
+            
+            # Adjust based on model type and available metrics
+            if hasattr(self, 'regression_model') and hasattr(self, 'model_metrics'):
+                # For tree-based models, we typically have higher confidence due to their robustness
+                if hasattr(self, 'model_type'):
+                    if 'lightgbm' in self.model_type.lower():
+                        model_performance = 0.90  # LightGBM tends to be robust
+                    elif 'xgboost' in self.model_type.lower():
+                        model_performance = 0.89  # XGBoost is also robust
+                    elif 'gbr' in self.model_type.lower() or 'gradient' in self.model_type.lower():
+                        model_performance = 0.87  # GBR is solid
+                    # Linear models may be less confident
+                    elif 'linear' in self.model_type.lower():
+                        model_performance = 0.82
+                        
+                # Adjust based on R-squared if available
+                if 'r_squared' in self.model_metrics:
+                    r2 = self.model_metrics['r_squared']
+                    # Scale confidence based on R-squared (higher R² = higher confidence)
+                    # We'll use a sigmoid-like function to map R² to confidence adjustment
+                    r2_factor = min(max((r2 - 0.5) * 1.5, -0.15), 0.15)  # Range: -0.15 to +0.15
+                    model_performance += r2_factor
+            
             confidence_components = {
-                'model_performance': 0.85,  # Example base confidence from model performance
+                'model_performance': model_performance,
                 'property_data_quality': 0.90,  # Example confidence in property data
-                'location_data_available': 1.0 if latitude and longitude else 0.7
+                'location_data_available': 1.0 if latitude and longitude else 0.7,
+                'feature_completeness': sum(1 for k in property_data if k not in ['property_id']) / 10.0  # Better with more features
             }
             
             # Overall confidence is weighted average of components
-            confidence_score = sum(confidence_components.values()) / len(confidence_components)
+            component_weights = {
+                'model_performance': 0.5,        # Model performance is most important
+                'property_data_quality': 0.25,   # Data quality is next
+                'location_data_available': 0.15, # Location data helps
+                'feature_completeness': 0.1      # Feature completeness has some impact
+            }
+            
+            # Calculate weighted average
+            confidence_score = sum(component_weights[k] * v for k, v in confidence_components.items())
             # Normalize to 0-1 range
             confidence_score = min(max(confidence_score, 0), 1)
             
             # Create result dictionary
+            model_type_str = 'advanced_regression_with_gis'
+            if hasattr(self, 'regression_model') and hasattr(self, 'model_type'):
+                model_type_str = f"{self.model_type}_with_gis"
+            
             result = {
                 'property_id': property_id,
                 'estimated_value': round(adjusted_valuation, 2),
@@ -1191,7 +1592,7 @@ class AdvancedValuationEngine(ValuationEngine):
                     'total_adjustment_factor': round(gis_adjustment, 4),
                     'components': {k: round(v, 4) for k, v in gis_adjustment_components.items()}
                 },
-                'model_type': 'advanced_regression_with_gis'
+                'model_type': model_type_str
             }
             
             # Include model metrics if requested
@@ -1206,6 +1607,10 @@ class AdvancedValuationEngine(ValuationEngine):
         except Exception as e:
             self.logger.error(f"Error calculating advanced valuation: {e}")
             # Return basic valuation with error flag
+            model_type_str = 'advanced_regression_with_gis'
+            if hasattr(self, 'regression_model') and hasattr(self, 'model_type'):
+                model_type_str = f"{self.model_type}_with_gis"
+                
             return {
                 'property_id': property_id,
                 'estimated_value': 0.0,
@@ -1213,8 +1618,112 @@ class AdvancedValuationEngine(ValuationEngine):
                 'confidence_score': 0.0,
                 'valuation_factors': {},
                 'error': str(e),
-                'model_type': 'advanced_regression_with_gis',
+                'model_type': model_type_str
             }
+
+
+    def fetch_property_data(self, property_id):
+        """
+        Fetch property data from the database or mock data for testing.
+        
+        Parameters:
+            property_id (str): Unique identifier for the property
+            
+        Returns:
+            dict: Property data with features for valuation
+        """
+        self.logger.info(f"Fetching property data for {property_id}")
+        
+        try:
+            # In a real implementation, this would query the database
+            # For now, create sample data based on the property_id
+            
+            # Parse property_id to create deterministic sample data
+            # This is just for demonstration - in production, we'd query a database
+            seed = sum(ord(c) for c in str(property_id))
+            random.seed(seed)
+            
+            property_data = {
+                'property_id': property_id,
+                'square_feet': random.randint(1000, 4000),
+                'bedrooms': random.randint(2, 5),
+                'bathrooms': round(random.uniform(1.5, 3.5), 1),
+                'property_age': random.randint(0, 50),
+                'lot_size': random.randint(5000, 20000),
+                'garage_spaces': random.randint(0, 3),
+                'has_pool': random.choice([True, False]),
+                'has_fireplace': random.choice([True, False]),
+                'condition_score': round(random.uniform(2.0, 5.0), 1),
+                'quality_score': round(random.uniform(2.0, 5.0), 1),
+                'latitude': 46.2 + random.uniform(-0.1, 0.1),  # Centered near Benton County, WA
+                'longitude': -119.2 + random.uniform(-0.1, 0.1)
+            }
+            
+            return property_data
+            
+        except Exception as e:
+            self.logger.error(f"Error fetching property data: {e}")
+            return {'property_id': property_id}
+    
+    def prepare_features_for_prediction(self, property_data):
+        """
+        Prepare property features for model prediction.
+        
+        Parameters:
+            property_data (dict): Raw property data
+            
+        Returns:
+            list: Feature vector ready for model prediction
+        """
+        self.logger.info("Preparing features for prediction")
+        
+        try:
+            # Get the expected model features in the right order
+            # This should match the order used during model training
+            model_features = [
+                'square_feet',
+                'bedrooms', 
+                'bathrooms',
+                'property_age',
+                'lot_size',
+                'garage_spaces',
+                'condition_score',
+                'quality_score'
+            ]
+            
+            # Extract features in the correct order
+            features = []
+            for feature in model_features:
+                if feature in property_data:
+                    # For boolean features, convert to 1/0
+                    if isinstance(property_data[feature], bool):
+                        features.append(1 if property_data[feature] else 0)
+                    else:
+                        features.append(property_data[feature])
+                else:
+                    # If feature is missing, use a sensible default
+                    self.logger.warning(f"Missing feature: {feature}, using default")
+                    if feature in ['has_pool', 'has_fireplace']:
+                        features.append(0)  # Default: doesn't have feature
+                    elif feature in ['bedrooms', 'bathrooms', 'garage_spaces']:
+                        features.append(2)  # Default: modest property
+                    elif feature == 'square_feet':
+                        features.append(1500)  # Default: average size
+                    elif feature == 'property_age':
+                        features.append(20)  # Default: not new, not too old
+                    elif feature == 'lot_size':
+                        features.append(8000)  # Default: average lot
+                    elif feature in ['condition_score', 'quality_score']:
+                        features.append(3)  # Default: average condition/quality
+                    else:
+                        features.append(0)  # Default: zero for unknown
+            
+            return features
+            
+        except Exception as e:
+            self.logger.error(f"Error preparing features for prediction: {e}")
+            # Return a default feature vector if preparation fails
+            return [1500, 3, 2, 15, 8000, 1, 3, 3]
 
 
 # GIS Feature Engine for spatial analysis and adjustments

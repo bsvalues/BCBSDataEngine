@@ -353,6 +353,18 @@ The POST `/api/valuations` endpoint generates a new property valuation using our
 
 ### Using the Dashboard
 
+#### Quick Start Static Dashboard
+
+For a quick demonstration without requiring a server, you can directly open the static dashboard HTML file:
+
+```
+bcbs_dashboard.html
+```
+
+This static HTML file includes sample property data and interactive charts for Benton County properties.
+
+#### Running the Full Dashboard
+
 Start the integrated web server:
 
 ```bash
@@ -360,19 +372,20 @@ Start the integrated web server:
 # Use the Replit workflow menu to start the WebApp workflow
 #
 # Or run directly:
-python start_web_app.py
+python start_webapp.py
 #
 # Or traditional method:
 python run_integrated.py
 ```
 
-This will start the Flask web application. Access the web dashboard at `http://localhost:5001`.
+This will start the Flask web application. Access the web dashboard at `http://localhost:5002`.
 
 The main dashboard features:
 - Search for properties by address, ID, or features
 - View detailed property information and valuation
-- Access ETL validation results
-- Monitor agent status
+- Interactive filtering by neighborhood, price range, and property type
+- Data visualization with charts showing value distributions and trends
+- Comprehensive property metrics and confidence scores
 
 ### The Agent Dashboard
 
@@ -383,7 +396,7 @@ The Agent Dashboard displays real-time information about the BS Army of Agents:
 - Success rates and performance statistics
 - Detailed logs for selected agents
 
-Access it at `http://localhost:5001/agents`.
+Access it at `http://localhost:5002/agents`.
 
 ### What-If Analysis
 
@@ -394,7 +407,7 @@ The What-If Analysis tool allows users to:
 - Compare different scenarios side by side
 - Visualize feature importance
 
-Access it at `http://localhost:5001/what-if`.
+Access it at `http://localhost:5002/what-if` or view the static WhatIfAnalysis.js file for implementation details.
 
 ## CI/CD and Testing
 

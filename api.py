@@ -264,7 +264,7 @@ class PropertyValue(BaseModel):
     model_metrics: Optional[Dict[str, Union[float, str]]] = Field(None, description="Additional model performance metrics")
 
 class ETLStatus(BaseModel):
-    """ETL process status response model."""
+    """ETL process status response model with enhanced data quality metrics."""
     status: str = Field(..., description="Current status of the ETL process")
     last_run: datetime.datetime = Field(..., description="Last ETL pipeline execution time")
     sources_processed: List[Dict[str, Union[str, int]]] = Field(..., description="Data sources processed")
@@ -273,8 +273,18 @@ class ETLStatus(BaseModel):
     validation_details: Dict = Field(..., description="Validation details by check type")
     errors: Optional[List[Dict]] = Field(None, description="Errors encountered during ETL")
     
+    # Enhanced data quality metrics
+    records_validated: int = Field(0, description="Number of records that passed validation")
+    records_rejected: int = Field(0, description="Number of records that failed validation")
+    data_completeness: float = Field(0.0, description="Percentage of fields with non-null values (0-1)")
+    data_accuracy: Optional[float] = Field(None, description="Estimate of data accuracy based on validation rules (0-1)")
+    anomalies_detected: List[Dict[str, Any]] = Field([], description="List of detected data anomalies")
+    data_freshness: Dict[str, datetime.datetime] = Field({}, description="Timestamps of most recent data by source")
+    validation_rule_results: Dict[str, Dict[str, Any]] = Field({}, description="Detailed results of validation rules")
+    quality_score: float = Field(0.0, description="Overall data quality score (0-1)")
+    
 class AgentStatus(BaseModel):
-    """Agent status response model."""
+    """Agent status response model with enhanced metrics."""
     agent_id: str = Field(..., description="Unique identifier for the agent")
     name: str = Field(..., description="Agent name")
     status: str = Field(..., description="Current agent status")
@@ -282,11 +292,36 @@ class AgentStatus(BaseModel):
     current_task: Optional[str] = Field(None, description="Current task being executed by agent")
     queue_size: int = Field(..., description="Number of tasks in agent's queue")
     performance_metrics: Dict = Field(..., description="Agent performance metrics")
+    
+    # Enhanced metrics for more granular monitoring
+    execution_history: List[Dict[str, Any]] = Field([], description="Recent execution history with timestamps and outcomes")
+    success_count: int = Field(0, description="Count of successful task executions")
+    failure_count: int = Field(0, description="Count of failed task executions")
+    average_execution_time: float = Field(0.0, description="Average task execution time in seconds")
+    last_execution_time: float = Field(0.0, description="Last task execution time in seconds")
+    error_rate: float = Field(0.0, description="Error rate as a percentage of total tasks")
+    resource_usage: Dict[str, float] = Field({}, description="Resource usage metrics (CPU, memory, etc.)")
+    agent_version: str = Field("1.0.0", description="Version of the agent")
+    uptime: float = Field(0.0, description="Agent uptime in seconds")
+    health_score: float = Field(1.0, description="Overall health score from 0-1 (1 is perfect health)")
 
 class AgentStatusList(BaseModel):
-    """Agent status list response model."""
+    """Agent status list response model with system-wide metrics."""
     agents: List[AgentStatus] = Field(..., description="List of agent statuses")
     system_status: str = Field(..., description="Overall system status")
+    
+    # System-wide metrics
+    total_agents: int = Field(0, description="Total number of agents in the system")
+    active_agents: int = Field(0, description="Number of active agents")
+    inactive_agents: int = Field(0, description="Number of inactive agents")
+    system_health: float = Field(1.0, description="Overall system health score (0-1)")
+    total_tasks_processed: int = Field(0, description="Total number of tasks processed by all agents")
+    tasks_succeeded: int = Field(0, description="Number of tasks that succeeded")
+    tasks_failed: int = Field(0, description="Number of tasks that failed")
+    system_uptime: float = Field(0.0, description="System uptime in seconds")
+    system_resource_usage: Dict[str, float] = Field({}, description="System-wide resource usage metrics")
+    processing_capacity: float = Field(0.0, description="Current system processing capacity (tasks per minute)")
+    task_queue_depth: int = Field(0, description="Current depth of the system-wide task queue")
 
 class Neighborhood(BaseModel):
     """Neighborhood information response model."""
@@ -917,7 +952,82 @@ async def get_etl_status(
         # Calculate total records processed
         total_records = sum(source["records"] for source in sources_processed)
         
-        # Build the ETL status response
+        # Calculate enhanced data quality metrics
+        records_validated = 0
+        records_rejected = 0
+        anomalies_detected = []
+        data_freshness = {}
+        validation_rule_results = {}
+        
+        # Calculate records validated and rejected
+        if validation_result:
+            try:
+                # Try to get record counts from validation_details
+                if isinstance(validation_details, dict):
+                    if "record_counts" in validation_details:
+                        records_validated = validation_details["record_counts"].get("valid", 0)
+                        records_rejected = validation_details["record_counts"].get("invalid", 0)
+                    
+                    # Get anomalies
+                    if "anomalies" in validation_details:
+                        anomalies_detected = validation_details["anomalies"]
+                    
+                    # Get validation rule results
+                    if "rule_results" in validation_details:
+                        validation_rule_results = validation_details["rule_results"]
+            except Exception as e:
+                logger.warning(f"Error calculating enhanced metrics: {str(e)}")
+        
+        # Calculate data completeness (% of non-null fields)
+        data_completeness = 0.0
+        try:
+            # Sample query to get completeness statistics
+            query = """
+                SELECT 
+                    COUNT(*) as total_rows,
+                    SUM(CASE WHEN bedrooms IS NOT NULL THEN 1 ELSE 0 END) as bedrooms_count,
+                    SUM(CASE WHEN bathrooms IS NOT NULL THEN 1 ELSE 0 END) as bathrooms_count,
+                    SUM(CASE WHEN square_feet IS NOT NULL THEN 1 ELSE 0 END) as sqft_count,
+                    SUM(CASE WHEN year_built IS NOT NULL THEN 1 ELSE 0 END) as year_count,
+                    SUM(CASE WHEN property_type IS NOT NULL THEN 1 ELSE 0 END) as type_count,
+                    SUM(CASE WHEN latitude IS NOT NULL AND longitude IS NOT NULL THEN 1 ELSE 0 END) as geo_count
+                FROM properties
+            """
+            result = session.execute(query).fetchone()
+            
+            if result and result[0] > 0:  # total_rows
+                # Calculate average completeness across key fields
+                total_rows = result[0]
+                field_counts = result[1:]  # all counts except total_rows
+                field_completeness = [count / total_rows for count in field_counts]
+                data_completeness = sum(field_completeness) / len(field_completeness)
+        except Exception as e:
+            logger.warning(f"Error calculating data completeness: {str(e)}")
+        
+        # Get data freshness (most recent record from each source)
+        try:
+            query = """
+                SELECT data_source, MAX(last_updated) as latest
+                FROM properties
+                GROUP BY data_source
+            """
+            result = session.execute(query)
+            for row in result:
+                data_freshness[row[0]] = row[1]
+        except Exception as e:
+            logger.warning(f"Error calculating data freshness: {str(e)}")
+        
+        # Calculate overall quality score based on completeness and validation
+        quality_score = 0.0
+        if records_processed > 0:
+            # Weight: 40% completeness, 40% validation success rate, 20% anomaly penalty
+            validation_rate = records_validated / (records_processed or 1)
+            anomaly_penalty = min(len(anomalies_detected) / 10, 1.0)  # Max 10 anomalies = 100% penalty
+            
+            quality_score = (0.4 * data_completeness) + (0.4 * validation_rate) - (0.2 * anomaly_penalty)
+            quality_score = max(0.0, min(quality_score, 1.0))  # Ensure between 0 and 1
+        
+        # Build the ETL status response with enhanced metrics
         etl_status = {
             "status": status,
             "last_run": last_run,
@@ -925,7 +1035,17 @@ async def get_etl_status(
             "records_processed": total_records,
             "validation_status": validation_status,
             "validation_details": validation_details,
-            "errors": errors
+            "errors": errors,
+            
+            # Enhanced data quality metrics
+            "records_validated": records_validated,
+            "records_rejected": records_rejected,
+            "data_completeness": data_completeness,
+            "data_accuracy": validation_rate if 'validation_rate' in locals() else None,
+            "anomalies_detected": anomalies_detected,
+            "data_freshness": data_freshness,
+            "validation_rule_results": validation_rule_results,
+            "quality_score": quality_score
         }
         
         return etl_status
@@ -1026,7 +1146,50 @@ async def get_agent_status(api_key: APIKey = Depends(verify_api_key)):
                         "success_rate": 0
                     }
                 
-                # Add agent to list
+                # Extract execution history or initialize an empty list
+                execution_history = agent_data.get('execution_history', [])
+                if not isinstance(execution_history, list):
+                    execution_history = []
+                
+                # Extract additional metrics if available
+                success_count = agent_data.get('success_count', 0)
+                failure_count = agent_data.get('failure_count', 0)
+                avg_execution_time = agent_data.get('avg_execution_time', 0.0)
+                last_execution_time = agent_data.get('last_execution_time', 0.0)
+                
+                # Calculate error rate
+                total_tasks = success_count + failure_count
+                error_rate = (failure_count / total_tasks * 100) if total_tasks > 0 else 0.0
+                
+                # Calculate uptime (time since agent started)
+                uptime = agent_data.get('uptime', 0.0)
+                if not uptime and 'start_time' in agent_data:
+                    try:
+                        start_time = datetime.datetime.fromisoformat(agent_data['start_time'])
+                        uptime = (datetime.datetime.now() - start_time).total_seconds()
+                    except (ValueError, TypeError):
+                        uptime = 0.0
+                
+                # Calculate health score based on error rate and recent activity
+                health_score = 1.0
+                if error_rate > 0:
+                    # Deduct points based on error rate (up to 0.5)
+                    health_score -= min(error_rate / 100, 0.5)
+                
+                # Check recent activity - deduct if last active time is too old
+                time_since_active = (datetime.datetime.now() - last_active).total_seconds()
+                if time_since_active > 3600:  # More than 1 hour
+                    health_score -= min(time_since_active / 7200, 0.3)  # Up to 0.3 deduction for 2+ hours
+                
+                # Ensure health score stays in 0-1 range
+                health_score = max(0.0, min(health_score, 1.0))
+                
+                # Get resource usage metrics
+                resource_usage = agent_data.get('resource_usage', {})
+                if not isinstance(resource_usage, dict):
+                    resource_usage = {}
+                
+                # Add agent to list with enhanced metrics
                 agents_data.append({
                     "agent_id": agent_id,
                     "name": name,
@@ -1034,7 +1197,19 @@ async def get_agent_status(api_key: APIKey = Depends(verify_api_key)):
                     "last_active": last_active,
                     "current_task": current_task,
                     "queue_size": queue_size,
-                    "performance_metrics": performance_metrics
+                    "performance_metrics": performance_metrics,
+                    
+                    # Enhanced metrics
+                    "execution_history": execution_history,
+                    "success_count": success_count,
+                    "failure_count": failure_count,
+                    "average_execution_time": avg_execution_time,
+                    "last_execution_time": last_execution_time,
+                    "error_rate": error_rate,
+                    "resource_usage": resource_usage,
+                    "agent_version": agent_data.get('version', "1.0.0"),
+                    "uptime": uptime,
+                    "health_score": health_score
                 })
                 
                 logger.debug(f"Loaded status for agent {agent_id} [request_id: {request_id}]")
@@ -1101,13 +1276,66 @@ async def get_agent_status(api_key: APIKey = Depends(verify_api_key)):
         else:
             system_status = "operational"
         
-        # Create final response
+        # Calculate enhanced system-wide metrics
+        total_agents = len(agents_data)
+        inactive_agents = total_agents - active_agents
+        
+        # Calculate health metrics
+        all_health_scores = [agent.get("health_score", 1.0) for agent in agents_data if "health_score" in agent]
+        system_health = sum(all_health_scores) / len(all_health_scores) if all_health_scores else 0.8
+        
+        # Calculate task metrics
+        all_success_counts = [agent.get("success_count", 0) for agent in agents_data]
+        all_failure_counts = [agent.get("failure_count", 0) for agent in agents_data]
+        tasks_succeeded = sum(all_success_counts)
+        tasks_failed = sum(all_failure_counts)
+        total_tasks_processed = tasks_succeeded + tasks_failed
+        
+        # Calculate resource usage
+        avg_cpu = 0.0
+        avg_memory = 0.0
+        resource_count = 0
+        for agent in agents_data:
+            if "resource_usage" in agent and isinstance(agent["resource_usage"], dict):
+                if "cpu" in agent["resource_usage"]:
+                    avg_cpu += agent["resource_usage"]["cpu"]
+                    resource_count += 1
+                if "memory" in agent["resource_usage"]:
+                    avg_memory += agent["resource_usage"]["memory"]
+        
+        # Calculate averages if we have data
+        if resource_count > 0:
+            avg_cpu /= resource_count
+            avg_memory /= resource_count
+        
+        # Calculate system uptime (max of agent uptimes)
+        system_uptime = max([agent.get("uptime", 0.0) for agent in agents_data]) if agents_data else 0.0
+        
+        # Calculate processing capacity based on tasks completed and time
+        processing_capacity = 0.0
+        if system_uptime > 60:  # More than a minute of uptime
+            processing_capacity = total_tasks_processed / (system_uptime / 60)  # Tasks per minute
+        
+        # Create final response with enhanced system-wide metrics
         agent_status = {
             "agents": agents_data,
             "system_status": system_status,
+            
+            # Enhanced system-wide metrics
+            "total_agents": total_agents,
             "active_agents": active_agents,
-            "tasks_in_progress": tasks_in_progress,
-            "tasks_completed_today": total_tasks_completed % 100  # Simplified - in reality would be filtered by today's date
+            "inactive_agents": inactive_agents,
+            "system_health": system_health,
+            "total_tasks_processed": total_tasks_processed,
+            "tasks_succeeded": tasks_succeeded,
+            "tasks_failed": tasks_failed,
+            "system_uptime": system_uptime,
+            "system_resource_usage": {
+                "cpu_average": avg_cpu,
+                "memory_average": avg_memory
+            },
+            "processing_capacity": processing_capacity,
+            "task_queue_depth": tasks_in_progress
         }
         
         logger.info(f"Agent status request completed successfully [request_id: {request_id}]")
@@ -1115,7 +1343,7 @@ async def get_agent_status(api_key: APIKey = Depends(verify_api_key)):
         
     except Exception as e:
         logger.error(f"Error processing agent status request: {str(e)}", exc_info=True)
-        # Return default data in case of errors
+        # Return default data with enhanced metrics in case of errors
         return {
             "agents": [
                 {
@@ -1129,13 +1357,34 @@ async def get_agent_status(api_key: APIKey = Depends(verify_api_key)):
                         "tasks_completed": 0,
                         "avg_task_time": 0,
                         "success_rate": 0
-                    }
+                    },
+                    "execution_history": [],
+                    "success_count": 0,
+                    "failure_count": 0,
+                    "average_execution_time": 0.0,
+                    "last_execution_time": 0.0,
+                    "error_rate": 0.0,
+                    "resource_usage": {"cpu": 0.0, "memory": 0.0},
+                    "agent_version": "1.0.0",
+                    "uptime": 0.0,
+                    "health_score": 0.0
                 }
             ],
             "system_status": "error",
+            "total_agents": 1,
             "active_agents": 0,
-            "tasks_in_progress": 0,
-            "tasks_completed_today": 0
+            "inactive_agents": 1,
+            "system_health": 0.0,
+            "total_tasks_processed": 0,
+            "tasks_succeeded": 0,
+            "tasks_failed": 0,
+            "system_uptime": 0.0,
+            "system_resource_usage": {
+                "cpu_average": 0.0,
+                "memory_average": 0.0
+            },
+            "processing_capacity": 0.0,
+            "task_queue_depth": 0
         }
 
 
