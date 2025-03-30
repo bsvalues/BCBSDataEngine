@@ -1,115 +1,173 @@
 {% extends 'base.html' %}
 
-{% block title %}Admin Dashboard - BCBS Property Valuation{% endblock %}
+{% block title %}BCBS Values - Admin Dashboard{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-12 mb-4">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h4 class="mb-0">Admin Dashboard</h4>
-                <span class="badge bg-primary">Admin Access</span>
-            </div>
-            <div class="card-body">
-                <p class="lead">Welcome to the administrator dashboard, {{ current_user.username }}.</p>
-            </div>
+<div class="container">
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <h1 class="mb-4">Admin Dashboard</h1>
         </div>
     </div>
-</div>
-
-<div class="row">
-    <div class="col-md-4 mb-4">
-        <div class="card h-100">
-            <div class="card-header">
-                <h5 class="mb-0">System Stats</h5>
+    
+    <div class="row">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Total Users</h5>
+                    <h2 class="display-4">{{ users|length }}</h2>
+                </div>
+                <div class="card-footer d-flex align-items-center justify-content-between">
+                    <a class="small text-white stretched-link" href="#">View Details</a>
+                    <div class="small text-white"><i class="fas fa-angle-right"></i></div>
+                </div>
             </div>
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <span>Total Properties</span>
-                    <span class="badge bg-primary">{{ properties_count }}</span>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Properties</h5>
+                    <h2 class="display-4">{{ properties }}</h2>
                 </div>
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <span>Total Users</span>
-                    <span class="badge bg-success">{{ users_count }}</span>
+                <div class="card-footer d-flex align-items-center justify-content-between">
+                    <a class="small text-white stretched-link" href="{{ url_for('admin_properties') }}">View Details</a>
+                    <div class="small text-white"><i class="fas fa-angle-right"></i></div>
                 </div>
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <span>Total Valuations</span>
-                    <span class="badge bg-info">{{ valuations_count }}</span>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Valuations</h5>
+                    <h2 class="display-4">{{ valuations }}</h2>
                 </div>
-                <div class="d-flex justify-content-between align-items-center">
-                    <span>GIS Features</span>
-                    <span class="badge bg-warning">{{ gis_features_count }}</span>
+                <div class="card-footer d-flex align-items-center justify-content-between">
+                    <a class="small text-white stretched-link" href="#">View Details</a>
+                    <div class="small text-white"><i class="fas fa-angle-right"></i></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-danger text-white mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">ETL Jobs</h5>
+                    <h2 class="display-4">{{ recent_etl|length }}</h2>
+                </div>
+                <div class="card-footer d-flex align-items-center justify-content-between">
+                    <a class="small text-white stretched-link" href="#">View Details</a>
+                    <div class="small text-white"><i class="fas fa-angle-right"></i></div>
                 </div>
             </div>
         </div>
     </div>
     
-    <div class="col-md-8 mb-4">
-        <div class="card h-100">
-            <div class="card-header">
-                <h5 class="mb-0">Recent Activity</h5>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th>Action</th>
-                                <th>User</th>
-                                <th>Time</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>System Startup</td>
-                                <td>System</td>
-                                <td>{{ now.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                                <td><span class="badge bg-success">Success</span></td>
-                            </tr>
-                            <tr>
-                                <td>Database Connection</td>
-                                <td>System</td>
-                                <td>{{ now.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                                <td><span class="badge bg-success">Connected</span></td>
-                            </tr>
-                        </tbody>
-                    </table>
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card bg-dark shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Users</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-dark">
+                            <thead>
+                                <tr>
+                                    <th>Username</th>
+                                    <th>Email</th>
+                                    <th>Registered</th>
+                                    <th>Admin</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in users %}
+                                <tr>
+                                    <td>{{ user.username }}</td>
+                                    <td>{{ user.email }}</td>
+                                    <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
+                                    <td>{% if user.is_admin %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-secondary">No</span>{% endif %}</td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button type="button" class="btn btn-outline-primary">Edit</button>
+                                            <button type="button" class="btn btn-outline-danger">Delete</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
-</div>
-
-<div class="row">
-    <div class="col-md-6 mb-4">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">User Management</h5>
-            </div>
-            <div class="card-body">
-                <div class="list-group">
-                    <a href="#" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-                        View All Users
-                        <span class="badge bg-primary rounded-pill">{{ users_count }}</span>
-                    </a>
-                    <a href="#" class="list-group-item list-group-item-action">Add New User</a>
-                    <a href="#" class="list-group-item list-group-item-action">Manage Permissions</a>
+        
+        <div class="col-md-6">
+            <div class="card bg-dark shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Recent ETL Jobs</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-dark">
+                            <thead>
+                                <tr>
+                                    <th>Source</th>
+                                    <th>Records</th>
+                                    <th>Date</th>
+                                    <th>Status</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for etl in recent_etl %}
+                                <tr>
+                                    <td>{{ etl.source }}</td>
+                                    <td>{{ etl.records_processed }} / {{ etl.records_imported }}</td>
+                                    <td>{{ etl.start_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                                    <td>
+                                        {% if etl.status == 'success' %}
+                                        <span class="badge bg-success">Success</span>
+                                        {% elif etl.status == 'error' %}
+                                        <span class="badge bg-danger">Error</span>
+                                        {% else %}
+                                        <span class="badge bg-warning">{{ etl.status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <button type="button" class="btn btn-sm btn-outline-info">View</button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                                {% if not recent_etl %}
+                                <tr>
+                                    <td colspan="5" class="text-center">No recent ETL jobs</td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
-        </div>
-    </div>
-    
-    <div class="col-md-6 mb-4">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">Data Management</h5>
-            </div>
-            <div class="card-body">
-                <div class="list-group">
-                    <a href="#" class="list-group-item list-group-item-action">Import Property Data</a>
-                    <a href="#" class="list-group-item list-group-item-action">Export Valuations</a>
-                    <a href="#" class="list-group-item list-group-item-action">Database Maintenance</a>
+            
+            <div class="card bg-dark shadow-sm">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <a href="#" class="btn btn-outline-primary d-block">Run MLS ETL</a>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <a href="#" class="btn btn-outline-success d-block">Run PACS ETL</a>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <a href="#" class="btn btn-outline-info d-block">Run NARRPR ETL</a>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <a href="#" class="btn btn-outline-warning d-block">Retrain Models</a>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

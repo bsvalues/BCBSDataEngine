@@ -1,18 +1,15 @@
 {% extends 'base.html' %}
 
-{% block title %}Server Error - BCBS Property Valuation{% endblock %}
+{% block title %}BCBS Values - Server Error{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-md-8 mx-auto text-center">
-        <div class="mt-5 mb-5">
-            <h1 class="display-1">500</h1>
+<div class="container text-center py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <h1 class="display-1 fw-bold">500</h1>
             <h2 class="mb-4">Server Error</h2>
-            <p class="lead">Sorry, something went wrong on our server. We're working to fix the issue.</p>
-            <img src="{{ url_for('static', filename='img/500.svg') }}" alt="500 Illustration" class="img-fluid mb-4" style="max-height: 300px;">
-            <div>
-                <a href="{{ url_for('index') }}" class="btn btn-primary">Return to Homepage</a>
-            </div>
+            <p class="lead mb-5">We're sorry, something went wrong on our end. Our team has been notified and is working to fix the issue.</p>
+            <a href="{{ url_for('index') }}" class="btn btn-primary">Go Home</a>
         </div>
     </div>
 </div>

@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+
+{% block title %}BCBS Values - Dashboard{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <h1 class="mb-4">Welcome, {{ current_user.username }}</h1>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card bg-dark shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Account Information</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>Username:</strong> {{ current_user.username }}</p>
+                    <p><strong>Email:</strong> {{ current_user.email }}</p>
+                    <p><strong>Member Since:</strong> {{ current_user.created_at.strftime('%B %d, %Y') }}</p>
+                    <p><strong>Last Login:</strong> 
+                        {% if current_user.last_login %}
+                            {{ current_user.last_login.strftime('%B %d, %Y at %H:%M') }}
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </p>
+                    <a href="{{ url_for('profile') }}" class="btn btn-outline-primary">Edit Profile</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-8">
+            <div class="card bg-dark shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Recent Valuations</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-dark">
+                            <thead>
+                                <tr>
+                                    <th>Property</th>
+                                    <th>Estimated Value</th>
+                                    <th>Date</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>No recent valuations</td>
+                                    <td></td>
+                                    <td></td>
+                                    <td></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <a href="{{ url_for('valuation') }}" class="btn btn-outline-success">New Valuation</a>
+                </div>
+            </div>
+            
+            <div class="card bg-dark shadow-sm">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Saved Properties</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-dark">
+                            <thead>
+                                <tr>
+                                    <th>Property ID</th>
+                                    <th>Address</th>
+                                    <th>Last Updated</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>No saved properties</td>
+                                    <td></td>
+                                    <td></td>
+                                    <td></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <a href="{{ url_for('properties') }}" class="btn btn-outline-info">Browse Properties</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

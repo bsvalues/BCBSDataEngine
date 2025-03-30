@@ -1,135 +1,129 @@
-/* Custom styles for BCBS Property Valuation */
+/* Custom styles for BCBS Values */
 
-/* Body and general elements */
-body {
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
+/* Add some custom border radius */
+.card {
+    border-radius: 0.5rem;
 }
 
-.container {
-    flex: 1 0 auto;
+/* Improve spacing between sections */
+section {
+    margin-bottom: 3rem;
 }
 
-footer {
-    flex-shrink: 0;
-}
-
-/* Property cards */
+/* Custom styles for property cards */
 .property-card {
-    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    transition: transform 0.3s ease;
 }
 
 .property-card:hover {
     transform: translateY(-5px);
-    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
 }
 
-.property-image {
-    height: 200px;
-    object-fit: cover;
+/* Better focus styles for form fields */
+.form-control:focus {
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
 }
 
-/* Valuation tool */
-.valuation-form {
-    background-color: var(--bs-dark-bg-subtle);
-    border-radius: 0.5rem;
-    padding: 1.5rem;
-}
-
-/* Dashboard metrics */
-.metric-card {
+/* Custom styling for the valuation form */
+.valuation-form .card {
     border-left: 4px solid var(--bs-primary);
-    transition: transform 0.2s ease;
+}
+
+/* Custom styles for the dashboard metrics */
+.metric-card {
+    border-radius: 1rem;
+    overflow: hidden;
+    transition: all 0.3s ease;
 }
 
 .metric-card:hover {
-    transform: scale(1.02);
+    transform: translateY(-5px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
 }
 
-.metric-card.info {
-    border-left-color: var(--bs-info);
+/* Animation for progress bars */
+.progress {
+    height: 10px;
+    margin-bottom: 10px;
 }
 
-.metric-card.success {
-    border-left-color: var(--bs-success);
+.progress-bar {
+    transition: width 1.5s ease-in-out;
 }
 
-.metric-card.warning {
-    border-left-color: var(--bs-warning);
-}
-
-.metric-card.danger {
-    border-left-color: var(--bs-danger);
-}
-
-.metric-icon {
-    font-size: 2rem;
-    opacity: 0.7;
-}
-
-/* Data visualization containers */
-.chart-container {
+/* Custom tooltip styling */
+.custom-tooltip {
     position: relative;
-    height: 300px;
-    margin-bottom: 1.5rem;
 }
 
-/* Profile page */
-.profile-header {
-    background-color: var(--bs-dark-bg-subtle);
-    border-radius: 0.5rem;
-    padding: 2rem 0;
+.custom-tooltip .tooltip-text {
+    visibility: hidden;
+    width: 120px;
+    background-color: #333;
+    color: #fff;
+    text-align: center;
+    border-radius: 6px;
+    padding: 5px;
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -60px;
+    opacity: 0;
+    transition: opacity 0.3s;
 }
 
-.profile-image {
-    width: 150px;
-    height: 150px;
-    object-fit: cover;
+.custom-tooltip:hover .tooltip-text {
+    visibility: visible;
+    opacity: 1;
 }
 
-/* Admin dashboard */
-.stat-card {
-    display: flex;
-    align-items: center;
-    padding: 1.5rem;
-    border-radius: 0.5rem;
-    margin-bottom: 1rem;
-    background-color: var(--bs-dark-bg-subtle);
+/* Property details modal */
+.property-details-modal .modal-body {
+    max-height: 70vh;
+    overflow-y: auto;
 }
 
-.stat-icon {
-    width: 60px;
-    height: 60px;
+/* Styling for agent status indicators */
+.agent-status {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 5px;
+}
+
+.agent-status.active {
+    background-color: var(--bs-success);
+}
+
+.agent-status.inactive {
+    background-color: var(--bs-danger);
+}
+
+.agent-status.processing {
+    background-color: var(--bs-warning);
+}
+
+/* Custom icon styles */
+.icon-circle {
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-right: 1rem;
-    background-color: var(--bs-primary);
+    margin-right: 15px;
 }
 
-.stat-value {
-    font-size: 2rem;
-    font-weight: bold;
+/* Pagination customization */
+.pagination .page-link {
+    border-radius: 0.25rem;
+    margin: 0 2px;
 }
 
-/* Custom media queries */
-@media (max-width: 768px) {
-    .chart-container {
-        height: 250px;
-    }
-    
-    .stat-card {
-        padding: 1rem;
-    }
-    
-    .stat-icon {
-        width: 45px;
-        height: 45px;
-    }
-    
-    .stat-value {
-        font-size: 1.5rem;
-    }
+/* Custom badge style */
+.badge-outline {
+    background-color: transparent;
+    border: 1px solid currentColor;
 }

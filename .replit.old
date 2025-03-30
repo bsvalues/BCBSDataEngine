@@ -10,18 +10,9 @@ FLASK_APP = "start_webapp"
 [nix]
 channel = "stable-22_11"
 
-# Fix the ports section to use an array format instead of object
-[[ports]]
-port = 5002
-export = true
-label = "WebApp"
-description = "Web user interface"
-
-[[ports]]
-port = 5001
-export = true
-label = "API"
-description = "API Server"
+[ports]
+5002 = { export = true, label = "WebApp", description = "Web user interface" }
+5001 = { export = true, label = "API", description = "API Server" }
 
 [debugger]
 support = true

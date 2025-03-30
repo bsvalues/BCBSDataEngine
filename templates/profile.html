@@ -1,95 +1,80 @@
 {% extends 'base.html' %}
 
-{% block title %}User Profile - BCBS Property Valuation{% endblock %}
+{% block title %}BCBS Values - Profile{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-md-8 mx-auto">
-        <div class="card mb-4">
-            <div class="card-header">
-                <h4 class="mb-0">User Profile</h4>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-4 text-center">
+<div class="container">
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <h1 class="mb-4">Your Profile</h1>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card bg-dark shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Update Profile</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('profile') }}">
+                        <input type="hidden" name="update_profile" value="1">
                         <div class="mb-3">
-                            <img src="https://via.placeholder.com/150" alt="Profile Image" class="rounded-circle img-fluid">
+                            <label for="username" class="form-label">Username</label>
+                            <input type="text" class="form-control" id="username" name="username" value="{{ current_user.username }}" disabled>
+                            <div class="form-text">Username cannot be changed.</div>
                         </div>
-                        <h5>{{ current_user.username }}</h5>
-                        <p class="text-muted">{{ current_user.email }}</p>
-                        {% if current_user.is_admin %}
-                        <span class="badge bg-primary">Administrator</span>
-                        {% endif %}
-                    </div>
-                    <div class="col-md-8">
-                        <h5>Account Information</h5>
-                        <hr>
-                        <div class="row mb-3">
-                            <div class="col-sm-4">
-                                <strong>Username:</strong>
-                            </div>
-                            <div class="col-sm-8">
-                                {{ current_user.username }}
-                            </div>
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email address</label>
+                            <input type="email" class="form-control" id="email" name="email" value="{{ current_user.email }}" required>
                         </div>
-                        <div class="row mb-3">
-                            <div class="col-sm-4">
-                                <strong>Email:</strong>
-                            </div>
-                            <div class="col-sm-8">
-                                {{ current_user.email }}
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-sm-4">
-                                <strong>Account Type:</strong>
-                            </div>
-                            <div class="col-sm-8">
-                                {% if current_user.is_admin %}
-                                Administrator
-                                {% else %}
-                                Standard User
-                                {% endif %}
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-sm-4">
-                                <strong>Member Since:</strong>
-                            </div>
-                            <div class="col-sm-8">
-                                {% if current_user.created_at %}
-                                {{ current_user.created_at.strftime('%B %d, %Y') }}
-                                {% else %}
-                                N/A
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
+                        <button type="submit" class="btn btn-primary">Update Profile</button>
+                    </form>
                 </div>
             </div>
         </div>
-
-        <div class="card">
-            <div class="card-header">
-                <h4 class="mb-0">Change Password</h4>
+        
+        <div class="col-md-6">
+            <div class="card bg-dark shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Change Password</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('profile') }}">
+                        <input type="hidden" name="change_password" value="1">
+                        <div class="mb-3">
+                            <label for="current_password" class="form-label">Current Password</label>
+                            <input type="password" class="form-control" id="current_password" name="current_password" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="new_password" class="form-label">New Password</label>
+                            <input type="password" class="form-control" id="new_password" name="new_password" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="confirm_new_password" class="form-label">Confirm New Password</label>
+                            <input type="password" class="form-control" id="confirm_new_password" name="confirm_new_password" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Change Password</button>
+                    </form>
+                </div>
             </div>
-            <div class="card-body">
-                <form method="POST" action="{{ url_for('profile') }}">
-                    <div class="mb-3">
-                        <label for="current_password" class="form-label">Current Password</label>
-                        <input type="password" class="form-control" id="current_password" name="current_password" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="new_password" class="form-label">New Password</label>
-                        <input type="password" class="form-control" id="new_password" name="new_password" required>
-                        <div class="form-text">Password must be at least 8 characters long.</div>
-                    </div>
-                    <div class="mb-3">
-                        <label for="confirm_password" class="form-label">Confirm New Password</label>
-                        <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
-                    </div>
-                    <button type="submit" class="btn btn-primary">Update Password</button>
-                </form>
+            
+            <div class="card bg-dark shadow-sm">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Account Information</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>Username:</strong> {{ current_user.username }}</p>
+                    <p><strong>Member Since:</strong> {{ current_user.created_at.strftime('%B %d, %Y') }}</p>
+                    <p><strong>Last Login:</strong> 
+                        {% if current_user.last_login %}
+                            {{ current_user.last_login.strftime('%B %d, %Y at %H:%M') }}
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </p>
+                    <p><strong>Admin:</strong> {% if current_user.is_admin %}Yes{% else %}No{% endif %}</p>
+                </div>
             </div>
         </div>
     </div>

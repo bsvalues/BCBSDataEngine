@@ -1,31 +1,6 @@
 {
-  "id": "WebApp",
+  "type": "task",
+  "command": "python main.py",
   "name": "WebApp",
-  "icon": "🏠",
-  "description": "Real estate valuation dashboard web application",
-  "documentation": "Web interface for BCBS Property Valuation System",
-  "type": "script",
-  "run_command": [
-    "python",
-    "-m",
-    "flask",
-    "--app",
-    "start_webapp",
-    "run",
-    "--host",
-    "0.0.0.0",
-    "--port",
-    "5002"
-  ],
-  "entrypoint": "main.py",
-  "public_port": 5002,
-  "preferred_port": 5002,
-  "restart_policy": "on-failure",
-  "categories": [
-    "web",
-    "api"
-  ],
-  "dependencies": [
-    "flask"
-  ]
+  "icon": "globe"
 }

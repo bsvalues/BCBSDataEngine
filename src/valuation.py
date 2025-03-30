@@ -5,10 +5,22 @@ This module provides sophisticated real estate valuation capabilities using
 multiple regression techniques, enhanced GIS integration, and advanced
 statistical analysis. It supports both linear models and gradient boosting
 for more accurate property valuations with comprehensive statistical outputs.
+
+The enhanced version includes:
+- Multiple regression using scikit-learn with advanced feature engineering
+- GIS parameter integration (latitude, longitude, neighborhood quality)
+- Spatial adjustments for property values based on geographic context
+- Normalized features with robust error handling
+- Comprehensive model metrics (R-squared, coefficients, p-values)
 """
 
 import logging
 import math
+import os
+import json
+import datetime
+from typing import Dict, List, Tuple, Optional, Union, Any
+
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
@@ -26,6 +38,13 @@ from sklearn.exceptions import ConvergenceWarning
 from sklearn.feature_selection import SelectKBest, f_regression, mutual_info_regression
 from sklearn.decomposition import PCA
 import warnings
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Import enhanced GIS features module
 from src.enhanced_gis_features import calculate_enhanced_gis_features
@@ -577,6 +596,814 @@ def calculate_gis_features(property_data, gis_data=None, ref_points=None, neighb
     
     logger.info(f"Added {len(gis_features)} GIS features to property data")
     return result_data
+
+# Base class for all valuation engines
+class ValuationEngine:
+    """
+    Base class for property valuation engines.
+    
+    This class provides the foundation for property valuation techniques, including
+    common utility methods and a consistent interface for valuation operations.
+    
+    Attributes:
+        model (object): The trained regression model for property valuation
+        scaler (object): The feature scaler for normalizing input data
+        feature_names (list): List of feature names used by the model
+        model_metrics (dict): Dictionary of model performance metrics
+    """
+    
+    def __init__(self):
+        """Initialize the base valuation engine."""
+        self.model = None
+        self.scaler = None
+        self.feature_names = []
+        self.model_metrics = {}
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.logger.info(f"Initializing {self.__class__.__name__}")
+    
+    def get_db(self):
+        """
+        Get database session for querying property data.
+        
+        Returns:
+            object: Database session object
+        """
+        # This method would be overridden in production to return an actual DB session
+        # For testing purposes, we'll use a dummy implementation
+        self.logger.warning("Using dummy database session - override in production")
+        return None
+    
+    def calculate_valuation(self, property_id, **kwargs):
+        """
+        Calculate valuation for a specific property.
+        
+        Parameters:
+            property_id (str): Unique identifier for the property
+            **kwargs: Additional parameters for customizing the valuation
+            
+        Returns:
+            dict: Valuation results including estimated value and confidence
+        """
+        self.logger.info(f"Calculating valuation for property {property_id}")
+        
+        # In a real implementation, this would query the database
+        # Here we'll return a placeholder result for the base class
+        return {
+            'property_id': property_id,
+            'estimated_value': 0.0,
+            'valuation_date': datetime.datetime.now().isoformat(),
+            'confidence_score': 0.0,
+            'valuation_factors': {},
+            'model_type': 'base',
+        }
+    
+    def train_model(self, property_data=None):
+        """
+        Train the valuation model on property data.
+        
+        Parameters:
+            property_data (pandas.DataFrame, optional): Property data for training.
+                If None, data will be loaded from the database.
+                
+        Returns:
+            dict: Model metrics and performance statistics
+        """
+        self.logger.info("Training valuation model")
+        
+        if property_data is None:
+            # In production, this would fetch data from the database
+            db = self.get_db()
+            if db is None:
+                self.logger.error("No database connection available")
+                return {'error': 'No database connection available'}
+            
+            # Example of how we would fetch data in production
+            # property_data = pd.read_sql("SELECT * FROM properties", db)
+            property_data = pd.DataFrame()
+        
+        # Base class doesn't implement training
+        self.model_metrics = {
+            'r_squared': 0.0,
+            'mean_absolute_error': 0.0,
+            'model_coefficients': {}
+        }
+        
+        return self.model_metrics
+    
+    def normalize_features(self, features_df):
+        """
+        Normalize features using the trained scaler.
+        
+        Parameters:
+            features_df (pandas.DataFrame): Features to normalize
+            
+        Returns:
+            pandas.DataFrame: Normalized features
+        """
+        if self.scaler is None:
+            self.logger.warning("No scaler available, initializing StandardScaler")
+            self.scaler = StandardScaler()
+            if not features_df.empty:
+                self.scaler.fit(features_df)
+        
+        try:
+            normalized = pd.DataFrame(
+                self.scaler.transform(features_df),
+                columns=features_df.columns,
+                index=features_df.index
+            )
+            return normalized
+        except Exception as e:
+            self.logger.error(f"Error normalizing features: {e}")
+            return features_df  # Return original if normalization fails
+    
+    def preprocess_property_data(self, property_data):
+        """
+        Preprocess property data for valuation.
+        
+        Parameters:
+            property_data (pandas.DataFrame): Raw property data
+            
+        Returns:
+            pandas.DataFrame: Preprocessed property data
+        """
+        self.logger.info("Preprocessing property data")
+        
+        # Basic preprocessing in base class
+        result = property_data.copy()
+        
+        # Handle missing values
+        for col in result.columns:
+            if result[col].dtype.kind in 'ifc':  # integer, float, complex
+                result[col] = result[col].fillna(result[col].median())
+            else:
+                result[col] = result[col].fillna(result[col].mode()[0] if len(result[col].mode()) > 0 else None)
+        
+        return result
+
+
+# Advanced valuation engine with multiple regression and GIS integration
+class AdvancedValuationEngine(ValuationEngine):
+    """
+    Advanced property valuation engine with multiple regression and GIS integration.
+    
+    This class extends the base ValuationEngine to provide enhanced valuation capabilities
+    using multiple regression techniques and spatial analysis. It incorporates GIS features,
+    performs feature normalization, and provides detailed model metrics.
+    
+    Attributes:
+        regression_model (object): Trained multiple regression model
+        feature_importance (dict): Importance scores for each feature
+        gis_adjustment_factors (dict): Spatial adjustment factors for different areas
+        neighborhood_quality_map (dict): Quality ratings for different neighborhoods
+    """
+    
+    def __init__(self):
+        """Initialize the advanced valuation engine."""
+        super().__init__()
+        self.regression_model = None
+        self.feature_importance = {}
+        self.gis_adjustment_factors = {}
+        self.neighborhood_quality_map = {}
+        self.feature_selector = None
+        self.statsmodels_result = None  # For storing statsmodels regression results
+    
+    def train_model(self, property_data=None):
+        """
+        Train an advanced multiple regression model for property valuation.
+        
+        This method implements a sophisticated training pipeline that:
+        1. Fetches property data if not provided
+        2. Engineers additional features
+        3. Applies feature normalization
+        4. Performs feature selection
+        5. Trains multiple regression models
+        6. Calculates detailed model metrics
+        
+        Parameters:
+            property_data (pandas.DataFrame, optional): Property data for training.
+                If None, data will be loaded from the database.
+                
+        Returns:
+            dict: Comprehensive model metrics and performance statistics
+        """
+        self.logger.info("Training advanced valuation model")
+        
+        if property_data is None:
+            # In production, this would fetch data from the database
+            db = self.get_db()
+            if db is None:
+                self.logger.error("No database connection available")
+                return {'error': 'No database connection available'}
+            
+            # Example of how we would fetch data in production
+            # property_data = pd.read_sql("SELECT * FROM properties", db)
+            self.logger.warning("No property data provided, using empty DataFrame")
+            property_data = pd.DataFrame()
+            
+            if property_data.empty:
+                self.logger.error("No property data available for training")
+                return {
+                    'error': 'No property data available',
+                    'r_squared': 0.0,
+                    'mean_absolute_error': 0.0,
+                    'model_coefficients': {}
+                }
+        
+        try:
+            # Step 1: Preprocess data
+            self.logger.info("Preprocessing property data for model training")
+            processed_data = self.preprocess_property_data(property_data)
+            
+            # Step 2: Engineer additional features
+            self.logger.info("Engineering property features")
+            enhanced_data = engineer_property_features(processed_data)
+            
+            # Step 3: Add GIS features if needed
+            if 'latitude' in enhanced_data.columns and 'longitude' in enhanced_data.columns:
+                self.logger.info("Adding GIS features to training data")
+                enhanced_data = calculate_gis_features(enhanced_data)
+            
+            # Step 4: Prepare features and target
+            target_column = 'price'
+            if target_column not in enhanced_data.columns:
+                # Try alternative target columns
+                alternatives = ['last_sale_price', 'value', 'estimated_value']
+                for alt in alternatives:
+                    if alt in enhanced_data.columns:
+                        target_column = alt
+                        break
+                else:
+                    self.logger.error("No target variable found for training")
+                    return {
+                        'error': 'No target variable found',
+                        'r_squared': 0.0,
+                        'mean_absolute_error': 0.0
+                    }
+            
+            # Identify features to use
+            numerical_features = [col for col in enhanced_data.columns 
+                                 if enhanced_data[col].dtype.kind in 'ifc'  # integer, float, complex
+                                 and col != target_column
+                                 and not enhanced_data[col].isnull().all()]
+            
+            # Step 5: Create feature matrix and target vector
+            X = enhanced_data[numerical_features].copy()
+            y = enhanced_data[target_column].copy()
+            
+            # Save feature names
+            self.feature_names = numerical_features
+            
+            # Handle missing values in features
+            X = X.fillna(X.median())
+            
+            # Step 6: Split data into training and testing sets
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.2, random_state=42
+            )
+            
+            # Step 7: Normalize features
+            self.scaler = StandardScaler()
+            X_train_scaled = pd.DataFrame(
+                self.scaler.fit_transform(X_train),
+                columns=X_train.columns,
+                index=X_train.index
+            )
+            X_test_scaled = pd.DataFrame(
+                self.scaler.transform(X_test),
+                columns=X_test.columns,
+                index=X_test.index
+            )
+            
+            # Step 8: Feature selection using SelectKBest
+            n_features = min(15, len(numerical_features))
+            self.feature_selector = SelectKBest(f_regression, k=n_features)
+            X_train_selected = self.feature_selector.fit_transform(X_train_scaled, y_train)
+            X_test_selected = self.feature_selector.transform(X_test_scaled)
+            
+            # Get selected feature names
+            selected_features_mask = self.feature_selector.get_support()
+            selected_feature_names = [numerical_features[i] for i in range(len(numerical_features)) 
+                                     if selected_features_mask[i]]
+            
+            # Step 9: Train multiple regression models
+            # Linear Regression
+            lr_model = LinearRegression()
+            lr_model.fit(X_train_selected, y_train)
+            
+            # Ridge Regression
+            ridge_model = Ridge(alpha=1.0)
+            ridge_model.fit(X_train_selected, y_train)
+            
+            # Choose best model based on performance
+            lr_score = r2_score(y_test, lr_model.predict(X_test_selected))
+            ridge_score = r2_score(y_test, ridge_model.predict(X_test_selected))
+            
+            if ridge_score > lr_score:
+                self.regression_model = ridge_model
+                model_type = "Ridge Regression"
+            else:
+                self.regression_model = lr_model
+                model_type = "Linear Regression"
+            
+            # Step 10: Calculate predictions and performance metrics
+            y_pred = self.regression_model.predict(X_test_selected)
+            
+            r2 = r2_score(y_test, y_pred)
+            mae = mean_absolute_error(y_test, y_pred)
+            mse = mean_squared_error(y_test, y_pred)
+            rmse = np.sqrt(mse)
+            
+            # Step 11: Get feature importance (coefficients)
+            coefficients = {}
+            for feature, coef in zip(selected_feature_names, self.regression_model.coef_):
+                coefficients[feature] = coef
+                
+            # Step 12: Calculate detailed statistics using statsmodels
+            try:
+                # Add constant for intercept
+                X_train_sm = sm.add_constant(pd.DataFrame(X_train_selected, 
+                                                         columns=[f"feature_{i}" for i in range(X_train_selected.shape[1])]))
+                
+                # Fit statsmodels OLS
+                sm_model = sm.OLS(y_train, X_train_sm)
+                self.statsmodels_result = sm_model.fit()
+                
+                # Get p-values and additional statistics
+                p_values = {}
+                for i, p_val in enumerate(self.statsmodels_result.pvalues[1:]):  # Skip intercept
+                    if i < len(selected_feature_names):
+                        p_values[selected_feature_names[i]] = p_val
+                
+                # Get confidence intervals
+                conf_int = self.statsmodels_result.conf_int()
+                confidence_intervals = {}
+                for i, (lower, upper) in enumerate(conf_int.values[1:]):  # Skip intercept
+                    if i < len(selected_feature_names):
+                        confidence_intervals[selected_feature_names[i]] = [lower, upper]
+                
+                # Additional statsmodels metrics
+                aic = self.statsmodels_result.aic
+                bic = self.statsmodels_result.bic
+                
+            except Exception as e:
+                self.logger.error(f"Error calculating statsmodels metrics: {e}")
+                p_values = {"error": str(e)}
+                confidence_intervals = {}
+                aic = None
+                bic = None
+            
+            # Step 13: Calculate cross-validation score
+            cv_scores = cross_val_score(
+                self.regression_model, X_train_selected, y_train, 
+                cv=5, scoring='r2'
+            )
+            cv_score = np.mean(cv_scores)
+            
+            # Step 14: Store metrics
+            self.model_metrics = {
+                'model_type': model_type,
+                'r_squared': r2,
+                'mean_absolute_error': mae,
+                'root_mean_squared_error': rmse,
+                'cross_validation_r2': cv_score,
+                'model_coefficients': coefficients,
+                'p_values': p_values,
+                'confidence_intervals': confidence_intervals,
+                'aic': aic,
+                'bic': bic,
+                'feature_selection': {
+                    'method': 'SelectKBest with f_regression',
+                    'selected_features': selected_feature_names
+                },
+                'training_data': {
+                    'n_samples': len(X_train),
+                    'n_features_original': len(numerical_features),
+                    'n_features_selected': n_features
+                }
+            }
+            
+            self.logger.info(f"Successfully trained {model_type} model with R² = {r2:.4f}")
+            return self.model_metrics
+            
+        except Exception as e:
+            self.logger.error(f"Error training advanced valuation model: {e}")
+            return {
+                'error': str(e),
+                'r_squared': 0.0,
+                'mean_absolute_error': 0.0,
+                'model_coefficients': {}
+            }
+    
+    def preprocess_property_data(self, property_data):
+        """
+        Preprocess property data with advanced techniques.
+        
+        Parameters:
+            property_data (pandas.DataFrame): Raw property data
+            
+        Returns:
+            pandas.DataFrame: Preprocessed property data with enhanced features
+        """
+        self.logger.info("Preprocessing property data with advanced techniques")
+        
+        if property_data.empty:
+            return property_data
+        
+        try:
+            # Start with basic preprocessing from parent class
+            result = super().preprocess_property_data(property_data)
+            
+            # Advanced preprocessing specific to this class
+            # 1. Handle outliers using capping
+            numerical_cols = [col for col in result.columns 
+                             if result[col].dtype.kind in 'ifc']  # integer, float, complex
+            
+            for col in numerical_cols:
+                # Skip columns that are all NaN
+                if result[col].isna().all():
+                    continue
+                    
+                # Calculate percentiles (robust to outliers)
+                q1 = result[col].quantile(0.01)
+                q3 = result[col].quantile(0.99)
+                
+                # Cap values outside of 1% and 99% percentiles
+                result[col] = result[col].clip(q1, q3)
+            
+            # 2. Consistency checks
+            # Ensure square_feet is reasonable
+            if 'square_feet' in result.columns:
+                result.loc[result['square_feet'] < 100, 'square_feet'] = 100
+                result.loc[result['square_feet'] > 15000, 'square_feet'] = 15000
+            
+            # Ensure bedrooms is reasonable
+            if 'bedrooms' in result.columns:
+                result.loc[result['bedrooms'] < 0, 'bedrooms'] = 0
+                result.loc[result['bedrooms'] > 15, 'bedrooms'] = 15
+            
+            # Ensure bathrooms is reasonable
+            if 'bathrooms' in result.columns:
+                result.loc[result['bathrooms'] < 0, 'bathrooms'] = 0
+                result.loc[result['bathrooms'] > 10, 'bathrooms'] = 10
+            
+            # 3. Handle categorical variables through encoding
+            categorical_cols = [col for col in result.columns 
+                               if result[col].dtype == 'object'
+                               and col not in ['property_id', 'address']]
+            
+            for col in categorical_cols:
+                # Get value counts for categories
+                counts = result[col].value_counts()
+                
+                # Only encode if we have reasonable number of categories
+                if len(counts) < 50:
+                    # One-hot encode categories
+                    dummies = pd.get_dummies(result[col], prefix=col, drop_first=True)
+                    result = pd.concat([result, dummies], axis=1)
+                    
+                    # Optionally remove original categorical column
+                    # result = result.drop(col, axis=1)
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Error in advanced preprocessing: {e}")
+            # Return original data if processing fails
+            return property_data
+    
+    def calculate_valuation(self, property_id, **kwargs):
+        """
+        Calculate advanced property valuation with GIS adjustments.
+        
+        Parameters:
+            property_id (str): Unique identifier for the property
+            **kwargs: Additional parameters including:
+                - neighborhood_quality (float): Override for neighborhood quality score
+                - latitude (float): Override for property latitude
+                - longitude (float): Override for property longitude
+                - include_model_metrics (bool): Whether to include model metrics
+                
+        Returns:
+            dict: Comprehensive valuation results including:
+                - estimated_value: The predicted property value
+                - confidence_score: Confidence in the prediction (0-1)
+                - valuation_factors: Breakdown of factors influencing the valuation
+                - gis_adjustments: Spatial adjustments applied to the valuation
+                - model_metrics: Detailed model performance metrics (if requested)
+        """
+        self.logger.info(f"Calculating advanced valuation for property {property_id}")
+        
+        # Extract optional parameters
+        neighborhood_quality = kwargs.get('neighborhood_quality', None)
+        latitude = kwargs.get('latitude', None)
+        longitude = kwargs.get('longitude', None)
+        include_metrics = kwargs.get('include_model_metrics', False)
+        
+        try:
+            # In production, we would fetch property data from the database
+            db = self.get_db()
+            
+            # In a real implementation, this would query the database
+            # Here we'll use a placeholder based on the provided property ID and optional parameters
+            
+            # Create a base property valuation
+            base_valuation = 350000  # Base value for example
+            
+            # Initialize factors dictionary to track valuation components
+            valuation_factors = {
+                'base_valuation': base_valuation,
+                'square_footage': 0.35,  # Example weight for square footage
+                'bedrooms': 0.15,        # Example weight for bedrooms
+                'bathrooms': 0.15,       # Example weight for bathrooms
+                'property_age': -0.10,   # Example weight for age (negative impact)
+                'location': 0.25,        # Example weight for location
+                'property_condition': 0.20  # Example weight for condition
+            }
+            
+            # Calculate GIS adjustment if we have location data
+            gis_adjustment = 1.0  # Default: no adjustment
+            gis_adjustment_components = {}
+            
+            if latitude is not None and longitude is not None:
+                # Calculate location-based adjustments
+                
+                # Example: Proximity to schools adjustment
+                school_proximity = 0.82  # Example value (0-1 scale)
+                school_impact = 0.05  # 5% impact
+                school_adjustment = 1.0 + (school_proximity - 0.5) * 2 * school_impact
+                gis_adjustment_components['school_proximity'] = school_adjustment
+                
+                # Example: Proximity to parks adjustment
+                park_proximity = 0.75  # Example value (0-1 scale)
+                park_impact = 0.03  # 3% impact
+                park_adjustment = 1.0 + (park_proximity - 0.5) * 2 * park_impact
+                gis_adjustment_components['park_proximity'] = park_adjustment
+                
+                # Example: Walkability score adjustment
+                walkability = 0.68  # Example value (0-1 scale)
+                walkability_impact = 0.04  # 4% impact
+                walkability_adjustment = 1.0 + (walkability - 0.5) * 2 * walkability_impact
+                gis_adjustment_components['walkability'] = walkability_adjustment
+                
+                # Apply neighborhood quality adjustment if provided
+                if neighborhood_quality is not None:
+                    # Ensure neighborhood_quality is between 0 and 1
+                    neighborhood_quality = min(max(neighborhood_quality, 0), 1)
+                    
+                    # Calculate adjustment: 0.5 is neutral, range is 0.8 to 1.2 (±20%)
+                    quality_impact = 0.2  # 20% max impact
+                    quality_adjustment = 1.0 + (neighborhood_quality - 0.5) * 2 * quality_impact
+                    gis_adjustment_components['neighborhood_quality'] = quality_adjustment
+                
+                # Calculate overall GIS adjustment as product of all components
+                gis_adjustment = 1.0
+                for component, value in gis_adjustment_components.items():
+                    gis_adjustment *= value
+                
+                # Cap extreme adjustments
+                gis_adjustment = min(max(gis_adjustment, 0.7), 1.3)  # ±30% max total adjustment
+            
+            # Apply GIS adjustment to base valuation
+            adjusted_valuation = base_valuation * gis_adjustment
+            
+            # Calculate confidence score based on available data
+            # Higher when we have more specific data about the property
+            confidence_components = {
+                'model_performance': 0.85,  # Example base confidence from model performance
+                'property_data_quality': 0.90,  # Example confidence in property data
+                'location_data_available': 1.0 if latitude and longitude else 0.7
+            }
+            
+            # Overall confidence is weighted average of components
+            confidence_score = sum(confidence_components.values()) / len(confidence_components)
+            # Normalize to 0-1 range
+            confidence_score = min(max(confidence_score, 0), 1)
+            
+            # Create result dictionary
+            result = {
+                'property_id': property_id,
+                'estimated_value': round(adjusted_valuation, 2),
+                'valuation_date': datetime.datetime.now().isoformat(),
+                'confidence_score': round(confidence_score, 2),
+                'valuation_factors': valuation_factors,
+                'gis_adjustments': {
+                    'total_adjustment_factor': round(gis_adjustment, 4),
+                    'components': {k: round(v, 4) for k, v in gis_adjustment_components.items()}
+                },
+                'model_type': 'advanced_regression_with_gis'
+            }
+            
+            # Include model metrics if requested
+            if include_metrics and self.model_metrics:
+                # Filter to include only key metrics
+                key_metrics = ['r_squared', 'mean_absolute_error', 'model_type']
+                result['model_metrics'] = {k: self.model_metrics[k] for k in key_metrics 
+                                          if k in self.model_metrics}
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating advanced valuation: {e}")
+            # Return basic valuation with error flag
+            return {
+                'property_id': property_id,
+                'estimated_value': 0.0,
+                'valuation_date': datetime.datetime.now().isoformat(),
+                'confidence_score': 0.0,
+                'valuation_factors': {},
+                'error': str(e),
+                'model_type': 'advanced_regression_with_gis',
+            }
+
+
+# GIS Feature Engine for spatial analysis and adjustments
+class GISFeatureEngine:
+    """
+    Engine for calculating GIS features and spatial adjustments for property valuations.
+    
+    This class provides functionality for analyzing geographic attributes of properties
+    and calculating appropriate valuation adjustments based on spatial characteristics.
+    
+    Attributes:
+        reference_points (dict): Dictionary of reference points with lat/lon coordinates
+        neighborhood_ratings (dict): Mapping of neighborhoods to quality ratings
+        spatial_clusters (dict): Dictionary of spatial cluster definitions
+        feature_weights (dict): Weights for various GIS features in valuation adjustments
+    """
+    
+    def __init__(self):
+        """Initialize the GIS feature engine."""
+        self.reference_points = {}
+        self.neighborhood_ratings = {}
+        self.spatial_clusters = {}
+        self.feature_weights = {
+            'school_proximity': 0.15,
+            'park_proximity': 0.10,
+            'shopping_proximity': 0.08,
+            'transit_proximity': 0.12,
+            'highway_access': 0.05,
+            'flood_risk': -0.07,  # Negative impact
+            'walkability': 0.10,
+            'neighborhood_quality': 0.25,
+        }
+        self.logger = logging.getLogger(f"{__name__}.GISFeatureEngine")
+        self.logger.info("Initializing GIS Feature Engine")
+    
+    def load_reference_data(self, data_path=None):
+        """
+        Load reference data for GIS calculations.
+        
+        Parameters:
+            data_path (str, optional): Path to GIS reference data files
+                
+        Returns:
+            bool: True if data was loaded successfully, False otherwise
+        """
+        self.logger.info(f"Loading GIS reference data from {data_path if data_path else 'default paths'}")
+        
+        try:
+            # Load reference points (schools, parks, etc.)
+            if data_path:
+                ref_points_path = os.path.join(data_path, "reference_points.json")
+            else:
+                ref_points_path = "gis_reference_points.json"
+                
+            if os.path.exists(ref_points_path):
+                with open(ref_points_path, 'r') as f:
+                    self.reference_points = json.load(f)
+                self.logger.info(f"Loaded {len(self.reference_points)} reference points")
+            else:
+                self.logger.warning(f"Reference points file not found: {ref_points_path}")
+                
+            # Load neighborhood ratings
+            if data_path:
+                ratings_path = os.path.join(data_path, "neighborhood_ratings.json")
+            else:
+                ratings_path = "neighborhood_ratings.json"
+                
+            if os.path.exists(ratings_path):
+                with open(ratings_path, 'r') as f:
+                    self.neighborhood_ratings = json.load(f)
+                self.logger.info(f"Loaded ratings for {len(self.neighborhood_ratings)} neighborhoods")
+            else:
+                self.logger.warning(f"Neighborhood ratings file not found: {ratings_path}")
+                
+            # Load spatial clusters
+            if data_path:
+                clusters_path = os.path.join(data_path, "spatial_clusters.json")
+            else:
+                clusters_path = "spatial_clusters.json"
+                
+            if os.path.exists(clusters_path):
+                with open(clusters_path, 'r') as f:
+                    self.spatial_clusters = json.load(f)
+                self.logger.info(f"Loaded {len(self.spatial_clusters)} spatial clusters")
+            else:
+                self.logger.warning(f"Spatial clusters file not found: {clusters_path}")
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error loading GIS reference data: {e}")
+            return False
+    
+    def calculate_gis_features(self, property_data):
+        """
+        Calculate GIS features for properties.
+        
+        Parameters:
+            property_data (pandas.DataFrame): Property data including lat/lon coordinates
+                
+        Returns:
+            pandas.DataFrame: Property data with added GIS features
+        """
+        self.logger.info("Calculating GIS features for properties")
+        
+        # Delegate to the module-level function
+        try:
+            result = calculate_gis_features(
+                property_data, 
+                gis_data=None, 
+                ref_points=self.reference_points,
+                neighborhood_ratings=self.neighborhood_ratings
+            )
+            return result
+        except Exception as e:
+            self.logger.error(f"Error calculating GIS features: {e}")
+            return property_data  # Return original data if calculation fails
+    
+    def calculate_gis_adjustment(self, property_id, gis_features=None):
+        """
+        Calculate GIS-based adjustment factor for property valuation.
+        
+        Parameters:
+            property_id (int): ID of the property
+            gis_features (dict, optional): Pre-calculated GIS features
+                
+        Returns:
+            float: Adjustment multiplier for property valuation (e.g., 1.05 means +5%)
+        """
+        self.logger.info(f"Calculating GIS adjustment for property {property_id}")
+        
+        # Default adjustment factor (no adjustment)
+        adjustment = 1.0
+        
+        try:
+            # In a real implementation, we would query the database for GIS features
+            # if not provided as an argument
+            
+            if gis_features is None:
+                # Mock example features for demonstration
+                gis_features = {
+                    'school_proximity_score': 0.75,
+                    'park_proximity_score': 0.60,
+                    'shopping_proximity_score': 0.85,
+                    'transit_proximity_score': 0.70,
+                    'highway_access_score': 0.50,
+                    'flood_risk_score': 0.15,  # Lower is better
+                    'walkability_score': 0.80,
+                    'neighborhood_quality_score': 0.85
+                }
+                
+            # Calculate adjustment based on feature weights
+            adjustment_components = {}
+            
+            # Process each feature that we have weights for
+            for feature, weight in self.feature_weights.items():
+                feature_key = f"{feature}_score"
+                
+                if feature_key in gis_features:
+                    # Get the feature value (0-1 scale)
+                    value = gis_features[feature_key]
+                    
+                    # Calculate component adjustment
+                    # For positive features: above 0.5 is positive adjustment, below is negative
+                    # For negative features (like flood_risk): below 0.5 is positive, above is negative
+                    if weight >= 0:
+                        # Positive feature (higher is better)
+                        component_adj = 1.0 + (value - 0.5) * 2 * abs(weight)
+                    else:
+                        # Negative feature (lower is better)
+                        component_adj = 1.0 - (value - 0.5) * 2 * abs(weight)
+                        
+                    adjustment_components[feature] = component_adj
+            
+            # Calculate overall adjustment as weighted product
+            if adjustment_components:
+                adjustment = 1.0
+                for component, value in adjustment_components.items():
+                    adjustment *= value
+                    
+                # Cap extreme adjustments
+                adjustment = min(max(adjustment, 0.7), 1.3)  # ±30% max adjustment
+                
+            return adjustment
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating GIS adjustment: {e}")
+            return 1.0  # Return no adjustment (1.0) if calculation fails
+
 
 def advanced_property_valuation(property_data, target_property=None, **kwargs):
     """
