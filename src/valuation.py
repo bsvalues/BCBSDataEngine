@@ -2140,6 +2140,12 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
     cross_validation_folds : int, default=5
         Number of folds for cross-validation when evaluating model performance.
     
+    use_polynomial_features : bool, default=False
+        Whether to generate polynomial features for non-linear relationships.
+        
+    polynomial_degree : int, default=2
+        Degree of polynomial features if use_polynomial_features is True.
+    
     Returns:
     --------
     dict
@@ -2155,11 +2161,59 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
         - mae: Mean Absolute Error
         - model_performance: Cross-validation performance metrics
         - spatial_factors: Information about spatial adjustments applied
+        - prediction_std_error: Standard error of the prediction
+        - normalized_feature_values: The normalized values used for prediction
     """
-    logger.info("Preparing property data for valuation model")
+    # ======================================================================
+    # Step 1: Initialize logging and track execution
+    # ======================================================================
+    start_time = datetime.datetime.now()
+    logger.info(f"Starting advanced property valuation at {start_time}")
+    
+    # Store all errors and warnings for reporting
+    execution_log = {
+        "info": [],
+        "warning": [],
+        "error": []
+    }
+    
+    # Define a helper function to log messages at different levels
+    def log_message(level, message):
+        if level == 'info':
+            logger.info(message)
+            execution_log['info'].append(message)
+        elif level == 'warning':
+            logger.warning(message)
+            execution_log['warning'].append(message)
+        elif level == 'error':
+            logger.error(message)
+            execution_log['error'].append(message)
+    
+    # ======================================================================
+    # Step 2: Validate inputs and identify the price column
+    # ======================================================================
+    log_message('info', "Validating input data and identifying price column")
+    
+    # Check if property_data is a pandas DataFrame
+    if not isinstance(property_data, pd.DataFrame):
+        error_msg = "Input property_data must be a pandas DataFrame"
+        log_message('error', error_msg)
+        return {
+            'error': error_msg,
+            'execution_log': execution_log
+        }
+    
+    # Check if property_data is empty
+    if property_data.empty:
+        error_msg = "Input property_data is empty"
+        log_message('error', error_msg)
+        return {
+            'error': error_msg,
+            'execution_log': execution_log
+        }
     
     # Identify the price column (assume it's 'list_price', 'sale_price', or similar)
-    price_cols = ['list_price', 'sale_price', 'price', 'value']
+    price_cols = ['list_price', 'sale_price', 'price', 'value', 'estimated_value', 'property_value']
     price_col = None
     for col in price_cols:
         if col in property_data.columns:
@@ -2168,6 +2222,901 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
     
     if not price_col:
         error_msg = f"No price column found in property data. Expected one of {price_cols}"
+        log_message('error', error_msg)
+        return {
+            'error': error_msg,
+            'execution_log': execution_log
+        }
+    
+    log_message('info', f"Using '{price_col}' as target price column")
+    
+    # ======================================================================
+    # Step 3: Engineer advanced property features
+    # ======================================================================
+    log_message('info', "Engineering advanced property features")
+    
+    try:
+        # Apply feature engineering to create derived property features
+        property_data_enhanced = engineer_property_features(property_data)
+        
+        # Track newly created features
+        new_features = set(property_data_enhanced.columns) - set(property_data.columns)
+        if new_features:
+            log_message('info', f"Created {len(new_features)} engineered features: {', '.join(new_features)}")
+        else:
+            log_message('warning', "No new features created during engineering")
+    except Exception as e:
+        log_message('warning', f"Error during feature engineering: {str(e)}. Continuing with original features.")
+        property_data_enhanced = property_data.copy()
+    
+    # ======================================================================
+    # Step 4: Calculate GIS features if enabled
+    # ======================================================================
+    if use_gis_features:
+        log_message('info', "Calculating GIS features for spatial analysis")
+        try:
+            # Process GIS data to enhance valuation
+            if gis_data is not None or (ref_points is not None and neighborhood_ratings is not None):
+                property_data_enhanced = calculate_gis_features(
+                    property_data_enhanced, 
+                    gis_data=gis_data, 
+                    ref_points=ref_points,
+                    neighborhood_ratings=neighborhood_ratings
+                )
+                
+                # Track newly created GIS features
+                gis_features = set(property_data_enhanced.columns) - set(property_data.columns) - new_features
+                if gis_features:
+                    log_message('info', f"Added {len(gis_features)} GIS features: {', '.join(gis_features)}")
+                else:
+                    log_message('warning', "No GIS features added")
+            else:
+                log_message('warning', "No GIS data provided, skipping GIS feature calculation")
+        except Exception as e:
+            log_message('warning', f"Error calculating GIS features: {str(e)}. Continuing without GIS features.")
+    
+    # ======================================================================
+    # Step 5: Preprocess and clean data
+    # ======================================================================
+    log_message('info', "Preprocessing and cleaning property data")
+    
+    # Create a copy of the data for preprocessing
+    property_data_processed = property_data_enhanced.copy()
+    
+    # Handle missing values if enabled
+    if handle_missing_values:
+        log_message('info', "Handling missing values")
+        try:
+            # Count missing values before imputation
+            missing_before = property_data_processed.isna().sum().sum()
+            
+            # Create separate imputers for numeric and categorical data
+            numeric_features = property_data_processed.select_dtypes(include=['number']).columns.tolist()
+            categorical_features = property_data_processed.select_dtypes(include=['object', 'category']).columns.tolist()
+            
+            # Define preprocessing pipeline with appropriate imputers
+            preprocessor = ColumnTransformer(
+                transformers=[
+                    ('num', Pipeline([
+                        ('imputer', KNNImputer(n_neighbors=5))
+                    ]), numeric_features),
+                    ('cat', Pipeline([
+                        ('imputer', SimpleImputer(strategy='most_frequent'))
+                    ]), categorical_features)
+                ],
+                remainder='passthrough'
+            )
+            
+            # Apply imputation
+            if numeric_features or categorical_features:
+                # Extract column data
+                all_columns = numeric_features + categorical_features
+                remaining_columns = [col for col in property_data_processed.columns if col not in all_columns]
+                
+                # Process columns with the transformer
+                processed_data = preprocessor.fit_transform(property_data_processed[all_columns])
+                
+                # Reconstruct DataFrame with imputed values
+                imputed_df = pd.DataFrame(
+                    processed_data, 
+                    columns=numeric_features + categorical_features, 
+                    index=property_data_processed.index
+                )
+                
+                # Join with any untouched columns
+                if remaining_columns:
+                    property_data_processed = pd.concat([
+                        imputed_df, 
+                        property_data_processed[remaining_columns]
+                    ], axis=1)
+                else:
+                    property_data_processed = imputed_df
+                
+                # Count missing values after imputation
+                missing_after = property_data_processed.isna().sum().sum()
+                log_message('info', f"Imputed {missing_before - missing_after} missing values")
+            else:
+                log_message('warning', "No numeric or categorical features for imputation")
+        except Exception as e:
+            log_message('warning', f"Error during missing value imputation: {str(e)}. Proceeding with original data.")
+            # Drop rows with missing values in essential columns as fallback
+            essential_cols = [price_col, 'square_feet', 'bedrooms', 'bathrooms']
+            essential_cols = [col for col in essential_cols if col in property_data_processed.columns]
+            property_data_processed = property_data_processed.dropna(subset=essential_cols)
+    
+    # Handle outliers if enabled
+    if handle_outliers:
+        log_message('info', "Detecting and handling outliers")
+        try:
+            # Define which numeric columns to check for outliers
+            numeric_cols = property_data_processed.select_dtypes(include=['number']).columns
+            outlier_cols = [col for col in numeric_cols if col != price_col]  # Exclude target variable
+            
+            # Define outlier detection function using Z-score
+            def is_outlier(series, threshold=3.0):
+                z_scores = np.abs((series - series.mean()) / (series.std() or 1.0))
+                return z_scores > threshold
+            
+            # Track outliers in each column
+            outlier_counts = {}
+            total_outliers = 0
+            
+            # Process each column
+            for col in outlier_cols:
+                if property_data_processed[col].nunique() > 1:  # Only process columns with variation
+                    # Identify outliers
+                    outliers = is_outlier(property_data_processed[col])
+                    outlier_count = outliers.sum()
+                    outlier_counts[col] = outlier_count
+                    total_outliers += outlier_count
+                    
+                    # Cap outliers instead of removing them
+                    if outlier_count > 0:
+                        # Get column statistics
+                        q1 = property_data_processed[col].quantile(0.25)
+                        q3 = property_data_processed[col].quantile(0.75)
+                        iqr = q3 - q1
+                        lower_bound = q1 - 1.5 * iqr
+                        upper_bound = q3 + 1.5 * iqr
+                        
+                        # Cap outliers to the bounds
+                        property_data_processed.loc[property_data_processed[col] < lower_bound, col] = lower_bound
+                        property_data_processed.loc[property_data_processed[col] > upper_bound, col] = upper_bound
+            
+            log_message('info', f"Handled {total_outliers} outliers across {len(outlier_counts)} columns")
+        except Exception as e:
+            log_message('warning', f"Error handling outliers: {str(e)}. Continuing with original data.")
+    
+    # ======================================================================
+    # Step 6: Feature normalization and engineering
+    # ======================================================================
+    log_message('info', "Normalizing features for better model performance")
+    
+    # Select features for modeling, excluding the target variable
+    feature_cols = [col for col in property_data_processed.columns if col != price_col]
+    
+    # Create target variable and feature matrix
+    try:
+        # Extract X and y for modeling
+        X = property_data_processed[feature_cols]
+        y = property_data_processed[price_col]
+        
+        # Store original feature values for reference
+        original_features = X.copy()
+        
+        # Handle any remaining NaN values - fallback if previous steps missed any
+        X = X.fillna(X.mean())
+        y = y.fillna(y.mean())
+        
+        # Normalize all numeric features
+        numeric_features = X.select_dtypes(include=['number']).columns.tolist()
+        
+        if numeric_features:
+            # Choose a robust scaler to minimize the impact of any remaining outliers
+            scaler = RobustScaler()
+            
+            # Apply scaling to numeric features
+            X_numeric = X[numeric_features]
+            X_numeric_scaled = pd.DataFrame(
+                scaler.fit_transform(X_numeric),
+                columns=numeric_features,
+                index=X.index
+            )
+            
+            # Replace original numeric columns with scaled versions
+            for col in numeric_features:
+                X[col] = X_numeric_scaled[col]
+                
+            log_message('info', f"Normalized {len(numeric_features)} numeric features")
+        else:
+            log_message('warning', "No numeric features found for normalization")
+        
+        # Generate polynomial features if requested
+        if use_polynomial_features and polynomial_degree > 1:
+            try:
+                log_message('info', f"Generating polynomial features (degree={polynomial_degree})")
+                
+                # Select a subset of important features for polynomial expansion to avoid explosion of dimensions
+                # For example, we might include square_feet, bedrooms, bathrooms and lot_size
+                poly_candidates = ['square_feet', 'bedrooms', 'bathrooms', 'lot_size', 'year_built']
+                poly_features = [f for f in poly_candidates if f in X.columns]
+                
+                if poly_features:
+                    # Generate polynomial and interaction features
+                    poly = PolynomialFeatures(degree=polynomial_degree, include_bias=False)
+                    X_poly = poly.fit_transform(X[poly_features])
+                    
+                    # Create feature names for the polynomial features
+                    poly_feature_names = poly.get_feature_names_out(poly_features)
+                    
+                    # Convert to DataFrame with proper names
+                    X_poly_df = pd.DataFrame(
+                        X_poly, 
+                        columns=poly_feature_names,
+                        index=X.index
+                    )
+                    
+                    # Remove the original features that were expanded
+                    for col in poly_features:
+                        if col in X_poly_df.columns and col != poly_feature_names[0]:
+                            X = X.drop(columns=[col])
+                    
+                    # Join with the original features
+                    X = pd.concat([X, X_poly_df], axis=1)
+                    
+                    log_message('info', f"Added {len(poly_feature_names) - len(poly_features)} polynomial features")
+                else:
+                    log_message('warning', "No suitable features found for polynomial expansion")
+            except Exception as e:
+                log_message('warning', f"Error generating polynomial features: {str(e)}. Continuing without them.")
+        
+        # Store normalized features for reporting
+        normalized_features = X.copy()
+    except Exception as e:
+        error_msg = f"Error preparing features for modeling: {str(e)}"
+        log_message('error', error_msg)
+        return {
+            'error': error_msg,
+            'execution_log': execution_log
+        }
+    
+    # ======================================================================
+    # Step 7: Feature selection
+    # ======================================================================
+    log_message('info', f"Performing feature selection using method: {feature_selection_method}")
+    
+    try:
+        # Apply feature selection based on method
+        selected_features = X.columns.tolist()  # Default: use all features
+        
+        if feature_selection_method == 'correlation':
+            # Select features based on correlation with target
+            correlations = []
+            for col in X.columns:
+                if X[col].dtype in (np.float64, np.int64):
+                    corr = np.abs(np.corrcoef(X[col], y)[0, 1])
+                    if not np.isnan(corr):
+                        correlations.append((col, corr))
+            
+            # Sort by correlation strength
+            correlations.sort(key=lambda x: x[1], reverse=True)
+            
+            # Select top 80% of features (or at least 5, whichever is larger)
+            top_n = max(5, int(0.8 * len(correlations)))
+            selected_features = [col for col, _ in correlations[:top_n]]
+            
+            log_message('info', f"Selected {len(selected_features)} features based on correlation")
+            
+        elif feature_selection_method == 'mutual_info':
+            # Select features based on mutual information with target
+            selector = SelectKBest(mutual_info_regression, k='all')
+            selector.fit(X, y)
+            
+            # Get scores and sort features
+            scores = selector.scores_
+            feature_scores = list(zip(X.columns, scores))
+            feature_scores.sort(key=lambda x: x[1], reverse=True)
+            
+            # Select top 80% of features (or at least 5, whichever is larger)
+            top_n = max(5, int(0.8 * len(feature_scores)))
+            selected_features = [col for col, _ in feature_scores[:top_n]]
+            
+            log_message('info', f"Selected {len(selected_features)} features based on mutual information")
+            
+        elif feature_selection_method == 'recursive':
+            # Use a simpler model for feature selection
+            from sklearn.feature_selection import RFECV
+            
+            # Create a base estimator for selection
+            base_estimator = Ridge(alpha=regularization_strength)
+            
+            # Apply recursive feature elimination with cross-validation
+            selector = RFECV(
+                estimator=base_estimator,
+                step=1,
+                cv=min(5, len(X)),
+                scoring='neg_mean_squared_error',
+                min_features_to_select=5
+            )
+            
+            # Fit the selector
+            selector.fit(X, y)
+            
+            # Get selected features
+            selected_features = X.columns[selector.support_].tolist()
+            
+            log_message('info', f"Selected {len(selected_features)} features using recursive feature elimination")
+            
+        # Apply selection
+        X_selected = X[selected_features]
+        log_message('info', f"Final feature set: {', '.join(selected_features)}")
+    except Exception as e:
+        log_message('warning', f"Error during feature selection: {str(e)}. Using all features.")
+        X_selected = X
+        selected_features = X.columns.tolist()
+    
+    # ======================================================================
+    # Step 8: Split data for training and testing
+    # ======================================================================
+    log_message('info', "Splitting data into training and test sets")
+    
+    try:
+        X_train, X_test, y_train, y_test = train_test_split(
+            X_selected, y, test_size=test_size, random_state=random_state
+        )
+        log_message('info', f"Training set: {X_train.shape[0]} samples, Test set: {X_test.shape[0]} samples")
+    except Exception as e:
+        error_msg = f"Error splitting data: {str(e)}"
+        log_message('error', error_msg)
+        return {
+            'error': error_msg,
+            'execution_log': execution_log
+        }
+    
+    # ======================================================================
+    # Step 9: Model training based on model_type
+    # ======================================================================
+    log_message('info', f"Training {model_type} regression model")
+    
+    try:
+        # Initialize model and metrics containers
+        model = None
+        model_metrics = {
+            'r_squared': None,
+            'adjusted_r_squared': None,
+            'rmse': None,
+            'mae': None,
+            'cross_val_scores': None,
+            'feature_importances': {},
+            'p_values': {},
+            'coefficients': {}
+        }
+        
+        # Train appropriate model based on model_type
+        if model_type == 'linear':
+            # Standard OLS linear regression for interpretability
+            
+            # Add constant for statsmodels
+            X_train_sm = sm.add_constant(X_train)
+            
+            # Fit OLS model
+            ols_model = sm.OLS(y_train, X_train_sm).fit()
+            
+            # Store model and create scikit-learn compatible version for predictions
+            model = LinearRegression()
+            model.fit(X_train, y_train)
+            
+            # Extract and store detailed metrics
+            model_metrics['r_squared'] = ols_model.rsquared
+            model_metrics['adjusted_r_squared'] = ols_model.rsquared_adj
+            
+            # Extract p-values and coefficients
+            p_values = ols_model.pvalues
+            coefficients = ols_model.params
+            
+            # Store in dictionaries (skipping the constant term)
+            feature_names = ['const'] + selected_features
+            for i, feature in enumerate(feature_names):
+                if i < len(p_values):
+                    model_metrics['p_values'][feature] = p_values[i]
+                    model_metrics['coefficients'][feature] = coefficients[i]
+            
+            log_message('info', f"Linear regression model trained: R² = {model_metrics['r_squared']:.4f}")
+            
+        elif model_type == 'ridge':
+            # Ridge regression (L2 regularization)
+            model = Ridge(alpha=regularization_strength, random_state=random_state)
+            model.fit(X_train, y_train)
+            
+            # Calculate basic metrics
+            y_pred = model.predict(X_test)
+            model_metrics['r_squared'] = r2_score(y_test, y_pred)
+            
+            # Adjust R² for number of predictors
+            n = len(y_test)
+            p = X_test.shape[1]
+            model_metrics['adjusted_r_squared'] = 1 - (1 - model_metrics['r_squared']) * (n - 1) / (n - p - 1)
+            
+            # Store coefficients
+            for i, feature in enumerate(selected_features):
+                model_metrics['coefficients'][feature] = model.coef_[i]
+            
+            log_message('info', f"Ridge regression model trained: R² = {model_metrics['r_squared']:.4f}")
+            
+        elif model_type == 'lasso':
+            # Lasso regression (L1 regularization)
+            model = Lasso(alpha=regularization_strength, random_state=random_state, max_iter=2000)
+            model.fit(X_train, y_train)
+            
+            # Calculate basic metrics
+            y_pred = model.predict(X_test)
+            model_metrics['r_squared'] = r2_score(y_test, y_pred)
+            
+            # Adjust R² for number of predictors
+            n = len(y_test)
+            p = X_test.shape[1]
+            model_metrics['adjusted_r_squared'] = 1 - (1 - model_metrics['r_squared']) * (n - 1) / (n - p - 1)
+            
+            # Store coefficients
+            for i, feature in enumerate(selected_features):
+                model_metrics['coefficients'][feature] = model.coef_[i]
+            
+            log_message('info', f"Lasso regression model trained: R² = {model_metrics['r_squared']:.4f}")
+            
+        elif model_type == 'elastic_net':
+            # Elastic Net (combining L1 and L2 regularization)
+            model = ElasticNet(
+                alpha=regularization_strength, 
+                l1_ratio=0.5,  # Equal weight to L1 and L2
+                random_state=random_state,
+                max_iter=2000
+            )
+            model.fit(X_train, y_train)
+            
+            # Calculate basic metrics
+            y_pred = model.predict(X_test)
+            model_metrics['r_squared'] = r2_score(y_test, y_pred)
+            
+            # Adjust R² for number of predictors
+            n = len(y_test)
+            p = X_test.shape[1]
+            model_metrics['adjusted_r_squared'] = 1 - (1 - model_metrics['r_squared']) * (n - 1) / (n - p - 1)
+            
+            # Store coefficients
+            for i, feature in enumerate(selected_features):
+                model_metrics['coefficients'][feature] = model.coef_[i]
+            
+            log_message('info', f"Elastic Net model trained: R² = {model_metrics['r_squared']:.4f}")
+            
+        elif model_type == 'gbr' or (model_type == 'lightgbm' and not LIGHTGBM_AVAILABLE):
+            # Gradient Boosting Regressor (scikit-learn implementation)
+            model = GradientBoostingRegressor(
+                n_estimators=100,
+                learning_rate=0.1,
+                max_depth=3,
+                random_state=random_state
+            )
+            model.fit(X_train, y_train)
+            
+            # Calculate basic metrics
+            y_pred = model.predict(X_test)
+            model_metrics['r_squared'] = r2_score(y_test, y_pred)
+            
+            # Adjust R² for number of predictors (though less relevant for tree-based models)
+            n = len(y_test)
+            p = X_test.shape[1]
+            model_metrics['adjusted_r_squared'] = 1 - (1 - model_metrics['r_squared']) * (n - 1) / (n - p - 1)
+            
+            # Store feature importances
+            for i, feature in enumerate(selected_features):
+                model_metrics['feature_importances'][feature] = model.feature_importances_[i]
+            
+            log_message('info', f"Gradient boosting model trained: R² = {model_metrics['r_squared']:.4f}")
+            
+        elif model_type == 'lightgbm' and LIGHTGBM_AVAILABLE:
+            # LightGBM for efficient gradient boosting
+            import lightgbm as lgb
+            
+            # Create LightGBM dataset objects
+            lgb_train = lgb.Dataset(X_train, y_train)
+            lgb_eval = lgb.Dataset(X_test, y_test, reference=lgb_train)
+            
+            # Define parameters
+            params = {
+                'boosting_type': 'gbdt',
+                'objective': 'regression',
+                'metric': 'rmse',
+                'num_leaves': 31,
+                'learning_rate': 0.05,
+                'feature_fraction': 0.9,
+                'bagging_fraction': 0.8,
+                'bagging_freq': 5,
+                'verbose': -1,
+                'min_data_in_leaf': 5
+            }
+            
+            # Train model
+            gbm = lgb.train(
+                params,
+                lgb_train,
+                num_boost_round=100,
+                valid_sets=lgb_eval,
+                early_stopping_rounds=10,
+                verbose_eval=False
+            )
+            
+            # Save model reference and make predictions
+            model = gbm
+            y_pred = model.predict(X_test, num_iteration=model.best_iteration)
+            model_metrics['r_squared'] = r2_score(y_test, y_pred)
+            
+            # Get feature importances
+            for i, feature in enumerate(selected_features):
+                model_metrics['feature_importances'][feature] = model.feature_importance()[i]
+            
+            log_message('info', f"LightGBM model trained: R² = {model_metrics['r_squared']:.4f}")
+            
+        elif model_type == 'ensemble':
+            # Ensemble of linear and gradient boosting models
+            
+            # Train base models
+            base_models = []
+            base_predictions = []
+            
+            # Linear model
+            linear_model = LinearRegression()
+            linear_model.fit(X_train, y_train)
+            base_models.append(('linear', linear_model))
+            linear_pred = linear_model.predict(X_test)
+            base_predictions.append(linear_pred)
+            
+            # Ridge model
+            ridge_model = Ridge(alpha=regularization_strength, random_state=random_state)
+            ridge_model.fit(X_train, y_train)
+            base_models.append(('ridge', ridge_model))
+            ridge_pred = ridge_model.predict(X_test)
+            base_predictions.append(ridge_pred)
+            
+            # GBR model
+            gbr_model = GradientBoostingRegressor(
+                n_estimators=100,
+                learning_rate=0.1,
+                max_depth=3,
+                random_state=random_state
+            )
+            gbr_model.fit(X_train, y_train)
+            base_models.append(('gbr', gbr_model))
+            gbr_pred = gbr_model.predict(X_test)
+            base_predictions.append(gbr_pred)
+            
+            # Convert predictions to a stacked matrix
+            stacked_preds = np.column_stack(base_predictions)
+            
+            # Train meta-model (simple Ridge) on the base predictions
+            meta_model = Ridge(alpha=0.001)
+            meta_model.fit(stacked_preds, y_test)
+            
+            # Make ensemble prediction
+            ensemble_pred = meta_model.predict(stacked_preds)
+            model_metrics['r_squared'] = r2_score(y_test, ensemble_pred)
+            
+            # Adjust R² for number of predictors
+            n = len(y_test)
+            p = 3  # Number of base models
+            model_metrics['adjusted_r_squared'] = 1 - (1 - model_metrics['r_squared']) * (n - 1) / (n - p - 1)
+            
+            # Store model ensemble
+            model = {
+                'base_models': base_models,
+                'meta_model': meta_model
+            }
+            
+            log_message('info', f"Ensemble model trained: R² = {model_metrics['r_squared']:.4f}")
+        
+        else:
+            # Fallback to linear regression if model_type is not recognized
+            log_message('warning', f"Unrecognized model type '{model_type}'. Falling back to linear regression.")
+            model = LinearRegression()
+            model.fit(X_train, y_train)
+            model_metrics['r_squared'] = model.score(X_test, y_test)
+            
+            # Adjust R² for number of predictors
+            n = len(y_test)
+            p = X_test.shape[1]
+            model_metrics['adjusted_r_squared'] = 1 - (1 - model_metrics['r_squared']) * (n - 1) / (n - p - 1)
+        
+        # ======================================================================
+        # Step 10: Calculate additional model performance metrics
+        # ======================================================================
+        log_message('info', "Calculating comprehensive model performance metrics")
+        
+        # Make predictions on test set for metrics
+        if model_type == 'ensemble':
+            # For ensemble, prepare stacked predictions
+            test_predictions = []
+            for model_name, base_model in model['base_models']:
+                test_predictions.append(base_model.predict(X_test))
+            stacked_test_preds = np.column_stack(test_predictions)
+            y_pred = model['meta_model'].predict(stacked_test_preds)
+        elif model_type == 'lightgbm' and LIGHTGBM_AVAILABLE:
+            # For LightGBM, use best iteration
+            y_pred = model.predict(X_test, num_iteration=model.best_iteration)
+        else:
+            # Standard prediction
+            y_pred = model.predict(X_test)
+        
+        # Calculate error metrics
+        model_metrics['rmse'] = float(np.sqrt(mean_squared_error(y_test, y_pred)))
+        model_metrics['mae'] = float(mean_absolute_error(y_test, y_pred))
+        
+        # Calculate cross-validation scores if requested
+        if cross_validation_folds > 1:
+            try:
+                # We'll use a simpler model for cross-validation to save time
+                if model_type in ['linear', 'ridge', 'lasso', 'elastic_net']:
+                    cv_model = Ridge(alpha=regularization_strength, random_state=random_state)
+                else:
+                    cv_model = GradientBoostingRegressor(
+                        n_estimators=50,  # Reduced for speed
+                        learning_rate=0.1,
+                        max_depth=3,
+                        random_state=random_state
+                    )
+                
+                # Perform cross-validation
+                cv_scores = cross_val_score(
+                    cv_model, 
+                    X_selected, 
+                    y, 
+                    cv=min(cross_validation_folds, len(X_selected)),
+                    scoring='neg_mean_squared_error'
+                )
+                
+                # Convert neg MSE to RMSE and store
+                cv_rmse_scores = np.sqrt(-cv_scores)
+                model_metrics['cross_val_scores'] = {
+                    'mean_rmse': float(cv_rmse_scores.mean()),
+                    'std_rmse': float(cv_rmse_scores.std()),
+                    'folds': len(cv_scores)
+                }
+                
+                log_message('info', f"Cross-validation RMSE: {cv_rmse_scores.mean():.2f} ± {cv_rmse_scores.std():.2f}")
+            except Exception as e:
+                log_message('warning', f"Error during cross-validation: {str(e)}. Skipping.")
+        
+        # ======================================================================
+        # Step 11: Prepare spatial adjustment factors (GIS influence)
+        # ======================================================================
+        spatial_factors = {
+            'applied': False,
+            'method': spatial_adjustment_method,
+            'factors': {}
+        }
+        
+        if use_gis_features and gis_data is not None:
+            log_message('info', "Calculating spatial adjustment factors")
+            
+            try:
+                # Extract GIS-related features
+                gis_feature_cols = [
+                    col for col in property_data_enhanced.columns 
+                    if any(x in col.lower() for x in [
+                        'proximity', 'distance', 'school', 'rating', 'score', 
+                        'walkability', 'crime', 'flood', 'neighborhood'
+                    ])
+                ]
+                
+                if gis_feature_cols:
+                    # Calculate a spatial adjustment factor based on GIS features
+                    spatial_factors['applied'] = True
+                    spatial_factors['features_used'] = gis_feature_cols
+                    
+                    # If a direct adjustment factor was provided, use it
+                    if gis_adjustment_factor is not None:
+                        spatial_factors['adjustment_factor'] = gis_adjustment_factor
+                        log_message('info', f"Using provided GIS adjustment factor: {gis_adjustment_factor}")
+                    else:
+                        # Otherwise calculate based on the GIS features
+                        # Extract a target property neighborhood quality if available
+                        neighborhood_quality = None
+                        if target_property is not None:
+                            if isinstance(target_property, dict) and 'neighborhood' in target_property:
+                                neighborhood = target_property['neighborhood']
+                                if neighborhood_ratings and neighborhood in neighborhood_ratings:
+                                    neighborhood_quality = neighborhood_ratings[neighborhood]
+                            elif isinstance(target_property, pd.DataFrame) and 'neighborhood_quality_score' in target_property.columns:
+                                neighborhood_quality = target_property['neighborhood_quality_score'].iloc[0]
+                        
+                        # Calculate adjustment factor based on neighborhood quality
+                        if neighborhood_quality is not None:
+                            # Normalize to a factor around 1.0
+                            # Quality of 0.5 is neutral (1.0), lower is discount, higher is premium
+                            adjustment_factor = 0.8 + (neighborhood_quality * 0.4)  # Range: 0.8 to 1.2
+                            spatial_factors['adjustment_factor'] = adjustment_factor
+                            spatial_factors['neighborhood_quality'] = neighborhood_quality
+                        else:
+                            # Default modest adjustment if we can't calculate
+                            spatial_factors['adjustment_factor'] = 1.05
+                        
+                        log_message('info', f"Calculated GIS adjustment factor: {spatial_factors['adjustment_factor']:.3f}")
+                else:
+                    log_message('warning', "No GIS features found for spatial adjustment")
+            except Exception as e:
+                log_message('warning', f"Error calculating spatial adjustment factors: {str(e)}. Using no adjustment.")
+        
+        # ======================================================================
+        # Step 12: Make prediction if target property is provided
+        # ======================================================================
+        prediction_results = {
+            'applied_model': model_type,
+            'prediction_successful': False,
+            'estimated_value': None,
+            'confidence_interval': None,
+            'prediction_std_error': None
+        }
+        
+        if target_property is not None:
+            log_message('info', "Making prediction for target property")
+            
+            try:
+                # Prepare target property for prediction
+                if isinstance(target_property, dict):
+                    # Convert dict to DataFrame
+                    target_df = pd.DataFrame([target_property])
+                elif isinstance(target_property, pd.DataFrame):
+                    # Use as is
+                    target_df = target_property.copy()
+                else:
+                    raise ValueError("target_property must be a dict or DataFrame")
+                
+                # Apply same preprocessing as training data
+                target_processed = target_df.copy()
+                
+                # Engineer advanced features
+                target_processed = engineer_property_features(target_processed)
+                
+                # Calculate GIS features if available
+                if use_gis_features and gis_data is not None:
+                    target_processed = calculate_gis_features(
+                        target_processed, 
+                        gis_data=gis_data, 
+                        ref_points=ref_points,
+                        neighborhood_ratings=neighborhood_ratings
+                    )
+                
+                # Extract features needed for prediction
+                common_features = [f for f in selected_features if f in target_processed.columns]
+                missing_features = set(selected_features) - set(common_features)
+                
+                if missing_features:
+                    log_message('warning', f"Target property missing features: {missing_features}. Using mean values from training data.")
+                    
+                    # Fill missing features with mean values from training data
+                    for feature in missing_features:
+                        if feature in X_train.columns:
+                            target_processed[feature] = X_train[feature].mean()
+                
+                # Prepare feature matrix for prediction
+                X_target = target_processed[selected_features]
+                
+                # Handle any missing values
+                X_target = X_target.fillna(X_train.mean())
+                
+                # Normalize features using same scaler
+                numeric_features = X_target.select_dtypes(include=['number']).columns.tolist()
+                if numeric_features:
+                    for col in numeric_features:
+                        if col in X_numeric.columns:
+                            # Apply same transformation as training data
+                            col_mean = X_numeric[col].mean()
+                            col_scale = X_numeric[col].std()
+                            if col_scale > 0:
+                                X_target[col] = (X_target[col] - col_mean) / col_scale
+                
+                # Store normalized feature values for reference
+                normalized_target_features = X_target.copy()
+                
+                # Make prediction
+                if model_type == 'ensemble':
+                    # For ensemble, prepare stacked predictions
+                    target_predictions = []
+                    for model_name, base_model in model['base_models']:
+                        target_predictions.append(base_model.predict(X_target))
+                    stacked_target_preds = np.column_stack(target_predictions)
+                    predicted_value = model['meta_model'].predict(stacked_target_preds)[0]
+                elif model_type == 'lightgbm' and LIGHTGBM_AVAILABLE:
+                    # For LightGBM, use best iteration
+                    predicted_value = model.predict(X_target, num_iteration=model.best_iteration)[0]
+                else:
+                    # Standard prediction
+                    predicted_value = model.predict(X_target)[0]
+                
+                # Apply spatial adjustment if available
+                if spatial_factors['applied']:
+                    adjustment_factor = spatial_factors['adjustment_factor']
+                    
+                    if spatial_adjustment_method == 'multiplicative':
+                        adjusted_value = predicted_value * adjustment_factor
+                    elif spatial_adjustment_method == 'additive':
+                        # Convert factor to an additive amount (e.g., 1.05 becomes +5% of the median price)
+                        median_price = y.median()
+                        additive_amount = (adjustment_factor - 1.0) * median_price
+                        adjusted_value = predicted_value + additive_amount
+                    elif spatial_adjustment_method == 'hybrid':
+                        # Apply half as multiplicative and half as additive
+                        mult_factor = 1.0 + (adjustment_factor - 1.0) / 2
+                        median_price = y.median()
+                        additive_amount = (adjustment_factor - 1.0) * median_price / 2
+                        adjusted_value = (predicted_value * mult_factor) + additive_amount
+                    else:
+                        # Default to multiplicative
+                        adjusted_value = predicted_value * adjustment_factor
+                    
+                    log_message('info', f"Applied spatial adjustment: {predicted_value:.2f} → {adjusted_value:.2f}")
+                    predicted_value = adjusted_value
+                
+                # Store prediction
+                prediction_results['prediction_successful'] = True
+                prediction_results['estimated_value'] = float(predicted_value)
+                
+                # Calculate prediction standard error and confidence interval
+                if include_advanced_metrics:
+                    try:
+                        # Calculate prediction standard error using residuals from test set
+                        mse = mean_squared_error(y_test, y_pred)
+                        std_error = np.sqrt(mse)
+                        
+                        # Calculate confidence interval
+                        alpha = 1 - confidence_interval_level
+                        z_score = scipy.stats.norm.ppf(1 - alpha/2)
+                        margin = z_score * std_error
+                        
+                        lower_bound = max(0, predicted_value - margin)
+                        upper_bound = predicted_value + margin
+                        
+                        prediction_results['confidence_interval'] = [float(lower_bound), float(upper_bound)]
+                        prediction_results['prediction_std_error'] = float(std_error)
+                        
+                        log_message('info', f"Confidence interval ({confidence_interval_level*100:.0f}%): [{lower_bound:.2f}, {upper_bound:.2f}]")
+                    except Exception as e:
+                        log_message('warning', f"Error calculating confidence interval: {str(e)}. Skipping.")
+            except Exception as e:
+                log_message('warning', f"Error making prediction: {str(e)}")
+        
+        # ======================================================================
+        # Step 13: Compile and return the final results
+        # ======================================================================
+        end_time = datetime.datetime.now()
+        execution_time = (end_time - start_time).total_seconds()
+        
+        log_message('info', f"Property valuation completed in {execution_time:.2f} seconds")
+        
+        # Combine all results into final output
+        result = {
+            'execution_time': execution_time,
+            'execution_log': execution_log,
+            'model_metrics': model_metrics,
+            'spatial_factors': spatial_factors,
+            'features_used': selected_features,
+            'normalized_feature_values': normalized_features.to_dict(orient='records')[0] if len(normalized_features) > 0 else {}
+        }
+        
+        # Add prediction results if available
+        if prediction_results['prediction_successful']:
+            result.update({
+                'estimated_value': prediction_results['estimated_value'],
+                'confidence_interval': prediction_results['confidence_interval'],
+                'prediction_std_error': prediction_results['prediction_std_error']
+            })
+        
+        return result
+    except Exception as e:
+        error_msg = f"Unexpected error in property valuation: {str(e)}"
+        log_message('error', error_msg)
+        return {
+            'error': error_msg,
+            'execution_log': execution_log
+        }
         logger.error(error_msg)
         return {'error': error_msg}
     

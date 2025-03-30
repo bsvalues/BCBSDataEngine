@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement, TimeScale, Filler } from 'chart.js';
-import { Line, Bar, Pie } from 'react-chartjs-2';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement, TimeScale, Filler, RadialLinearScale, DoughnutController } from 'chart.js';
+import { Line, Bar, Pie, Doughnut } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns'; // For time scale
 import { debounce } from 'lodash'; // For search optimization
 
@@ -16,7 +16,9 @@ ChartJS.register(
   Filler,
   Title,
   Tooltip,
-  Legend
+  Legend,
+  RadialLinearScale,
+  DoughnutController
 );
 
 /**
@@ -70,10 +72,53 @@ const Dashboard = () => {
   // State for API key
   const [apiKey, setApiKey] = useState('');
   
+  // State for ETL pipeline status
+  const [etlStatus, setEtlStatus] = useState({
+    status: 'unknown',
+    lastUpdate: null,
+    progress: 0,
+    sources: [],
+    metrics: {
+      recordsProcessed: 0,
+      successRate: 0,
+      averageProcessingTime: 0
+    },
+    dataQuality: {
+      completeness: 0,
+      accuracy: 0,
+      timeliness: 0
+    },
+    isLoading: false,
+    error: null
+  });
+  
+  // State for agent status
+  const [agentStatus, setAgentStatus] = useState({
+    agents: [],
+    isLoading: false,
+    error: null,
+    lastUpdate: null
+  });
+  
+  // State for selected agent (for detailed view)
+  const [selectedAgent, setSelectedAgent] = useState(null);
+  
+  // State for controlling the status refresh intervals
+  const [refreshSettings, setRefreshSettings] = useState({
+    autoRefresh: true,
+    interval: 60000, // 1 minute
+    lastRefreshTime: null
+  });
+  
+  // State for active dashboard tab
+  const [activeDashboardTab, setActiveDashboardTab] = useState('properties');
+  
   // Refs for chart containers and observer for dashboard metrics
   const valueDistributionChartRef = useRef(null);
   const neighborhoodChartRef = useRef(null);
   const trendChartRef = useRef(null);
+  const etlProgressChartRef = useRef(null);
+  const agentPerformanceChartRef = useRef(null);
   const metricsObserverRef = useRef(null);
 
   /**
@@ -299,6 +344,25 @@ const Dashboard = () => {
       day: 'numeric'
     });
   };
+  
+  /**
+   * Format date values for display with time included
+   * @param {string|Date} dateTimeValue - Date object or ISO date string
+   * @returns {string} - Formatted date and time string
+   */
+  const formatDateTime = (dateTimeValue) => {
+    if (!dateTimeValue) return 'N/A';
+    
+    const date = dateTimeValue instanceof Date ? dateTimeValue : new Date(dateTimeValue);
+    return date.toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  };
 
   /**
    * Function to handle sorting column clicks
@@ -379,11 +443,256 @@ const Dashboard = () => {
   }, [properties, filters.neighborhood, filters.searchQuery]);
   
   /**
+   * Function to fetch ETL pipeline status data
+   * Retrieves the current status of all ETL processes
+   */
+  const fetchEtlStatus = useCallback(async () => {
+    setEtlStatus(prev => ({ ...prev, isLoading: true, error: null }));
+    
+    try {
+      // Headers for the API request including the API key
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+      
+      // Add API key header if available
+      if (apiKey) {
+        headers['X-API-KEY'] = apiKey;
+      }
+      
+      // Make the API request to the ETL status endpoint
+      const response = await fetch('/api/etl-status', {
+        method: 'GET',
+        headers: headers
+      });
+      
+      if (!response.ok) {
+        throw new Error(`ETL status API request failed with status ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      // Update ETL status state with the fetched data
+      setEtlStatus({
+        status: data.status || 'unknown',
+        lastUpdate: data.last_update ? new Date(data.last_update) : null,
+        progress: data.progress || 0,
+        sources: data.sources || [],
+        metrics: {
+          recordsProcessed: data.metrics?.records_processed || 0,
+          successRate: data.metrics?.success_rate || 0,
+          averageProcessingTime: data.metrics?.average_processing_time || 0
+        },
+        dataQuality: {
+          completeness: data.data_quality?.completeness || 0,
+          accuracy: data.data_quality?.accuracy || 0,
+          timeliness: data.data_quality?.timeliness || 0
+        },
+        isLoading: false,
+        error: null
+      });
+      
+      // Update last refresh time
+      setRefreshSettings(prev => ({
+        ...prev,
+        lastRefreshTime: new Date()
+      }));
+      
+      console.log('ETL status data loaded successfully.');
+    } catch (err) {
+      console.error('Error fetching ETL status:', err);
+      setEtlStatus(prev => ({
+        ...prev,
+        isLoading: false,
+        error: `Failed to load ETL status: ${err.message}. Please try again later.`
+      }));
+    }
+  }, [apiKey]);
+  
+  /**
+   * Function to fetch agent status data
+   * Retrieves the current status of all agents in the system
+   */
+  const fetchAgentStatus = useCallback(async () => {
+    setAgentStatus(prev => ({ ...prev, isLoading: true, error: null }));
+    
+    try {
+      // Headers for the API request including the API key
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+      
+      // Add API key header if available
+      if (apiKey) {
+        headers['X-API-KEY'] = apiKey;
+      }
+      
+      // Make the API request to the agent status endpoint
+      const response = await fetch('/api/agent-status', {
+        method: 'GET',
+        headers: headers
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Agent status API request failed with status ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      // Update agent status state with the fetched data
+      setAgentStatus({
+        agents: Array.isArray(data.agents) ? data.agents : [],
+        isLoading: false,
+        error: null,
+        lastUpdate: new Date()
+      });
+      
+      // Update last refresh time
+      setRefreshSettings(prev => ({
+        ...prev,
+        lastRefreshTime: new Date()
+      }));
+      
+      console.log(`Loaded status data for ${Array.isArray(data.agents) ? data.agents.length : 0} agents.`);
+    } catch (err) {
+      console.error('Error fetching agent status:', err);
+      setAgentStatus(prev => ({
+        ...prev,
+        isLoading: false,
+        error: `Failed to load agent status: ${err.message}. Please try again later.`
+      }));
+    }
+  }, [apiKey]);
+  
+  /**
+   * Function to fetch detailed information for a specific agent
+   * @param {string} agentId - The ID of the agent to retrieve detailed information for
+   */
+  const fetchAgentDetails = useCallback(async (agentId) => {
+    if (!agentId) {
+      console.error('Agent ID is required to fetch agent details');
+      return;
+    }
+    
+    try {
+      // Headers for the API request including the API key
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+      
+      // Add API key header if available
+      if (apiKey) {
+        headers['X-API-KEY'] = apiKey;
+      }
+      
+      // Make the API request to the agent details endpoint
+      const response = await fetch(`/api/agent-status/${agentId}`, {
+        method: 'GET',
+        headers: headers
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Agent details API request failed with status ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      // Update selectedAgent state with the fetched data
+      setSelectedAgent(data);
+      
+      console.log(`Loaded detailed information for agent ${agentId}.`);
+    } catch (err) {
+      console.error(`Error fetching agent details for ${agentId}:`, err);
+      // Show error message in the UI
+      setError(`Failed to load agent details: ${err.message}. Please try again later.`);
+    }
+  }, [apiKey]);
+  
+  /**
+   * Function to refresh all dashboard data
+   * This will fetch property valuations, ETL status, and agent status
+   */
+  const refreshAllData = useCallback(() => {
+    fetchPropertyValuations();
+    fetchEtlStatus();
+    fetchAgentStatus();
+    
+    // Update last refresh time
+    setRefreshSettings(prev => ({
+      ...prev,
+      lastRefreshTime: new Date()
+    }));
+    
+    console.log('All dashboard data refreshed.');
+  }, [fetchPropertyValuations, fetchEtlStatus, fetchAgentStatus]);
+  
+  /**
+   * Handle auto-refresh interval change
+   * @param {Event} e - The change event
+   */
+  const handleRefreshIntervalChange = (e) => {
+    const newInterval = parseInt(e.target.value, 10);
+    setRefreshSettings(prev => ({
+      ...prev,
+      interval: newInterval
+    }));
+  };
+  
+  /**
+   * Toggle auto-refresh on/off
+   */
+  const toggleAutoRefresh = () => {
+    setRefreshSettings(prev => ({
+      ...prev,
+      autoRefresh: !prev.autoRefresh
+    }));
+  };
+  
+  /**
+   * Handle selecting an agent for detailed view
+   * @param {Object} agent - The agent object to view in detail
+   */
+  const handleAgentSelect = (agent) => {
+    if (agent && agent.id) {
+      fetchAgentDetails(agent.id);
+    }
+  };
+  
+  /**
+   * Close the agent detail view
+   */
+  const closeAgentDetail = () => {
+    setSelectedAgent(null);
+  };
+  
+  /**
+   * Handle switching between dashboard tabs
+   * @param {string} tabName - The name of the tab to switch to
+   */
+  const handleDashboardTabChange = (tabName) => {
+    setActiveDashboardTab(tabName);
+    
+    // If switching to ETL tab and we don't have data yet, fetch it
+    if (tabName === 'etl' && (!etlStatus.data || etlStatus.data.length === 0)) {
+      fetchEtlStatus();
+    }
+    
+    // If switching to Agents tab and we don't have data yet, fetch it
+    if (tabName === 'agents' && (!agentStatus.data || agentStatus.data.length === 0)) {
+      fetchAgentStatus();
+    }
+  };
+  
+  /**
    * Load property valuations when component mounts
    * Also set up the IntersectionObserver for dashboard metrics animations
+   * and configure the auto-refresh timer
    */
   useEffect(() => {
+    // Initial data load
     fetchPropertyValuations();
+    fetchEtlStatus();
+    fetchAgentStatus();
     
     // Set up IntersectionObserver for dashboard metrics animations
     const options = {
@@ -409,12 +718,325 @@ const Dashboard = () => {
     
     metricsObserverRef.current = observer;
     
+    // Set up auto-refresh timer for data
+    const autoRefreshTimer = setInterval(() => {
+      if (refreshSettings.autoRefresh) {
+        refreshAllData();
+      }
+    }, refreshSettings.interval);
+    
     return () => {
+      // Clean up observer and timer when component unmounts
       if (metricsObserverRef.current) {
         metricsObserverRef.current.disconnect();
       }
+      clearInterval(autoRefreshTimer);
     };
-  }, []); // Empty dependency array means this runs once on mount
+  }, [refreshSettings.autoRefresh, refreshSettings.interval, fetchPropertyValuations, fetchEtlStatus, fetchAgentStatus, refreshAllData]); // Dependencies for useEffect
+  
+  /**
+   * Prepare ETL status chart data
+   * Using useMemo to prevent unnecessary recalculations
+   */
+  const preparedEtlChartData = useMemo(() => {
+    if (etlStatus.sources.length === 0) {
+      return null;
+    }
+    
+    // Prepare data for ETL data quality chart
+    const qualityLabels = ['Completeness', 'Accuracy', 'Timeliness'];
+    const qualityValues = [
+      etlStatus.dataQuality.completeness * 100, 
+      etlStatus.dataQuality.accuracy * 100, 
+      etlStatus.dataQuality.timeliness * 100
+    ];
+    
+    // Prepare data for sources processing chart
+    const sourceNames = etlStatus.sources.map(source => source.name);
+    const sourceProgress = etlStatus.sources.map(source => source.progress * 100);
+    const sourceRecords = etlStatus.sources.map(source => source.records_processed);
+    
+    return {
+      etlProgress: {
+        type: 'doughnut',
+        data: {
+          labels: ['Completed', 'Remaining'],
+          datasets: [
+            {
+              data: [etlStatus.progress * 100, 100 - (etlStatus.progress * 100)],
+              backgroundColor: [
+                'rgba(75, 192, 192, 0.7)',
+                'rgba(220, 220, 220, 0.7)'
+              ],
+              borderColor: [
+                'rgba(75, 192, 192, 1)',
+                'rgba(220, 220, 220, 1)'
+              ],
+              borderWidth: 1
+            }
+          ]
+        }
+      },
+      sourceProgress: {
+        type: 'bar',
+        data: {
+          labels: sourceNames,
+          datasets: [
+            {
+              label: 'Progress (%)',
+              data: sourceProgress,
+              backgroundColor: 'rgba(54, 162, 235, 0.7)',
+              borderColor: 'rgba(54, 162, 235, 1)',
+              borderWidth: 1,
+              yAxisID: 'y'
+            },
+            {
+              label: 'Records Processed',
+              data: sourceRecords,
+              type: 'line',
+              backgroundColor: 'rgba(255, 99, 132, 0.3)',
+              borderColor: 'rgba(255, 99, 132, 1)',
+              borderWidth: 2,
+              fill: false,
+              yAxisID: 'y1'
+            }
+          ]
+        }
+      },
+      dataQuality: {
+        type: 'radar',
+        data: {
+          labels: qualityLabels,
+          datasets: [
+            {
+              label: 'Data Quality (%)',
+              data: qualityValues,
+              backgroundColor: 'rgba(153, 102, 255, 0.2)',
+              borderColor: 'rgba(153, 102, 255, 1)',
+              borderWidth: 2,
+              pointBackgroundColor: 'rgba(153, 102, 255, 1)',
+              pointBorderColor: '#fff',
+              pointHoverBackgroundColor: '#fff',
+              pointHoverBorderColor: 'rgba(153, 102, 255, 1)'
+            }
+          ]
+        }
+      }
+    };
+  }, [etlStatus]);
+  
+  /**
+   * Prepare agent status chart data
+   * Using useMemo to prevent unnecessary recalculations
+   */
+  const preparedAgentChartData = useMemo(() => {
+    if (agentStatus.agents.length === 0) {
+      return null;
+    }
+    
+    // Count agents by status
+    const statusCounts = {};
+    agentStatus.agents.forEach(agent => {
+      const status = agent.status || 'unknown';
+      statusCounts[status] = (statusCounts[status] || 0) + 1;
+    });
+    
+    const statusLabels = Object.keys(statusCounts);
+    const statusValues = statusLabels.map(status => statusCounts[status]);
+    const statusColors = statusLabels.map(status => {
+      switch (status.toLowerCase()) {
+        case 'active':
+          return 'rgba(75, 192, 192, 0.7)';
+        case 'idle':
+          return 'rgba(54, 162, 235, 0.7)';
+        case 'error':
+          return 'rgba(255, 99, 132, 0.7)';
+        case 'busy':
+          return 'rgba(255, 206, 86, 0.7)';
+        case 'starting':
+          return 'rgba(153, 102, 255, 0.7)';
+        case 'stopping':
+          return 'rgba(255, 159, 64, 0.7)';
+        default:
+          return 'rgba(201, 203, 207, 0.7)';
+      }
+    });
+    
+    // Performance metrics by agent type
+    const agentTypes = {};
+    agentStatus.agents.forEach(agent => {
+      if (!agent.type) return;
+      
+      if (!agentTypes[agent.type]) {
+        agentTypes[agent.type] = {
+          count: 0,
+          tasksCompleted: 0,
+          avgTaskTime: 0,
+          errorRate: 0,
+          resourceUsage: 0
+        };
+      }
+      
+      agentTypes[agent.type].count++;
+      agentTypes[agent.type].tasksCompleted += agent.metrics?.tasks_completed || 0;
+      agentTypes[agent.type].avgTaskTime += agent.metrics?.avg_task_time || 0;
+      agentTypes[agent.type].errorRate += agent.metrics?.error_rate || 0;
+      agentTypes[agent.type].resourceUsage += (agent.resources?.cpu_usage || 0) / 100; // Normalize to 0-1
+    });
+    
+    // Calculate averages
+    Object.keys(agentTypes).forEach(type => {
+      if (agentTypes[type].count > 0) {
+        agentTypes[type].avgTaskTime /= agentTypes[type].count;
+        agentTypes[type].errorRate /= agentTypes[type].count;
+        agentTypes[type].resourceUsage /= agentTypes[type].count;
+      }
+    });
+    
+    const typeLabels = Object.keys(agentTypes);
+    const typeCounts = typeLabels.map(type => agentTypes[type].count);
+    const typeTasksCompleted = typeLabels.map(type => agentTypes[type].tasksCompleted);
+    const typeAvgTaskTime = typeLabels.map(type => agentTypes[type].avgTaskTime);
+    const typeErrorRate = typeLabels.map(type => agentTypes[type].errorRate * 100); // Convert to percentage
+    const typeResourceUsage = typeLabels.map(type => agentTypes[type].resourceUsage * 100); // Convert to percentage
+    
+    return {
+      agentStatus: {
+        type: 'pie',
+        data: {
+          labels: statusLabels,
+          datasets: [
+            {
+              data: statusValues,
+              backgroundColor: statusColors,
+              borderColor: statusColors.map(color => color.replace('0.7', '1')),
+              borderWidth: 1
+            }
+          ]
+        }
+      },
+      agentTypes: {
+        type: 'bar',
+        data: {
+          labels: typeLabels,
+          datasets: [
+            {
+              label: 'Agent Count',
+              data: typeCounts,
+              backgroundColor: 'rgba(75, 192, 192, 0.7)',
+              borderColor: 'rgba(75, 192, 192, 1)',
+              borderWidth: 1
+            }
+          ]
+        }
+      },
+      agentPerformance: {
+        type: 'radar',
+        data: {
+          labels: typeLabels,
+          datasets: [
+            {
+              label: 'Tasks Completed',
+              data: typeTasksCompleted,
+              backgroundColor: 'rgba(54, 162, 235, 0.2)',
+              borderColor: 'rgba(54, 162, 235, 1)',
+              borderWidth: 2,
+              pointBackgroundColor: 'rgba(54, 162, 235, 1)',
+              pointBorderColor: '#fff'
+            },
+            {
+              label: 'Resource Usage (%)',
+              data: typeResourceUsage,
+              backgroundColor: 'rgba(255, 99, 132, 0.2)',
+              borderColor: 'rgba(255, 99, 132, 1)',
+              borderWidth: 2,
+              pointBackgroundColor: 'rgba(255, 99, 132, 1)',
+              pointBorderColor: '#fff'
+            },
+            {
+              label: 'Error Rate (%)',
+              data: typeErrorRate,
+              backgroundColor: 'rgba(255, 206, 86, 0.2)',
+              borderColor: 'rgba(255, 206, 86, 1)',
+              borderWidth: 2,
+              pointBackgroundColor: 'rgba(255, 206, 86, 1)',
+              pointBorderColor: '#fff'
+            }
+          ]
+        }
+      }
+    };
+  }, [agentStatus]);
+  
+  /**
+   * Helper function to get status color class based on status string
+   * @param {string} status - Status string
+   * @returns {string} - Tailwind CSS color class
+   */
+  const getStatusColorClass = (status) => {
+    if (!status) return 'bg-gray-200 text-gray-800'; // Default/unknown
+    
+    switch (status.toLowerCase()) {
+      case 'active':
+        return 'bg-green-100 text-green-800';
+      case 'idle':
+        return 'bg-blue-100 text-blue-800';
+      case 'error':
+        return 'bg-red-100 text-red-800';
+      case 'busy':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'starting':
+        return 'bg-purple-100 text-purple-800';
+      case 'stopping':
+        return 'bg-orange-100 text-orange-800';
+      case 'completed':
+        return 'bg-emerald-100 text-emerald-800';
+      case 'waiting':
+        return 'bg-cyan-100 text-cyan-800';
+      case 'in_progress':
+        return 'bg-amber-100 text-amber-800';
+      case 'failed':
+        return 'bg-rose-100 text-rose-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+  
+  /**
+   * Prepare agent status chart data
+   * Using useMemo to prevent unnecessary recalculations
+   */
+  const agentStatusChartData = useMemo(() => {
+    if (!agentStatus.data || agentStatus.data.length === 0) return null;
+    
+    // Count agents by status
+    const statusCounts = {};
+    agentStatus.data.forEach(agent => {
+      const status = agent.status || 'unknown';
+      statusCounts[status] = (statusCounts[status] || 0) + 1;
+    });
+    
+    // Prepare data for Pie chart
+    return {
+      labels: Object.keys(statusCounts).map(status => 
+        status.charAt(0).toUpperCase() + status.slice(1)
+      ),
+      datasets: [
+        {
+          data: Object.values(statusCounts),
+          backgroundColor: [
+            '#4ade80', // active - green
+            '#60a5fa', // idle - blue
+            '#facc15', // pending - yellow
+            '#ef4444', // error - red
+            '#a78bfa'  // other - purple
+          ],
+          borderWidth: 1,
+          borderColor: '#ffffff',
+        }
+      ]
+    };
+  }, [agentStatus.data]);
   
   /**
    * Calculate summary metrics for the dashboard based on filtered properties
@@ -872,9 +1494,9 @@ const Dashboard = () => {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold text-gray-800 mb-6">Advanced Property Valuations Dashboard</h1>
+      <h1 className="text-3xl font-bold text-gray-800 mb-6">BCBS Values Dashboard</h1>
       
-      {/* API Key Input */}
+      {/* API Key Input and Refresh Controls */}
       <div className="mb-6 bg-white rounded-lg shadow-md p-4">
         <div className="flex flex-col md:flex-row items-start md:items-center">
           <div className="mb-2 md:mb-0 md:mr-4 flex-grow">
@@ -890,12 +1512,49 @@ const Dashboard = () => {
               onChange={handleApiKeyChange}
             />
           </div>
+          
+          {/* Auto-refresh controls */}
+          <div className="mt-4 md:mt-0 md:ml-4 flex flex-col md:items-end">
+            <div className="flex items-center mb-2">
+              <label htmlFor="autoRefresh" className="block text-sm font-medium text-gray-700 mr-2">
+                Auto-refresh
+              </label>
+              <button 
+                type="button"
+                onClick={toggleAutoRefresh}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full ${refreshSettings.autoRefresh ? 'bg-blue-600' : 'bg-gray-200'}`}
+              >
+                <span 
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${refreshSettings.autoRefresh ? 'translate-x-6' : 'translate-x-1'}`} 
+                />
+              </button>
+            </div>
+            
+            <div className="flex items-center">
+              <label htmlFor="refreshInterval" className="block text-sm font-medium text-gray-700 mr-2">
+                Interval:
+              </label>
+              <select
+                id="refreshInterval"
+                className="py-1 px-2 text-sm border-gray-300 rounded-md"
+                value={refreshSettings.interval}
+                onChange={handleRefreshIntervalChange}
+                disabled={!refreshSettings.autoRefresh}
+              >
+                <option value="15000">15 seconds</option>
+                <option value="30000">30 seconds</option>
+                <option value="60000">1 minute</option>
+                <option value="300000">5 minutes</option>
+              </select>
+            </div>
+          </div>
+          
           <button
-            className="mt-2 md:mt-6 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={fetchPropertyValuations}
-            disabled={loading}
+            className="mt-2 md:mt-6 ml-0 md:ml-4 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={refreshAllData}
+            disabled={loading || etlStatus.isLoading || agentStatus.isLoading}
           >
-            {loading ? (
+            {loading || etlStatus.isLoading || agentStatus.isLoading ? (
               <>
                 <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -904,13 +1563,77 @@ const Dashboard = () => {
                 Loading...
               </>
             ) : (
-              'Apply API Key'
+              'Refresh All'
             )}
           </button>
         </div>
-        <p className="mt-2 text-xs text-gray-500">
-          The API key is required to access property valuation data. If you don't have an API key, please contact the administrator.
-        </p>
+        
+        {/* Last refresh time and API key note */}
+        <div className="flex flex-col md:flex-row justify-between mt-2 text-xs text-gray-500">
+          <p>
+            The API key is required to access data. If you don't have an API key, please contact the administrator.
+          </p>
+          {refreshSettings.lastRefreshTime && (
+            <p className="mt-1 md:mt-0">
+              Last refreshed: {formatDateTime(refreshSettings.lastRefreshTime)}
+            </p>
+          )}
+        </div>
+      </div>
+      
+      {/* Dashboard Tabs */}
+      <div className="mb-6">
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+            <button
+              onClick={() => handleDashboardTabChange('properties')}
+              className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
+                activeDashboardTab === 'properties'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Property Valuations
+            </button>
+            <button
+              onClick={() => handleDashboardTabChange('etl')}
+              className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
+                activeDashboardTab === 'etl'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              ETL Pipeline Status
+              {etlStatus.isLoading && (
+                <span className="ml-2">
+                  <svg className="animate-spin h-3 w-3 text-blue-500 inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => handleDashboardTabChange('agents')}
+              className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
+                activeDashboardTab === 'agents'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Agent Status
+              {agentStatus.isLoading && (
+                <span className="ml-2">
+                  <svg className="animate-spin h-3 w-3 text-blue-500 inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                </span>
+              )}
+            </button>
+          </nav>
+        </div>
+      </div>
         
         {/* API Key Error Message */}
         {error && error.includes('API') && (
@@ -1087,8 +1810,11 @@ const Dashboard = () => {
         </form>
       </div>
       
-      {/* Chart Section with Tabs */}
-      <div className="bg-white rounded-lg shadow-md overflow-hidden mb-8">
+      {/* Conditional display based on active dashboard tab */}
+      {activeDashboardTab === 'properties' && (
+        <>
+          {/* Chart Section with Tabs */}
+          <div className="bg-white rounded-lg shadow-md overflow-hidden mb-8">
         <div className="border-b border-gray-200">
           <nav className="flex -mb-px">
             <button
@@ -1739,6 +2465,346 @@ const Dashboard = () => {
               </div>
             </div>
           </div>
+        </div>
+      )}
+        </>
+      )}
+      
+      {/* ETL Pipeline Status Tab */}
+      {activeDashboardTab === 'etl' && (
+        <div className="bg-white rounded-lg shadow-md overflow-hidden mb-8">
+          <h2 className="text-xl font-semibold p-6 border-b">ETL Pipeline Status</h2>
+          
+          {/* Loading State */}
+          {etlStatus.isLoading && (
+            <div className="flex justify-center items-center p-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+              <span className="ml-3 text-gray-600">Loading ETL status data...</span>
+            </div>
+          )}
+          
+          {/* Error State */}
+          {etlStatus.error && (
+            <div className="bg-red-50 p-4 border-l-4 border-red-500">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm text-red-700">{etlStatus.error}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* ETL Status Table */}
+          {!etlStatus.isLoading && !etlStatus.error && etlStatus.data && etlStatus.data.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Pipeline Name
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Last Run
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Records Processed
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Success Rate
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Duration
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {etlStatus.data.map((pipeline) => (
+                    <tr key={pipeline.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {pipeline.name}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                          pipeline.status === 'completed' ? 'bg-green-100 text-green-800' : 
+                          pipeline.status === 'running' ? 'bg-blue-100 text-blue-800' : 
+                          pipeline.status === 'failed' ? 'bg-red-100 text-red-800' : 
+                          'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {pipeline.status.charAt(0).toUpperCase() + pipeline.status.slice(1)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {pipeline.last_run ? formatDateTime(pipeline.last_run) : 'Never'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {pipeline.records_processed.toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <div className="flex items-center">
+                          <span className="mr-2">{formatPercentage(pipeline.success_rate)}</span>
+                          <div className="w-24 bg-gray-200 rounded-full h-2.5">
+                            <div 
+                              className="h-2.5 rounded-full" 
+                              style={{ 
+                                width: `${pipeline.success_rate * 100}%`,
+                                backgroundColor: `${
+                                  pipeline.success_rate > 0.9 ? '#4ade80' : 
+                                  pipeline.success_rate > 0.75 ? '#facc15' : 
+                                  '#ef4444'
+                                }`
+                              }}
+                            ></div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {pipeline.duration ? `${pipeline.duration.toFixed(2)}s` : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          
+          {/* Empty State */}
+          {!etlStatus.isLoading && !etlStatus.error && (!etlStatus.data || etlStatus.data.length === 0) && (
+            <div className="text-center py-12">
+              <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+              </svg>
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No ETL pipelines found</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                ETL pipeline data is not available at this time.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* Agent Status Tab */}
+      {activeDashboardTab === 'agents' && (
+        <div className="bg-white rounded-lg shadow-md overflow-hidden mb-8">
+          <h2 className="text-xl font-semibold p-6 border-b">BS Army of Agents Status</h2>
+          
+          {/* Loading State */}
+          {agentStatus.isLoading && (
+            <div className="flex justify-center items-center p-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+              <span className="ml-3 text-gray-600">Loading agent status data...</span>
+            </div>
+          )}
+          
+          {/* Error State */}
+          {agentStatus.error && (
+            <div className="bg-red-50 p-4 border-l-4 border-red-500">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm text-red-700">{agentStatus.error}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Agent Status Overview */}
+          {!agentStatus.isLoading && !agentStatus.error && agentStatus.data && (
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <h3 className="text-sm font-medium text-gray-500">Total Agents</h3>
+                  <p className="mt-1 text-2xl font-semibold text-gray-900">{agentStatus.data.length}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <h3 className="text-sm font-medium text-gray-500">Active Agents</h3>
+                  <p className="mt-1 text-2xl font-semibold text-green-600">
+                    {agentStatus.data.filter(agent => agent.status === 'active').length}
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <h3 className="text-sm font-medium text-gray-500">Tasks Processed</h3>
+                  <p className="mt-1 text-2xl font-semibold text-gray-900">
+                    {agentStatus.data.reduce((sum, agent) => sum + (agent.tasks_processed || 0), 0).toLocaleString()}
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <h3 className="text-sm font-medium text-gray-500">Average Success Rate</h3>
+                  <p className="mt-1 text-2xl font-semibold text-blue-600">
+                    {formatPercentage(
+                      agentStatus.data.reduce((sum, agent) => sum + (agent.success_rate || 0), 0) / 
+                      agentStatus.data.length
+                    )}
+                  </p>
+                </div>
+              </div>
+              
+              {/* Agent Status Chart */}
+              {agentStatusChartData && (
+                <div className="mb-6">
+                  <h3 className="text-lg font-medium text-gray-900 mb-3">Agent Status Distribution</h3>
+                  <div className="h-64">
+                    <Pie 
+                      data={agentStatusChartData}
+                      options={{
+                        plugins: {
+                          legend: {
+                            position: 'right',
+                          },
+                          tooltip: {
+                            callbacks: {
+                              label: function(context) {
+                                const label = context.label || '';
+                                const value = context.raw || 0;
+                                const total = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                const percentage = Math.round((value / total) * 100);
+                                return `${label}: ${value} (${percentage}%)`;
+                              }
+                            }
+                          }
+                        },
+                        maintainAspectRatio: false,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Agent Status Table */}
+          {!agentStatus.isLoading && !agentStatus.error && agentStatus.data && agentStatus.data.length > 0 && (
+            <div className="overflow-x-auto border-t border-gray-200">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Agent
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Last Active
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Tasks
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Success Rate
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Queue Size
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {agentStatus.data.map((agent) => (
+                    <tr key={agent.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0 h-10 w-10 bg-gray-200 rounded-full flex items-center justify-center">
+                            {/* Agent icon based on role */}
+                            <svg className={`h-6 w-6 ${getStatusColorClass(agent.status)}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                          <div className="ml-4">
+                            <div className="text-sm font-medium text-gray-900">{agent.name}</div>
+                            <div className="text-sm text-gray-500">{agent.role || 'Agent'}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                          agent.status === 'active' ? 'bg-green-100 text-green-800' : 
+                          agent.status === 'idle' ? 'bg-blue-100 text-blue-800' : 
+                          agent.status === 'error' ? 'bg-red-100 text-red-800' : 
+                          'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {agent.status.charAt(0).toUpperCase() + agent.status.slice(1)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {agent.last_active ? formatDateTime(agent.last_active) : 'Never'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {agent.tasks_processed ? agent.tasks_processed.toLocaleString() : 0}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <div className="flex items-center">
+                          <span className="mr-2">{formatPercentage(agent.success_rate || 0)}</span>
+                          <div className="w-24 bg-gray-200 rounded-full h-2.5">
+                            <div 
+                              className="h-2.5 rounded-full" 
+                              style={{ 
+                                width: `${(agent.success_rate || 0) * 100}%`,
+                                backgroundColor: `${
+                                  (agent.success_rate || 0) > 0.9 ? '#4ade80' : 
+                                  (agent.success_rate || 0) > 0.75 ? '#facc15' : 
+                                  '#ef4444'
+                                }`
+                              }}
+                            ></div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {typeof agent.queue_size === 'number' ? (
+                          <div className="flex items-center">
+                            <span className="mr-2">{agent.queue_size}</span>
+                            <div className="w-16 bg-gray-200 rounded-full h-2">
+                              <div 
+                                className="h-2 rounded-full bg-blue-600" 
+                                style={{ 
+                                  width: `${Math.min(100, (agent.queue_size / (agent.max_queue_size || 10)) * 100)}%` 
+                                }}
+                              ></div>
+                            </div>
+                          </div>
+                        ) : 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <button
+                          onClick={() => handleSelectAgent(agent)}
+                          className="text-blue-600 hover:text-blue-900 mr-3"
+                        >
+                          Details
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          
+          {/* Empty State */}
+          {!agentStatus.isLoading && !agentStatus.error && (!agentStatus.data || agentStatus.data.length === 0) && (
+            <div className="text-center py-12">
+              <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No agents found</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                Agent status data is not available at this time.
+              </p>
+            </div>
+          )}
         </div>
       )}
       

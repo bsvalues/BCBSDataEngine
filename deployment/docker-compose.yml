@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # API service
+  bcbs-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - BCBS_VALUES_API_KEY=${BCBS_VALUES_API_KEY}
+      - NARRPR_USERNAME=${NARRPR_USERNAME}
+      - NARRPR_PASSWORD=${NARRPR_PASSWORD}
+      - PACS_API_KEY=${PACS_API_KEY}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      - bcbs-db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Database service
+  bcbs-db:
+    image: postgres:15
+    restart: always
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-bcbs_values}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init_scripts:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

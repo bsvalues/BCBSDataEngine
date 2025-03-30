@@ -36,8 +36,13 @@ try:
         calculate_gis_features
     )
     valuation_engine_available = True
-except ImportError:
+    # Log successful import of the enhanced valuation engine
+    import logging
+    logging.getLogger(__name__).info("Successfully imported enhanced valuation engine")
+except ImportError as e:
     # Log the error but don't crash - API can still work with other endpoints
+    import logging
+    logging.getLogger(__name__).error(f"Failed to import valuation engine: {str(e)}")
     valuation_engine_available = False
     
 # Setup logging with our custom configuration
@@ -1505,8 +1510,8 @@ async def create_advanced_property_valuation(
             'zip_code': [request.zip_code] if request.zip_code else [None]
         })
         
-        # Use the enhanced GIS valuation model
-        from src.valuation import advanced_property_valuation, calculate_gis_features
+        # Use the enhanced valuation engine
+        from src.valuation import estimate_property_value, calculate_gis_features
         
         # Add GIS features if coordinates provided and requested
         if request.use_gis and request.latitude and request.longitude:
@@ -1581,43 +1586,54 @@ async def create_advanced_property_valuation(
             logger.info(f"Created synthetic training dataset with {len(training_data)} properties")
         
         # Generate valuation using enhanced model
-        valuation_result = advanced_property_valuation(
+        valuation_result = estimate_property_value(
             property_data=training_data,
             target_property=property_data,
             use_gis_features=request.use_gis,
             model_type='gbr' if request.model_type == 'enhanced_gis' else 'linear',
             feature_selection_method='mutual_info',
             spatial_adjustment_method='hybrid',
-            confidence_interval_level=0.95
+            confidence_interval_level=0.95,
+            ref_points=REF_POINTS if request.use_gis else None,
+            neighborhood_ratings=NEIGHBORHOOD_RATINGS if request.use_gis else None,
+            handle_outliers=True,
+            handle_missing_values=True,
+            use_polynomial_features=request.model_type == 'enhanced_gis'
         )
         
-        logger.info(f"Advanced valuation completed successfully")
+        logger.info(f"Enhanced valuation completed successfully using estimate_property_value function")
         
         # Generate a unique property ID based on coordinates or address if available
         property_id = f"PROP-{int(time.time())}-{hash(str(request.address)) % 10000:04d}" if request.address else f"PROP-{int(time.time())}-{int(abs(hash(str(request.dict()))) % 10000):04d}"
         
         # Extract additional metrics from valuation result
-        feature_importance = valuation_result.get('feature_importances', {})
+        feature_importance = valuation_result.get('feature_importances', valuation_result.get('model_metrics', {}).get('feature_importance', {}))
         feature_coefficients = valuation_result.get('model_coefficients', {})
         p_values = valuation_result.get('p_values', {})
         gis_factors = valuation_result.get('spatial_factors', {})
         confidence_interval = valuation_result.get('confidence_interval', [None, None])
-        r_squared = valuation_result.get('r_squared', None)
-        adj_r_squared = valuation_result.get('adjusted_r_squared', None)
-        rmse = valuation_result.get('rmse', None)
-        mae = valuation_result.get('mae', None)
+        r_squared = valuation_result.get('r_squared', valuation_result.get('model_metrics', {}).get('r_squared', None))
+        adj_r_squared = valuation_result.get('adjusted_r_squared', valuation_result.get('model_metrics', {}).get('adjusted_r_squared', None))
+        rmse = valuation_result.get('rmse', valuation_result.get('model_metrics', {}).get('rmse', None))
+        mae = valuation_result.get('mae', valuation_result.get('model_metrics', {}).get('mae', None))
+        prediction_std_error = valuation_result.get('prediction_std_error', None)
+        normalized_feature_values = valuation_result.get('normalized_feature_values', {})
         
-        # Check if we have a valid predicted_value
-        if 'predicted_value' not in valuation_result or valuation_result['predicted_value'] is None:
-            raise ValueError("Valuation model did not return a valid predicted value")
+        # Check if we have a valid estimated_value (new field name in enhanced function)
+        if 'estimated_value' in valuation_result:
+            estimated_value = valuation_result['estimated_value']
+        elif 'predicted_value' in valuation_result:
+            estimated_value = valuation_result['predicted_value']
+        else:
+            raise ValueError("Valuation model did not return a valid estimated value")
         
         # Prepare response
         response = {
             "property_id": property_id,
             "address": request.address or "Unknown Address",
-            "estimated_value": valuation_result['predicted_value'],
+            "estimated_value": estimated_value,
             "confidence_score": 0.90 if r_squared is None else min(0.99, max(0.5, r_squared)),
-            "model_used": f"Enhanced GIS Valuation ({request.model_type})",
+            "model_used": f"Enhanced Valuation Engine with GIS Integration ({request.model_type} with outlier handling and feature normalization)",
             "valuation_date": datetime.datetime.now(),
             "features_used": {
                 "square_feet": request.square_feet,
@@ -1628,7 +1644,8 @@ async def create_advanced_property_valuation(
                 "longitude": request.longitude,
                 "property_type": request.property_type,
                 "city": request.city,
-                "state": request.state
+                "state": request.state,
+                "normalized_features": normalized_feature_values
             },
             "comparable_properties": [],  # We don't have comparables in this simple implementation
             
@@ -1654,7 +1671,9 @@ async def create_advanced_property_valuation(
                 "r_squared": r_squared,
                 "adjusted_r_squared": adj_r_squared,
                 "root_mean_squared_error": rmse,
-                "mean_absolute_error": mae
+                "mean_absolute_error": mae,
+                "prediction_std_error": prediction_std_error,
+                "normalized_feature_values": normalized_feature_values
             }
         }
         
