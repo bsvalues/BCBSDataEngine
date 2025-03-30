@@ -1,288 +1,458 @@
-{% extends 'base.html' %}
-
-{% block title %}Valuation Result{% endblock %}
-
-{% block extra_head %}
-<style>
-    .value-box {
-        text-align: center;
-        padding: 1.5rem;
-    }
-    .feature-importance {
-        height: 20px;
-        margin-bottom: 0.5rem;
-    }
-    .model-metrics th {
-        width: 50%;
-    }
-    .model-metrics td, .model-metrics th {
-        padding: 0.5rem;
-    }
-    .significance-badge {
-        font-size: 0.7rem;
-        padding: 2px 6px;
-    }
-</style>
-{% endblock %}
-
-{% block content %}
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card shadow">
-            <div class="card-body">
-                <h1 class="card-title">Property Valuation Result</h1>
-                <p class="card-text lead">
-                    Below is the estimated value and detailed metrics for the property.
-                </p>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row mb-4">
-    <div class="col-lg-4 mb-4">
-        <div class="card shadow">
-            <div class="card-body value-box">
-                <h3 class="text-muted mb-2">Estimated Value</h3>
-                <h2 class="display-4 mb-2">${{ "%.2f"|format(result.predicted_value|float) }}</h2>
-                <div class="d-flex justify-content-center align-items-center">
-                    <div class="badge bg-primary">R² Score: {{ "%.3f"|format(result.r2_score|float) }}</div>
-                    {% if result.adj_r2_score %}
-                    <div class="badge bg-info ms-2">Adjusted R²: {{ "%.3f"|format(result.adj_r2_score|float) }}</div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </div>
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Valuation Results - BCBS Values</title>
     
-    <div class="col-lg-8 mb-4">
-        <div class="card shadow">
-            <div class="card-body">
-                <h4>Property Details</h4>
-                <div class="row">
-                    <div class="col-md-6">
-                        <table class="table table-sm">
-                            <tbody>
-                                <tr>
-                                    <th>Square Feet:</th>
-                                    <td>{{ property_details.square_feet }}</td>
-                                </tr>
-                                <tr>
-                                    <th>Bedrooms:</th>
-                                    <td>{{ property_details.bedrooms }}</td>
-                                </tr>
-                                <tr>
-                                    <th>Bathrooms:</th>
-                                    <td>{{ property_details.bathrooms }}</td>
-                                </tr>
-                                <tr>
-                                    <th>Year Built:</th>
-                                    <td>{{ property_details.year_built }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="col-md-6">
-                        <table class="table table-sm">
-                            <tbody>
-                                <tr>
-                                    <th>Property Age:</th>
-                                    <td>{{ 2025 - property_details.year_built }} years</td>
-                                </tr>
-                                <tr>
-                                    <th>Beds/Baths Ratio:</th>
-                                    <td>{{ "%.2f"|format(property_details.bedrooms / property_details.bathrooms) }}</td>
-                                </tr>
-                                <tr>
-                                    <th>Sqft per Room:</th>
-                                    <td>{{ "%.2f"|format(property_details.square_feet / (property_details.bedrooms + property_details.bathrooms)) }}</td>
-                                </tr>
-                                <tr>
-                                    <th>Model Used:</th>
-                                    <td>
-                                        {% if result.model_type == 'multiple_regression' %}
-                                        Multiple Regression
-                                        {% elif result.model_type == 'basic_linear_regression' %}
-                                        Basic Linear Regression
-                                        {% else %}
-                                        {{ result.model_type }}
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
+    <!-- Bootstrap CSS from Replit CDN -->
+    <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        body {
+            background-color: #121212;
+            color: #e0e0e0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .navbar-brand {
+            font-weight: bold;
+        }
+        .card {
+            margin-bottom: 20px;
+            border: none;
+            border-radius: 8px;
+            background-color: #1e1e1e;
+        }
+        .card-header {
+            background-color: rgba(0,0,0,0.2);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .btn-primary {
+            background-color: #0d6efd;
+        }
+        .value-circle {
+            width: 180px;
+            height: 180px;
+            margin: 0 auto;
+            border-radius: 50%;
+            background-color: rgba(13, 110, 253, 0.1);
+            border: 6px solid #0d6efd;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 20px;
+        }
+        .value-circle .value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            line-height: 1.2;
+        }
+        .value-circle .label {
+            font-size: 0.9rem;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+        .feature-bar {
+            height: 25px;
+            background-color: #2a2a2a;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            position: relative;
+            overflow: hidden;
+        }
+        .feature-bar .bar-fill {
+            height: 100%;
+            background-color: #0d6efd;
+            position: absolute;
+            left: 0;
+            top: 0;
+        }
+        .feature-bar .bar-label {
+            position: absolute;
+            left: 10px;
+            top: 3px;
+            color: white;
+            font-size: 0.8rem;
+            z-index: 1;
+        }
+        .feature-bar .bar-value {
+            position: absolute;
+            right: 10px;
+            top: 3px;
+            color: white;
+            font-size: 0.8rem;
+            z-index: 1;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">BCBS Values</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/valuation">Valuation Tool</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="https://github.com/user/bcbs-values" target="_blank">GitHub</a>
+                    </li>
+                </ul>
+                <span class="navbar-text">
+                    Benton County, WA Property Valuation System
+                </span>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Main Content -->
+    <div class="container mt-4">
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="alert alert-info">
+                    <h5 class="alert-heading">Valuation Results</h5>
+                    <p class="mb-0">This valuation was generated based on the property details you provided and our machine learning models.</p>
                 </div>
             </div>
         </div>
-    </div>
-</div>
-
-<div class="row mb-4">
-    <div class="col-md-6 mb-4">
-        <div class="card shadow h-100">
-            <div class="card-header">
-                <h5 class="card-title mb-0">Feature Importance</h5>
-            </div>
-            <div class="card-body">
-                <div class="mb-4">
-                    <p class="mb-3">The chart below shows the relative importance of each feature in determining the property value:</p>
-                    <canvas id="featureImportanceChart" width="400" height="250"></canvas>
-                </div>
-                
-                {% for feature in result.feature_importance %}
-                <div class="mb-2">
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <div>
-                            {{ feature.feature }}
-                            {% if result.p_values and feature.feature in result.p_values %}
-                                {% if result.p_values[feature.feature] < 0.01 %}
-                                <span class="badge bg-success significance-badge">p<0.01</span>
-                                {% elif result.p_values[feature.feature] < 0.05 %}
-                                <span class="badge bg-info significance-badge">p<0.05</span>
-                                {% elif result.p_values[feature.feature] < 0.1 %}
-                                <span class="badge bg-warning significance-badge">p<0.1</span>
-                                {% else %}
-                                <span class="badge bg-light text-dark significance-badge">p={{ "%.3f"|format(result.p_values[feature.feature]|float) }}</span>
-                                {% endif %}
-                            {% endif %}
+        
+        <div class="row">
+            <!-- Property Details Card -->
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Property Details</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label text-muted">Square Feet</label>
+                            <p class="h4">{{ property_details.square_feet }}</p>
                         </div>
-                        <div>{{ "%.1f"|format(feature.importance*100) }}%</div>
-                    </div>
-                    <div class="progress feature-importance">
-                        <div class="progress-bar" role="progressbar" style="width: {{ feature.importance*100 }}%"></div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted">Bedrooms</label>
+                            <p class="h4">{{ property_details.bedrooms }}</p>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted">Bathrooms</label>
+                            <p class="h4">{{ property_details.bathrooms }}</p>
+                        </div>
+                        <div class="mb-0">
+                            <label class="form-label text-muted">Year Built</label>
+                            <p class="h4">{{ property_details.year_built }}</p>
+                        </div>
                     </div>
                 </div>
-                {% endfor %}
+            </div>
+            
+            <!-- Valuation Result Card -->
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Estimated Value</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row align-items-center">
+                            <div class="col-md-5">
+                                <div class="value-circle">
+                                    <div class="value">${{ "{:,.0f}".format(result.predicted_value) }}</div>
+                                    <div class="label">Estimated Value</div>
+                                </div>
+                            </div>
+                            <div class="col-md-7">
+                                <div class="row">
+                                    <div class="col-6 mb-3">
+                                        <div class="card bg-dark">
+                                            <div class="card-body text-center p-3">
+                                                <h6 class="card-title text-muted mb-1">Model Type</h6>
+                                                <p class="h5 mb-0">{{ result.model_type }}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-6 mb-3">
+                                        <div class="card bg-dark">
+                                            <div class="card-body text-center p-3">
+                                                <h6 class="card-title text-muted mb-1">R² Score</h6>
+                                                <p class="h5 mb-0">{{ "%.2f"|format(result.r2_score) }}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="card bg-dark">
+                                            <div class="card-body text-center p-3">
+                                                <h6 class="card-title text-muted mb-1">Confidence</h6>
+                                                <p class="h5 mb-0">{{ "{:.0%}".format(result.r2_score) }}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="card bg-dark">
+                                            <div class="card-body text-center p-3">
+                                                <h6 class="card-title text-muted mb-1">Price per Sq Ft</h6>
+                                                <p class="h5 mb-0">${{ "{:.0f}".format(result.predicted_value / property_details.square_feet) }}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mt-4">
+            <!-- Feature Importance Card -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Feature Importance</h5>
+                    </div>
+                    <div class="card-body">
+                        {% for feature in result.feature_importance|sort(reverse=True, attribute='importance') %}
+                        <div class="feature-bar">
+                            <div class="bar-fill" style="width: {{ feature.importance * 100 }}%;"></div>
+                            <div class="bar-label">{{ feature.feature }}</div>
+                            <div class="bar-value">{{ "{:.0%}".format(feature.importance) }}</div>
+                        </div>
+                        {% endfor %}
+                        <div class="text-center mt-4">
+                            <canvas id="featureChart" height="220"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Additional Metrics Card -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Additional Metrics</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-sm table-striped">
+                            <tbody>
+                                {% if result.mean_absolute_error is defined %}
+                                <tr>
+                                    <td>Mean Absolute Error</td>
+                                    <td class="text-end">${{ "{:,.0f}".format(result.mean_absolute_error) }}</td>
+                                </tr>
+                                {% endif %}
+                                {% if result.mean_squared_error is defined %}
+                                <tr>
+                                    <td>Mean Squared Error</td>
+                                    <td class="text-end">{{ "{:,.0f}".format(result.mean_squared_error) }}</td>
+                                </tr>
+                                {% endif %}
+                                {% if result.cross_val_score is defined %}
+                                <tr>
+                                    <td>Cross-Validation Score</td>
+                                    <td class="text-end">{{ "%.3f"|format(result.cross_val_score) }}</td>
+                                </tr>
+                                {% endif %}
+                                {% if result.confidence_interval is defined %}
+                                <tr>
+                                    <td>Confidence Interval (95%)</td>
+                                    <td class="text-end">${{ "{:,.0f}".format(result.confidence_interval[0]) }} - ${{ "{:,.0f}".format(result.confidence_interval[1]) }}</td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                        
+                        <div class="text-center mt-4">
+                            <h6 class="mb-3">Value Distribution</h6>
+                            <canvas id="valueChart" height="200"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="d-flex justify-content-between">
+                    <a href="/valuation" class="btn btn-secondary">
+                        <i class="bi bi-arrow-left"></i> New Valuation
+                    </a>
+                    <a href="/valuation/export?id=12345" class="btn btn-primary">
+                        <i class="bi bi-download"></i> Export Report
+                    </a>
+                </div>
             </div>
         </div>
     </div>
     
-    <div class="col-md-6 mb-4">
-        <div class="card shadow h-100">
-            <div class="card-header">
-                <h5 class="card-title mb-0">Model Performance Metrics</h5>
-            </div>
-            <div class="card-body">
-                <table class="table table-sm model-metrics">
-                    <tbody>
-                        <tr>
-                            <th>R² Score:</th>
-                            <td>{{ "%.4f"|format(result.r2_score|float) }}</td>
-                        </tr>
-                        {% if result.adj_r2_score %}
-                        <tr>
-                            <th>Adjusted R² Score:</th>
-                            <td>{{ "%.4f"|format(result.adj_r2_score|float) }}</td>
-                        </tr>
-                        {% endif %}
-                        {% if result.rmse %}
-                        <tr>
-                            <th>Root Mean Squared Error (RMSE):</th>
-                            <td>${{ "%.2f"|format(result.rmse|float) }}</td>
-                        </tr>
-                        {% endif %}
-                        {% if result.mae %}
-                        <tr>
-                            <th>Mean Absolute Error (MAE):</th>
-                            <td>${{ "%.2f"|format(result.mae|float) }}</td>
-                        </tr>
-                        {% endif %}
-                    </tbody>
-                </table>
-                
-                <div class="mt-4">
-                    <h6>What These Metrics Mean:</h6>
-                    <ul class="small">
-                        <li><strong>R² Score</strong> - Measures how well the model explains the variation in property values. Higher is better (max 1.0).</li>
-                        {% if result.adj_r2_score %}
-                        <li><strong>Adjusted R² Score</strong> - R² adjusted for the number of features. More reliable for models with many features.</li>
-                        {% endif %}
-                        {% if result.rmse %}
-                        <li><strong>RMSE</strong> - Average error magnitude. Lower values indicate better prediction accuracy.</li>
-                        {% endif %}
-                        {% if result.mae %}
-                        <li><strong>MAE</strong> - Average absolute error. Easier to interpret than RMSE.</li>
-                        {% endif %}
+    <!-- Footer -->
+    <footer class="bg-dark text-light py-4 mt-5">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <h5>BCBS Property Valuation System</h5>
+                    <p class="text-muted">Advanced real estate valuation platform for Benton County, WA</p>
+                </div>
+                <div class="col-md-3">
+                    <h5>Links</h5>
+                    <ul class="list-unstyled">
+                        <li><a href="/" class="text-decoration-none text-light">Dashboard</a></li>
+                        <li><a href="/valuation" class="text-decoration-none text-light">Valuation Tool</a></li>
+                        <li><a href="/api/docs" class="text-decoration-none text-light">API Documentation</a></li>
                     </ul>
                 </div>
-                
-                <div class="alert alert-info mt-3 small">
-                    <i class="bi bi-info-circle-fill me-2"></i>
-                    This valuation is based on statistical modeling and should be used as one factor in making property decisions. Consider consulting with a professional appraiser for an official valuation.
+                <div class="col-md-3">
+                    <h5>Resources</h5>
+                    <ul class="list-unstyled">
+                        <li><a href="#" class="text-decoration-none text-light">Documentation</a></li>
+                        <li><a href="#" class="text-decoration-none text-light">GitHub Repository</a></li>
+                        <li><a href="#" class="text-decoration-none text-light">Report Issues</a></li>
+                    </ul>
+                </div>
+            </div>
+            <hr class="mt-4 mb-3">
+            <div class="row">
+                <div class="col-12 text-center">
+                    <p class="mb-0">© 2025 BCBS Values - All rights reserved</p>
                 </div>
             </div>
         </div>
-    </div>
-</div>
-
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="d-flex justify-content-between">
-            <a href="/valuation" class="btn btn-outline-primary">New Valuation</a>
-            <a href="/" class="btn btn-link">Back to Dashboard</a>
-        </div>
-    </div>
-</div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Feature importance chart
-        const featureImportanceCtx = document.getElementById('featureImportanceChart').getContext('2d');
-        
-        // Extract data from the result
-        const features = {{ result.feature_importance|map(attribute='feature')|list|tojson }};
-        const importances = {{ result.feature_importance|map(attribute='importance')|list|tojson }};
-        
-        const importanceChart = new Chart(featureImportanceCtx, {
-            type: 'bar',
-            data: {
-                labels: features,
-                datasets: [{
-                    label: 'Feature Importance',
-                    data: importances.map(val => val * 100), // Convert to percentage
-                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
-                    borderColor: 'rgba(54, 162, 235, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                indexAxis: 'y',
-                responsive: true,
-                plugins: {
-                    legend: {
-                        display: false,
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                return `${context.formattedValue}% impact`;
-                            }
-                        }
-                    }
+    </footer>
+    
+    <!-- Bootstrap JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Initialize Charts -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Feature Importance Chart
+            const featureCtx = document.getElementById('featureChart').getContext('2d');
+            const featureChart = new Chart(featureCtx, {
+                type: 'pie',
+                data: {
+                    labels: [
+                        {% for feature in result.feature_importance|sort(reverse=True, attribute='importance') %}
+                            "{{ feature.feature }}",
+                        {% endfor %}
+                    ],
+                    datasets: [{
+                        data: [
+                            {% for feature in result.feature_importance|sort(reverse=True, attribute='importance') %}
+                                {{ feature.importance }},
+                            {% endfor %}
+                        ],
+                        backgroundColor: [
+                            'rgba(54, 162, 235, 0.8)',
+                            'rgba(255, 99, 132, 0.8)',
+                            'rgba(255, 206, 86, 0.8)',
+                            'rgba(75, 192, 192, 0.8)',
+                            'rgba(153, 102, 255, 0.8)',
+                        ],
+                        borderWidth: 1
+                    }]
                 },
-                scales: {
-                    x: {
-                        beginAtZero: true,
-                        grid: {
-                            display: false
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
                         },
-                        ticks: {
-                            callback: function(value) {
-                                return value + '%';
+                        title: {
+                            display: true,
+                            text: 'Feature Importance'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    label += (context.raw * 100).toFixed(1) + '%';
+                                    return label;
+                                }
                             }
-                        }
-                    },
-                    y: {
-                        grid: {
-                            display: false
                         }
                     }
                 }
-            }
+            });
+            
+            // Value Distribution Chart
+            const valueCtx = document.getElementById('valueChart').getContext('2d');
+            const valueChart = new Chart(valueCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['20% Below', '10% Below', 'Estimate', '10% Above', '20% Above'],
+                    datasets: [{
+                        label: 'Estimated Value Range',
+                        data: [
+                            {{ result.predicted_value * 0.8 }},
+                            {{ result.predicted_value * 0.9 }},
+                            {{ result.predicted_value }},
+                            {{ result.predicted_value * 1.1 }},
+                            {{ result.predicted_value * 1.2 }}
+                        ],
+                        backgroundColor: [
+                            'rgba(255, 99, 132, 0.7)',
+                            'rgba(255, 159, 64, 0.7)',
+                            'rgba(54, 162, 235, 0.7)',
+                            'rgba(255, 159, 64, 0.7)',
+                            'rgba(255, 99, 132, 0.7)'
+                        ],
+                        borderColor: [
+                            'rgba(255, 99, 132, 1)',
+                            'rgba(255, 159, 64, 1)',
+                            'rgba(54, 162, 235, 1)',
+                            'rgba(255, 159, 64, 1)',
+                            'rgba(255, 99, 132, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + value.toLocaleString();
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    label += '$' + context.raw.toLocaleString();
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
         });
-    });
-</script>
-{% endblock %}
+    </script>
+</body>
+</html>

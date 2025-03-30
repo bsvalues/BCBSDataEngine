@@ -198,6 +198,130 @@ def valuation_tool():
     # GET request - show the form
     return render_template('valuation_form.html')
 
+@app.route('/api/valuations', methods=['GET'])
+def api_valuations():
+    """
+    API endpoint to fetch all property valuations.
+    
+    Can be filtered with query parameters:
+    - min_value: Minimum estimated value
+    - max_value: Maximum estimated value
+    - property_type: Type of property (residential, commercial, etc.)
+    """
+    try:
+        # Get query parameters
+        min_value = request.args.get('min_value', type=float)
+        max_value = request.args.get('max_value', type=float)
+        property_type = request.args.get('property_type')
+        
+        # Generate sample property data for demonstration
+        num_properties = 30
+        properties = create_sample_properties(num_properties)
+        
+        # Apply filters if provided
+        filtered_properties = properties
+        if min_value:
+            filtered_properties = [p for p in filtered_properties if p['estimated_value'] >= min_value]
+        if max_value:
+            filtered_properties = [p for p in filtered_properties if p['estimated_value'] <= max_value]
+        if property_type:
+            filtered_properties = [p for p in filtered_properties if p['property_type'].lower() == property_type.lower()]
+        
+        return jsonify(filtered_properties)
+    except Exception as e:
+        logger.error(f"Error in API valuations: {str(e)}", exc_info=True)
+        return jsonify({
+            'error': f"Failed to retrieve valuations: {str(e)}"
+        }), 500
+
+def create_sample_properties(n_samples=30):
+    """Create sample property valuation data for the dashboard."""
+    import numpy as np
+    import random
+    from datetime import datetime, timedelta
+    
+    # Set random seed for reproducibility
+    np.random.seed(42)
+    
+    # Neighborhoods in Benton County, WA
+    neighborhoods = [
+        "Richland, WA", "Kennewick, WA", "West Richland, WA", 
+        "Prosser, WA", "Benton City, WA", "Badger Mountain, WA",
+        "Finley, WA", "Horn Rapids, WA", "Queensgate, WA"
+    ]
+    
+    # Property types
+    property_types = ["residential", "commercial", "land", "multifamily"]
+    property_type_weights = [0.7, 0.15, 0.05, 0.1]  # Probability weights
+    
+    # Model types
+    model_types = ["basic_linear", "ridge_regression", "gradient_boost", "random_forest"]
+    
+    # Generate property data
+    properties = []
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=180)  # Last 6 months
+    
+    for i in range(n_samples):
+        # Basic property attributes
+        square_feet = int(np.random.normal(2000, 500))
+        bedrooms = random.choice([2, 3, 4, 5])
+        bathrooms = random.choice([1, 1.5, 2, 2.5, 3, 3.5, 4])
+        year_built = random.randint(1970, 2022)
+        
+        # Select neighborhood and derive address
+        neighborhood = random.choice(neighborhoods)
+        street_number = random.randint(100, 9999)
+        streets = ["Maple St", "Oak Ave", "Cedar Ln", "Elm Blvd", "Pine Dr", "Washington St", "Columbia Way"]
+        street = random.choice(streets)
+        address = f"{street_number} {street}, {neighborhood}"
+        
+        # Calculate estimated value using formula similar to create_sample_data
+        base_value = (
+            square_feet * 120 +              # $120 per sq ft base
+            bedrooms * 12000 +               # $12k per bedroom
+            bathrooms * 18000 +              # $18k per bathroom
+            (2025 - year_built) * -800       # Depreciation by age
+        )
+        
+        # Add some neighborhood-based adjustment
+        neighborhood_multiplier = 1.0
+        if "Richland" in neighborhood:
+            neighborhood_multiplier = 1.15
+        elif "Kennewick" in neighborhood:
+            neighborhood_multiplier = 1.1
+        elif "West Richland" in neighborhood:
+            neighborhood_multiplier = 1.2
+        
+        estimated_value = int(base_value * neighborhood_multiplier + np.random.normal(0, 15000))
+        
+        # Generate random valuation date within the last 6 months
+        days_ago = random.randint(0, 180)
+        valuation_date = (end_date - timedelta(days=days_ago)).strftime("%Y-%m-%d")
+        
+        # Add property to list
+        properties.append({
+            "property_id": f"BCBS-{i+1000:04d}",
+            "address": address,
+            "square_feet": square_feet,
+            "bedrooms": bedrooms,
+            "bathrooms": bathrooms,
+            "year_built": year_built,
+            "property_type": np.random.choice(property_types, p=property_type_weights),
+            "estimated_value": estimated_value,
+            "confidence_score": round(random.uniform(0.7, 0.98), 2),
+            "model_used": random.choice(model_types),
+            "valuation_date": valuation_date,
+            "features": {
+                "location_score": round(random.uniform(0.5, 1.0), 2),
+                "lot_size": random.randint(5000, 20000),
+                "has_garage": random.choice([True, False]),
+                "has_pool": random.choice([True, False, False, False])  # Less common
+            }
+        })
+    
+    return properties
+
 @app.route('/api/valuation', methods=['POST'])
 def api_valuation():
     """

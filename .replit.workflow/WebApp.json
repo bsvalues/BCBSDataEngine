@@ -4,5 +4,6 @@
   "command": "python app.py",
   "restartOn": {
     "files": ["./app.py", "./models.py", "./templates/*", "./static/*"]
-  }
+  },
+  "serviceCommand": "python app.py"
 }

@@ -1,11 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
+import { Line, Bar, Pie } from 'react-chartjs-2';
+
+// Register Chart.js components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
 /**
  * Dashboard Component
  * 
  * This component fetches property valuation data from the API and displays it in a
- * filterable table. It includes options for filtering by neighborhood or date,
- * and handles loading states and errors gracefully.
+ * filterable table and interactive visualizations. It includes options for filtering 
+ * by neighborhood or date, and handles loading states and errors gracefully.
+ * 
+ * Key Features:
+ * - Data fetching with loading indicators and error handling
+ * - Interactive filtering by neighborhood, price range, property type, and date
+ * - Tabular display of property valuations with sortable columns
+ * - Data visualization with Chart.js showing trends and distributions
+ * - Responsive design with Tailwind CSS
  */
 const Dashboard = () => {
   // State for storing property valuations data
@@ -23,6 +45,13 @@ const Dashboard = () => {
     fromDate: '',
     toDate: ''
   });
+  
+  // State for chart data and configuration
+  const [chartData, setChartData] = useState(null);
+  
+  // Refs for chart containers
+  const valueDistributionChartRef = useRef(null);
+  const neighborhoodChartRef = useRef(null);
 
   // Function to fetch property valuations from the API
   const fetchPropertyValuations = async () => {
@@ -126,6 +155,112 @@ const Dashboard = () => {
   useEffect(() => {
     fetchPropertyValuations();
   }, []); // Empty dependency array means this runs once on mount
+  
+  // Prepare chart data when properties change
+  useEffect(() => {
+    if (filteredProperties.length > 0) {
+      prepareChartData();
+    }
+  }, [filteredProperties]);
+  
+  // Function to prepare chart data based on filtered properties
+  const prepareChartData = () => {
+    // Group properties by value ranges for distribution chart
+    const valueRanges = [
+      '< $200K', 
+      '$200K - $300K', 
+      '$300K - $400K', 
+      '$400K - $500K', 
+      '$500K - $750K', 
+      '$750K - $1M', 
+      '> $1M'
+    ];
+    
+    const valueCounts = [0, 0, 0, 0, 0, 0, 0];
+    
+    filteredProperties.forEach(property => {
+      const value = property.estimated_value;
+      if (value < 200000) {
+        valueCounts[0]++;
+      } else if (value < 300000) {
+        valueCounts[1]++;
+      } else if (value < 400000) {
+        valueCounts[2]++;
+      } else if (value < 500000) {
+        valueCounts[3]++;
+      } else if (value < 750000) {
+        valueCounts[4]++;
+      } else if (value < 1000000) {
+        valueCounts[5]++;
+      } else {
+        valueCounts[6]++;
+      }
+    });
+    
+    // Group properties by neighborhood for neighborhood chart
+    const neighborhoods = {};
+    
+    filteredProperties.forEach(property => {
+      const neighborhood = extractNeighborhood(property.address);
+      if (!neighborhoods[neighborhood]) {
+        neighborhoods[neighborhood] = {
+          count: 0,
+          totalValue: 0
+        };
+      }
+      neighborhoods[neighborhood].count++;
+      neighborhoods[neighborhood].totalValue += property.estimated_value;
+    });
+    
+    // Convert to arrays for chart data
+    const neighborhoodNames = Object.keys(neighborhoods)
+      .sort((a, b) => neighborhoods[b].count - neighborhoods[a].count)
+      .slice(0, 8); // Top 8 neighborhoods by count
+    
+    const neighborhoodCounts = neighborhoodNames.map(name => neighborhoods[name].count);
+    const neighborhoodAvgValues = neighborhoodNames.map(name => 
+      Math.round(neighborhoods[name].totalValue / neighborhoods[name].count)
+    );
+    
+    // Set chart data
+    setChartData({
+      valueDistribution: {
+        labels: valueRanges,
+        datasets: [
+          {
+            label: 'Property Count',
+            data: valueCounts,
+            backgroundColor: 'rgba(54, 162, 235, 0.6)',
+            borderColor: 'rgba(54, 162, 235, 1)',
+            borderWidth: 1
+          }
+        ]
+      },
+      neighborhoodComparison: {
+        labels: neighborhoodNames,
+        datasets: [
+          {
+            label: 'Property Count',
+            data: neighborhoodCounts,
+            backgroundColor: 'rgba(153, 102, 255, 0.6)',
+            borderColor: 'rgba(153, 102, 255, 1)',
+            borderWidth: 1,
+            yAxisID: 'y'
+          },
+          {
+            label: 'Average Value',
+            data: neighborhoodAvgValues,
+            type: 'line',
+            borderColor: 'rgba(255, 99, 132, 1)',
+            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+            borderWidth: 2,
+            fill: false,
+            yAxisID: 'y1'
+          }
+        ]
+      }
+    });
+  };
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -406,6 +541,124 @@ const Dashboard = () => {
                   (filteredProperties.reduce((acc, p) => acc + p.confidence_score, 0) / filteredProperties.length) * 100
                 )}%
               </span>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Data Visualizations */}
+      {!loading && !error && filteredProperties.length > 0 && chartData && (
+        <div className="mt-8">
+          <h2 className="text-xl font-semibold mb-4">Valuation Analytics</h2>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Property Value Distribution Chart */}
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h3 className="text-lg font-semibold mb-4">Value Distribution</h3>
+              <div className="h-80">
+                <Bar 
+                  data={chartData.valueDistribution}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: {
+                        position: 'top',
+                      },
+                      title: {
+                        display: true,
+                        text: 'Property Value Distribution'
+                      },
+                      tooltip: {
+                        callbacks: {
+                          label: function(context) {
+                            return `${context.dataset.label}: ${context.raw} properties`;
+                          }
+                        }
+                      }
+                    },
+                    scales: {
+                      y: {
+                        beginAtZero: true,
+                        title: {
+                          display: true,
+                          text: 'Number of Properties'
+                        },
+                        ticks: {
+                          precision: 0
+                        }
+                      }
+                    }
+                  }}
+                />
+              </div>
+            </div>
+            
+            {/* Neighborhood Comparison Chart */}
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h3 className="text-lg font-semibold mb-4">Neighborhood Analysis</h3>
+              <div className="h-80">
+                <Bar 
+                  data={chartData.neighborhoodComparison}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: {
+                        position: 'top',
+                      },
+                      title: {
+                        display: true,
+                        text: 'Property Count and Values by Neighborhood'
+                      },
+                      tooltip: {
+                        callbacks: {
+                          label: function(context) {
+                            const label = context.dataset.label;
+                            const value = context.raw;
+                            return label === 'Average Value' 
+                              ? `${label}: ${formatCurrency(value)}` 
+                              : `${label}: ${value}`;
+                          }
+                        }
+                      }
+                    },
+                    scales: {
+                      y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: {
+                          display: true,
+                          text: 'Number of Properties'
+                        },
+                        beginAtZero: true,
+                        ticks: {
+                          precision: 0
+                        }
+                      },
+                      y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: {
+                          display: true,
+                          text: 'Average Value ($)'
+                        },
+                        beginAtZero: true,
+                        grid: {
+                          drawOnChartArea: false,
+                        },
+                        ticks: {
+                          callback: function(value) {
+                            return '$' + value.toLocaleString();
+                          }
+                        }
+                      }
+                    }
+                  }}
+                />
+              </div>
             </div>
           </div>
         </div>
