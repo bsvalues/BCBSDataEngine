@@ -1,10 +1,11 @@
 """
-Main entry point for the BCBS Property Valuation Dashboard application
+Startup script for the BCBS Property Valuation Dashboard web application.
+This script is used by Replit workflows to start the web application.
 """
 
 import os
-import subprocess
 import sys
+import subprocess
 
 def main():
     """
@@ -13,15 +14,18 @@ def main():
     # Set Python path to include current directory
     os.environ["PYTHONPATH"] = "."
     
-    # Check if app.py exists
-    if not os.path.exists("app.py"):
-        print("Error: app.py not found.")
-        sys.exit(1)
+    # Add session secret if not present
+    if "SESSION_SECRET" not in os.environ:
+        os.environ["SESSION_SECRET"] = "bcbs-valuation-dashboard-secret"
     
     # Start the Flask web application
     print("Starting BCBS Property Valuation Dashboard...")
     try:
-        subprocess.run([sys.executable, "app.py"], check=True)
+        if os.path.exists("app.py"):
+            subprocess.run([sys.executable, "app.py"], check=True)
+        else:
+            print("Error: app.py not found.")
+            sys.exit(1)
     except KeyboardInterrupt:
         print("\nShutting down BCBS Property Valuation Dashboard...")
     except Exception as e:

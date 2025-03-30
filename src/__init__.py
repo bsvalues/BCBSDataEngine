@@ -1,4 +1,5 @@
 """
-Source package for core valuation engine modules.
-To be implemented in future versions.
+BCBS Property Valuation System package.
 """
+
+__version__ = '0.1.0'

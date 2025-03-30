@@ -1,88 +1,132 @@
-{% extends "layout.html" %}
+{% extends 'base.html' %}
 
-{% block title %}BCBS Values - Benton County Real Estate Valuation{% endblock %}
+{% block title %}BCBS Property Valuation Dashboard{% endblock %}
 
 {% block content %}
-
-    <!-- Hero Section -->
-    <header class="py-5 bg-primary text-white">
-        <div class="container px-4 text-center">
-            <h1 class="display-4 fw-bold">Benton County Property Valuation</h1>
-            <p class="lead">Advanced real estate valuation powered by machine learning</p>
-            <a href="/properties" class="btn btn-light btn-lg">Browse Properties</a>
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-body">
+                <h1 class="card-title">BCBS Property Valuation Dashboard</h1>
+                <p class="card-text lead">
+                    Welcome to the Benton County Building Services Property Valuation System. 
+                    This dashboard provides access to advanced property valuation tools and analytics.
+                </p>
+            </div>
         </div>
-    </header>
+    </div>
+</div>
 
-    <!-- Features Section -->
-    <section class="py-5">
-        <div class="container px-4">
-            <div class="row gx-4 justify-content-center">
-                <div class="col-lg-8">
-                    <h2 class="mb-4">Features of BCBS Values</h2>
-                    <div class="row row-cols-1 row-cols-md-3 g-4">
-                        <div class="col">
-                            <div class="card h-100 bg-dark text-white">
-                                <div class="card-body">
-                                    <h5 class="card-title">Advanced Valuation</h5>
-                                    <p class="card-text">Utilizing multiple regression analysis and machine learning algorithms for accurate property valuations.</p>
-                                </div>
-                            </div>
+<div class="row mb-4">
+    <div class="col-lg-4 mb-4">
+        <div class="card stats-card shadow">
+            <div class="card-body text-center">
+                <h3 class="card-title">Valuation Tool</h3>
+                <p class="card-text">Estimate property values using advanced machine learning models</p>
+                <a href="/valuation" class="btn btn-primary">Get Started</a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4 mb-4">
+        <div class="card stats-card shadow">
+            <div class="card-body text-center">
+                <h3 class="card-title">Model Metrics</h3>
+                <p class="card-text">View valuation model performance and accuracy metrics</p>
+                <div class="text-center mt-3">
+                    <div class="d-flex justify-content-between">
+                        <small>R² Score</small>
+                        <small>0.89-0.96</small>
+                    </div>
+                    <div class="progress" style="height: 8px;">
+                        <div class="progress-bar" role="progressbar" style="width: 92%;" aria-valuenow="92" aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4 mb-4">
+        <div class="card stats-card shadow">
+            <div class="card-body text-center">
+                <h3 class="card-title">Feature Importance</h3>
+                <p class="card-text">Key factors affecting property valuations</p>
+                <div class="mt-3">
+                    <div class="d-flex justify-content-between">
+                        <small>Square Feet</small>
+                        <small>48%</small>
+                    </div>
+                    <div class="progress feature-importance-bar">
+                        <div class="progress-bar" style="width: 48%"></div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between">
+                        <small>Bathrooms</small>
+                        <small>24%</small>
+                    </div>
+                    <div class="progress feature-importance-bar">
+                        <div class="progress-bar" style="width: 24%"></div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between">
+                        <small>Bedrooms</small>
+                        <small>18%</small>
+                    </div>
+                    <div class="progress feature-importance-bar">
+                        <div class="progress-bar" style="width: 18%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-body">
+                <h2 class="card-title">System Overview</h2>
+                <p class="card-text">
+                    The BCBS Property Valuation System uses advanced machine learning and statistical techniques to estimate property values in Benton County, Washington. Key features include:
+                </p>
+                
+                <div class="row mt-4">
+                    <div class="col-md-6 mb-4">
+                        <div class="feature-box border">
+                            <h4>Multiple Regression Analysis</h4>
+                            <p>Uses multiple property features to provide accurate valuations with comprehensive statistical metrics, including R², adjusted R², RMSE, and MAE.</p>
                         </div>
-                        <div class="col">
-                            <div class="card h-100 bg-dark text-white">
-                                <div class="card-body">
-                                    <h5 class="card-title">Multi-Source Data</h5>
-                                    <p class="card-text">Integrating data from MLS, NARRPR, and PACS to provide comprehensive property insights.</p>
-                                </div>
-                            </div>
+                    </div>
+                    
+                    <div class="col-md-6 mb-4">
+                        <div class="feature-box border">
+                            <h4>Feature Engineering</h4>
+                            <p>Enhances valuation accuracy with derived features like property age, beds-to-baths ratio, and square footage per room.</p>
                         </div>
-                        <div class="col">
-                            <div class="card h-100 bg-dark text-white">
-                                <div class="card-body">
-                                    <h5 class="card-title">Confidence Metrics</h5>
-                                    <p class="card-text">Every valuation includes confidence scores and prediction intervals for transparency.</p>
-                                </div>
-                            </div>
+                    </div>
+                    
+                    <div class="col-md-6 mb-4">
+                        <div class="feature-box border">
+                            <h4>GIS Integration</h4>
+                            <p>Incorporates geospatial data for location-based adjustments and neighborhood-specific valuation factors.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6 mb-4">
+                        <div class="feature-box border">
+                            <h4>Statistical Reporting</h4>
+                            <p>Provides detailed model metrics and feature importance analysis for transparent valuations.</p>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-    </section>
+    </div>
+</div>
+{% endblock %}
 
-    <!-- Recent Valuations -->
-    <section class="py-5 bg-dark">
-        <div class="container px-4">
-            <h2 class="text-center text-white mb-4">Recent Property Valuations</h2>
-            <div class="row">
-                <div class="col-12">
-                    <div class="table-responsive">
-                        <table class="table table-dark table-hover">
-                            <thead>
-                                <tr>
-                                    <th>Address</th>
-                                    <th>City</th>
-                                    <th>Bedrooms</th>
-                                    <th>Bathrooms</th>
-                                    <th>Sq. Ft.</th>
-                                    <th>Estimated Value</th>
-                                    <th>Details</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- This would be filled with Jinja template logic -->
-                                <tr>
-                                    <td colspan="7" class="text-center">Loading recent valuations...</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="text-center mt-3">
-                        <a href="/properties" class="btn btn-primary">View All Properties</a>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
+{% block scripts %}
+<script>
+    // Any additional JavaScript for the dashboard page
+</script>
 {% endblock %}

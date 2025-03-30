@@ -1,0 +1,288 @@
+{% extends 'base.html' %}
+
+{% block title %}Valuation Result{% endblock %}
+
+{% block extra_head %}
+<style>
+    .value-box {
+        text-align: center;
+        padding: 1.5rem;
+    }
+    .feature-importance {
+        height: 20px;
+        margin-bottom: 0.5rem;
+    }
+    .model-metrics th {
+        width: 50%;
+    }
+    .model-metrics td, .model-metrics th {
+        padding: 0.5rem;
+    }
+    .significance-badge {
+        font-size: 0.7rem;
+        padding: 2px 6px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-body">
+                <h1 class="card-title">Property Valuation Result</h1>
+                <p class="card-text lead">
+                    Below is the estimated value and detailed metrics for the property.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-lg-4 mb-4">
+        <div class="card shadow">
+            <div class="card-body value-box">
+                <h3 class="text-muted mb-2">Estimated Value</h3>
+                <h2 class="display-4 mb-2">${{ "%.2f"|format(result.predicted_value|float) }}</h2>
+                <div class="d-flex justify-content-center align-items-center">
+                    <div class="badge bg-primary">R² Score: {{ "%.3f"|format(result.r2_score|float) }}</div>
+                    {% if result.adj_r2_score %}
+                    <div class="badge bg-info ms-2">Adjusted R²: {{ "%.3f"|format(result.adj_r2_score|float) }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-8 mb-4">
+        <div class="card shadow">
+            <div class="card-body">
+                <h4>Property Details</h4>
+                <div class="row">
+                    <div class="col-md-6">
+                        <table class="table table-sm">
+                            <tbody>
+                                <tr>
+                                    <th>Square Feet:</th>
+                                    <td>{{ property_details.square_feet }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Bedrooms:</th>
+                                    <td>{{ property_details.bedrooms }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Bathrooms:</th>
+                                    <td>{{ property_details.bathrooms }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Year Built:</th>
+                                    <td>{{ property_details.year_built }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <table class="table table-sm">
+                            <tbody>
+                                <tr>
+                                    <th>Property Age:</th>
+                                    <td>{{ 2025 - property_details.year_built }} years</td>
+                                </tr>
+                                <tr>
+                                    <th>Beds/Baths Ratio:</th>
+                                    <td>{{ "%.2f"|format(property_details.bedrooms / property_details.bathrooms) }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Sqft per Room:</th>
+                                    <td>{{ "%.2f"|format(property_details.square_feet / (property_details.bedrooms + property_details.bathrooms)) }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Model Used:</th>
+                                    <td>
+                                        {% if result.model_type == 'multiple_regression' %}
+                                        Multiple Regression
+                                        {% elif result.model_type == 'basic_linear_regression' %}
+                                        Basic Linear Regression
+                                        {% else %}
+                                        {{ result.model_type }}
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6 mb-4">
+        <div class="card shadow h-100">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Feature Importance</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-4">
+                    <p class="mb-3">The chart below shows the relative importance of each feature in determining the property value:</p>
+                    <canvas id="featureImportanceChart" width="400" height="250"></canvas>
+                </div>
+                
+                {% for feature in result.feature_importance %}
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <div>
+                            {{ feature.feature }}
+                            {% if result.p_values and feature.feature in result.p_values %}
+                                {% if result.p_values[feature.feature] < 0.01 %}
+                                <span class="badge bg-success significance-badge">p<0.01</span>
+                                {% elif result.p_values[feature.feature] < 0.05 %}
+                                <span class="badge bg-info significance-badge">p<0.05</span>
+                                {% elif result.p_values[feature.feature] < 0.1 %}
+                                <span class="badge bg-warning significance-badge">p<0.1</span>
+                                {% else %}
+                                <span class="badge bg-light text-dark significance-badge">p={{ "%.3f"|format(result.p_values[feature.feature]|float) }}</span>
+                                {% endif %}
+                            {% endif %}
+                        </div>
+                        <div>{{ "%.1f"|format(feature.importance*100) }}%</div>
+                    </div>
+                    <div class="progress feature-importance">
+                        <div class="progress-bar" role="progressbar" style="width: {{ feature.importance*100 }}%"></div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6 mb-4">
+        <div class="card shadow h-100">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Model Performance Metrics</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm model-metrics">
+                    <tbody>
+                        <tr>
+                            <th>R² Score:</th>
+                            <td>{{ "%.4f"|format(result.r2_score|float) }}</td>
+                        </tr>
+                        {% if result.adj_r2_score %}
+                        <tr>
+                            <th>Adjusted R² Score:</th>
+                            <td>{{ "%.4f"|format(result.adj_r2_score|float) }}</td>
+                        </tr>
+                        {% endif %}
+                        {% if result.rmse %}
+                        <tr>
+                            <th>Root Mean Squared Error (RMSE):</th>
+                            <td>${{ "%.2f"|format(result.rmse|float) }}</td>
+                        </tr>
+                        {% endif %}
+                        {% if result.mae %}
+                        <tr>
+                            <th>Mean Absolute Error (MAE):</th>
+                            <td>${{ "%.2f"|format(result.mae|float) }}</td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+                
+                <div class="mt-4">
+                    <h6>What These Metrics Mean:</h6>
+                    <ul class="small">
+                        <li><strong>R² Score</strong> - Measures how well the model explains the variation in property values. Higher is better (max 1.0).</li>
+                        {% if result.adj_r2_score %}
+                        <li><strong>Adjusted R² Score</strong> - R² adjusted for the number of features. More reliable for models with many features.</li>
+                        {% endif %}
+                        {% if result.rmse %}
+                        <li><strong>RMSE</strong> - Average error magnitude. Lower values indicate better prediction accuracy.</li>
+                        {% endif %}
+                        {% if result.mae %}
+                        <li><strong>MAE</strong> - Average absolute error. Easier to interpret than RMSE.</li>
+                        {% endif %}
+                    </ul>
+                </div>
+                
+                <div class="alert alert-info mt-3 small">
+                    <i class="bi bi-info-circle-fill me-2"></i>
+                    This valuation is based on statistical modeling and should be used as one factor in making property decisions. Consider consulting with a professional appraiser for an official valuation.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between">
+            <a href="/valuation" class="btn btn-outline-primary">New Valuation</a>
+            <a href="/" class="btn btn-link">Back to Dashboard</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Feature importance chart
+        const featureImportanceCtx = document.getElementById('featureImportanceChart').getContext('2d');
+        
+        // Extract data from the result
+        const features = {{ result.feature_importance|map(attribute='feature')|list|tojson }};
+        const importances = {{ result.feature_importance|map(attribute='importance')|list|tojson }};
+        
+        const importanceChart = new Chart(featureImportanceCtx, {
+            type: 'bar',
+            data: {
+                labels: features,
+                datasets: [{
+                    label: 'Feature Importance',
+                    data: importances.map(val => val * 100), // Convert to percentage
+                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                plugins: {
+                    legend: {
+                        display: false,
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.formattedValue}% impact`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        grid: {
+                            display: false
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return value + '%';
+                            }
+                        }
+                    },
+                    y: {
+                        grid: {
+                            display: false
+                        }
+                    }
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}

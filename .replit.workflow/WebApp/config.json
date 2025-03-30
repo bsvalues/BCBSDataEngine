@@ -1,0 +1,21 @@
+{
+  "name": "WebApp",
+  "command": "python start_web_app.py",
+  "port": 5000,
+  "env": [
+    {
+      "name": "PORT",
+      "value": "5000"
+    },
+    {
+      "name": "PYTHONPATH",
+      "value": "."
+    },
+    {
+      "name": "SESSION_SECRET",
+      "value": "bcbs-valuation-dashboard-secret"
+    }
+  ],
+  "outputDirectory": null,
+  "startCommand": "python start_web_app.py"
+}
