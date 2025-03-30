@@ -1,76 +1,106 @@
+#!/usr/bin/env python3
 """
-Run script to start the BCBS Values application with the Flask and FastAPI servers.
-This script will start both servers in separate processes, enabling the full
-system functionality.
+Integrated server script that starts both Flask and FastAPI servers in separate processes.
+This ensures that both web interface and API endpoints are accessible at the same time.
 """
 import os
-import subprocess
 import sys
 import time
-import threading
+import signal
+import subprocess
 import logging
+from pathlib import Path
 
-# Set up logging
+# Setup logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%H:%M:%S",
 )
 logger = logging.getLogger(__name__)
 
-# Define the Flask port (main app) and FastAPI port
-FLASK_PORT = 5000
+# Configuration
+FLASK_PORT = 5001
 API_PORT = 8000
 
-def run_flask_app():
-    """Run the Flask application using gunicorn."""
-    logger.info(f"Starting Flask application on port {FLASK_PORT}")
-    try:
-        # Use gunicorn for production-ready server
-        subprocess.run([
-            "gunicorn",
-            "--bind", f"0.0.0.0:{FLASK_PORT}",
-            "--reuse-port",
-            "--reload",
-            "main:app"
-        ], check=True)
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Flask application failed: {e}")
-        sys.exit(1)
-    except KeyboardInterrupt:
-        logger.info("Flask application stopped by user")
+def start_flask_app():
+    """Start the Flask web application"""
+    logger.info("Starting Flask application on port %s", FLASK_PORT)
+    flask_process = subprocess.Popen(
+        [sys.executable, "main.py", "--web"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    return flask_process
 
-def run_fastapi_app():
-    """Run the FastAPI application using uvicorn."""
-    logger.info(f"Starting FastAPI application on port {API_PORT}")
-    try:
-        # Set the API port environment variable
-        os.environ["API_PORT"] = str(API_PORT)
-        
-        # Run using uvicorn
-        import uvicorn
-        uvicorn.run(
-            "api:app",
-            host="0.0.0.0",
-            port=API_PORT,
-            reload=True,
-            log_level="info"
-        )
-    except Exception as e:
-        logger.error(f"FastAPI application failed: {e}")
-        sys.exit(1)
-    except KeyboardInterrupt:
-        logger.info("FastAPI application stopped by user")
+def start_api_server():
+    """Start the FastAPI server"""
+    logger.info("Starting FastAPI server on port %s", API_PORT)
+    api_process = subprocess.Popen(
+        [sys.executable, "run_api.py"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    return api_process
 
 def main():
-    """Main function to start both applications."""
-    logger.info("Starting BCBS Values integrated application")
+    """Main function to run both servers"""
+    logger.info("Starting BCBS_Values integrated server")
     
-    # Start Flask app in a separate thread
-    flask_thread = threading.Thread(target=run_flask_app, daemon=True)
-    flask_thread.start()
+    # Start Flask application
+    flask_process = start_flask_app()
     
-    # Start FastAPI directly (in main thread)
-    run_fastapi_app()
+    # Start API server
+    api_process = start_api_server()
+    
+    # Monitor outputs
+    logger.info("Monitoring server outputs (press Ctrl+C to stop)")
+    try:
+        while True:
+            # Check Flask process output
+            if flask_process.poll() is not None:
+                logger.error("Flask process terminated with code %d", flask_process.returncode)
+                break
+                
+            # Check API process output
+            if api_process.poll() is not None:
+                logger.error("API process terminated with code %d", api_process.returncode)
+                break
+                
+            # Read and display process outputs
+            while True:
+                flask_output = flask_process.stdout.readline()
+                if not flask_output:
+                    break
+                print(f"[Flask] {flask_output.strip()}")
+                
+            while True:
+                api_output = api_process.stdout.readline()
+                if not api_output:
+                    break
+                print(f"[API] {api_output.strip()}")
+                
+            time.sleep(0.1)
+            
+    except KeyboardInterrupt:
+        logger.info("Shutting down servers...")
+    finally:
+        # Terminate processes
+        for proc in [flask_process, api_process]:
+            if proc.poll() is None:  # Process is still running
+                logger.info("Terminating process %d", proc.pid)
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    logger.warning("Process %d did not terminate, killing it", proc.pid)
+                    proc.kill()
+    
+    logger.info("All servers stopped")
     
 if __name__ == "__main__":
     main()

@@ -1,0 +1,427 @@
+{% extends "layout.html" %}
+
+{% block title %}What-If Analysis - BCBS_Values{% endblock %}
+
+{% block head %}
+{{ super() }}
+<link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  .parameter-slider {
+    width: 100%;
+  }
+  .card {
+    margin-bottom: 20px;
+  }
+  .chart-container {
+    position: relative;
+    height: 300px;
+    margin-bottom: 20px;
+  }
+  .parameter-value {
+    font-weight: bold;
+    float: right;
+  }
+  .value-change {
+    font-size: 0.9rem;
+  }
+  .value-positive {
+    color: #28a745;
+  }
+  .value-negative {
+    color: #dc3545;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h1 class="mb-4">What-If Analysis</h1>
+  <p class="lead">Adjust valuation parameters to see how they affect property value estimates.</p>
+  
+  <div class="row">
+    <!-- Property Information -->
+    <div class="col-md-4">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="card-title mb-0">Property Information</h5>
+        </div>
+        <div class="card-body">
+          <h6>Address</h6>
+          <p>{{ property.address }}, {{ property.city }}, {{ property.state }} {{ property.zip_code }}</p>
+          
+          <h6>Property Details</h6>
+          <ul class="list-unstyled">
+            <li><strong>Bedrooms:</strong> {{ property.bedrooms }}</li>
+            <li><strong>Bathrooms:</strong> {{ property.bathrooms }}</li>
+            <li><strong>Square Feet:</strong> {{ property.square_feet }}</li>
+            <li><strong>Year Built:</strong> {{ property.year_built }}</li>
+            <li><strong>Property Type:</strong> {{ property.property_type }}</li>
+          </ul>
+          
+          <div class="mt-3">
+            <h5 class="card-subtitle mb-2">Original Valuation</h5>
+            <h3 id="original-value">${{ '{:,.0f}'.format(original_valuation) }}</h3>
+            
+            <h5 class="card-subtitle mb-2 mt-3">Adjusted Valuation</h5>
+            <h3 id="adjusted-value">${{ '{:,.0f}'.format(original_valuation) }}</h3>
+            <p id="value-change" class="value-change"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Parameter Controls -->
+    <div class="col-md-8">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="card-title mb-0">Adjust Parameters</h5>
+        </div>
+        <div class="card-body">
+          <!-- Charts -->
+          <div class="row">
+            <div class="col-md-6">
+              <div class="chart-container">
+                <canvas id="valuationChart"></canvas>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="chart-container">
+                <canvas id="factorsChart"></canvas>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Parameter Sliders -->
+          <form id="parameters-form">
+            <!-- Cap Rate -->
+            <div class="mb-3">
+              <label for="capRate" class="form-label">
+                Cap Rate <span id="capRate-value" class="parameter-value">5.0%</span>
+              </label>
+              <input type="range" class="form-range parameter-slider" id="capRate" 
+                     min="0.03" max="0.08" step="0.001" value="0.05">
+              <div class="d-flex justify-content-between">
+                <small>3.0%</small>
+                <small>8.0%</small>
+              </div>
+            </div>
+            
+            <!-- Location Weight -->
+            <div class="mb-3">
+              <label for="locationWeight" class="form-label">
+                Location Impact <span id="locationWeight-value" class="parameter-value">40%</span>
+              </label>
+              <input type="range" class="form-range parameter-slider" id="locationWeight" 
+                     min="0.2" max="0.6" step="0.01" value="0.4">
+              <div class="d-flex justify-content-between">
+                <small>20%</small>
+                <small>60%</small>
+              </div>
+            </div>
+            
+            <!-- Square Footage Weight -->
+            <div class="mb-3">
+              <label for="squareFootageWeight" class="form-label">
+                Square Footage Impact <span id="squareFootageWeight-value" class="parameter-value">30%</span>
+              </label>
+              <input type="range" class="form-range parameter-slider" id="squareFootageWeight" 
+                     min="0.1" max="0.5" step="0.01" value="0.3">
+              <div class="d-flex justify-content-between">
+                <small>10%</small>
+                <small>50%</small>
+              </div>
+            </div>
+            
+            <!-- Amenities Weight -->
+            <div class="mb-3">
+              <label for="amenitiesWeight" class="form-label">
+                Amenities Impact <span id="amenitiesWeight-value" class="parameter-value">20%</span>
+              </label>
+              <input type="range" class="form-range parameter-slider" id="amenitiesWeight" 
+                     min="0.1" max="0.4" step="0.01" value="0.2">
+              <div class="d-flex justify-content-between">
+                <small>10%</small>
+                <small>40%</small>
+              </div>
+            </div>
+            
+            <!-- Market Trend Adjustment -->
+            <div class="mb-3">
+              <label for="marketTrendAdjustment" class="form-label">
+                Market Trend Adjustment <span id="marketTrendAdjustment-value" class="parameter-value">0%</span>
+              </label>
+              <input type="range" class="form-range parameter-slider" id="marketTrendAdjustment" 
+                     min="-0.1" max="0.1" step="0.01" value="0">
+              <div class="d-flex justify-content-between">
+                <small>-10%</small>
+                <small>+10%</small>
+              </div>
+            </div>
+            
+            <!-- Renovation Impact -->
+            <div class="mb-3">
+              <label for="renovationImpact" class="form-label">
+                Renovation Impact <span id="renovationImpact-value" class="parameter-value">0%</span>
+              </label>
+              <input type="range" class="form-range parameter-slider" id="renovationImpact" 
+                     min="0" max="0.2" step="0.01" value="0">
+              <div class="d-flex justify-content-between">
+                <small>0%</small>
+                <small>20%</small>
+              </div>
+            </div>
+          </form>
+          
+          <div class="mt-4">
+            <p class="text-muted"><small>
+              <strong>Note:</strong> This is a simplified model for demonstration purposes. 
+              Actual property valuations depend on many more factors and market conditions.
+            </small></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Store original valuation and property data
+  const originalValuation = {{ original_valuation }};
+  const propertyData = {
+    square_feet: {{ property.square_feet or 0 }},
+    bedrooms: {{ property.bedrooms or 0 }},
+    bathrooms: {{ property.bathrooms or 0 }},
+    year_built: {{ property.year_built or 0 }},
+    location_score: {{ property.get('location_score', 0.5) }},
+    amenities_score: {{ property.get('amenities_score', 0.5) }}
+  };
+  
+  // Charts
+  let valuationChart;
+  let factorsChart;
+  
+  // Initialize the page
+  document.addEventListener('DOMContentLoaded', function() {
+    // Initialize charts
+    initializeCharts();
+    
+    // Set up event listeners for parameter sliders
+    document.querySelectorAll('.parameter-slider').forEach(slider => {
+      slider.addEventListener('input', updateParameterValue);
+      slider.addEventListener('change', recalculateValuation);
+    });
+    
+    // Initial calculation
+    recalculateValuation();
+  });
+  
+  // Update the displayed parameter value when slider changes
+  function updateParameterValue(e) {
+    const slider = e.target;
+    const valueDisplay = document.getElementById(`${slider.id}-value`);
+    
+    // Format the value based on the parameter type
+    let displayValue;
+    if (slider.id === 'capRate') {
+      displayValue = `${(parseFloat(slider.value) * 100).toFixed(1)}%`;
+    } else if (slider.id === 'marketTrendAdjustment') {
+      const value = parseFloat(slider.value) * 100;
+      displayValue = `${value > 0 ? '+' : ''}${value.toFixed(0)}%`;
+    } else {
+      displayValue = `${(parseFloat(slider.value) * 100).toFixed(0)}%`;
+    }
+    
+    valueDisplay.textContent = displayValue;
+  }
+  
+  // Recalculate the property valuation
+  function recalculateValuation() {
+    // Get all parameter values
+    const parameters = {
+      capRate: parseFloat(document.getElementById('capRate').value),
+      locationWeight: parseFloat(document.getElementById('locationWeight').value),
+      squareFootageWeight: parseFloat(document.getElementById('squareFootageWeight').value),
+      amenitiesWeight: parseFloat(document.getElementById('amenitiesWeight').value),
+      marketTrendAdjustment: parseFloat(document.getElementById('marketTrendAdjustment').value),
+      renovationImpact: parseFloat(document.getElementById('renovationImpact').value)
+    };
+    
+    // Call the API to get the valuation calculation
+    fetch('/api/what-if-analysis', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        property_id: {{ property.id }},
+        parameters: parameters
+      }),
+    })
+    .then(response => {
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      return response.json();
+    })
+    .then(data => {
+      // Update displayed values with API response
+      const newValuation = data.adjusted_valuation;
+      const percentChange = data.percent_change;
+      
+      // Update the displayed value
+      document.getElementById('adjusted-value').textContent = '$' + newValuation.toLocaleString('en-US', {maximumFractionDigits: 0});
+      
+      // Update percentage change display
+      const changeElement = document.getElementById('value-change');
+      changeElement.textContent = `${percentChange >= 0 ? '+' : ''}${percentChange.toFixed(2)}% from original`;
+      changeElement.className = `value-change ${percentChange >= 0 ? 'value-positive' : 'value-negative'}`;
+      
+      // Update charts with API data
+      updateCharts(newValuation, parameters, data.factors);
+    })
+    .catch(error => {
+      console.error('Error calculating valuation:', error);
+      
+      // Fallback to client-side calculation if API fails
+      const baseValue = originalValuation;
+      
+      // Apply cap rate adjustment (lower cap rate = higher value)
+      const capRateAdjustment = (0.05 / parameters.capRate) - 1;
+      
+      // Apply other adjustments
+      const marketAdjustment = parameters.marketTrendAdjustment * baseValue;
+      const renovationAdjustment = parameters.renovationImpact * baseValue;
+      
+      // Calculate new valuation with all adjustments
+      let newValuation = baseValue * (1 + capRateAdjustment) + marketAdjustment + renovationAdjustment;
+      
+      // Ensure the value doesn't go below zero
+      newValuation = Math.max(newValuation, 0);
+      
+      // Update the displayed value
+      document.getElementById('adjusted-value').textContent = '$' + newValuation.toLocaleString('en-US', {maximumFractionDigits: 0});
+      
+      // Calculate and display percentage change
+      const percentChange = ((newValuation - originalValuation) / originalValuation) * 100;
+      const changeElement = document.getElementById('value-change');
+      changeElement.textContent = `${percentChange >= 0 ? '+' : ''}${percentChange.toFixed(2)}% from original`;
+      changeElement.className = `value-change ${percentChange >= 0 ? 'value-positive' : 'value-negative'}`;
+      
+      // Update charts
+      updateCharts(newValuation, parameters);
+    });
+  }
+  
+  // Initialize the charts
+  function initializeCharts() {
+    // Valuation comparison chart
+    const valuationCtx = document.getElementById('valuationChart').getContext('2d');
+    valuationChart = new Chart(valuationCtx, {
+      type: 'bar',
+      data: {
+        labels: ['Original', 'Adjusted'],
+        datasets: [{
+          label: 'Property Valuation',
+          data: [originalValuation, originalValuation],
+          backgroundColor: ['rgba(54, 162, 235, 0.7)', 'rgba(75, 192, 192, 0.7)'],
+          borderColor: ['rgba(54, 162, 235, 1)', 'rgba(75, 192, 192, 1)'],
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            beginAtZero: false,
+            ticks: {
+              callback: value => '$' + value.toLocaleString('en-US')
+            }
+          }
+        },
+        plugins: {
+          tooltip: {
+            callbacks: {
+              label: context => '$' + context.raw.toLocaleString('en-US')
+            }
+          }
+        }
+      }
+    });
+    
+    // Factors contribution chart
+    const factorsCtx = document.getElementById('factorsChart').getContext('2d');
+    factorsChart = new Chart(factorsCtx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Location', 'Square Footage', 'Amenities', 'Market Trends', 'Renovation'],
+        datasets: [{
+          data: [40, 30, 20, 5, 5],
+          backgroundColor: [
+            'rgba(54, 162, 235, 0.7)',
+            'rgba(255, 99, 132, 0.7)',
+            'rgba(255, 206, 86, 0.7)',
+            'rgba(75, 192, 192, 0.7)',
+            'rgba(153, 102, 255, 0.7)'
+          ]
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'bottom'
+          }
+        }
+      }
+    });
+  }
+  
+  // Update charts with new data
+  function updateCharts(newValuation, parameters, factorData) {
+    // Update valuation chart
+    valuationChart.data.datasets[0].data[1] = newValuation;
+    
+    // Change color based on whether the new value is higher or lower
+    const color = newValuation >= originalValuation 
+      ? 'rgba(75, 192, 192, 0.7)' // Green for increase
+      : 'rgba(255, 99, 132, 0.7)'; // Red for decrease
+    
+    valuationChart.data.datasets[0].backgroundColor[1] = color;
+    valuationChart.data.datasets[0].borderColor[1] = color.replace('0.7', '1');
+    
+    // Update factors chart data
+    if (factorData) {
+      // Use the factor data from the API if available
+      factorsChart.data.datasets[0].data = [
+        factorData.location,
+        factorData.size,
+        factorData.amenities,
+        factorData.market,
+        factorData.renovation
+      ];
+    } else {
+      // Fall back to parameter-based calculation if API data not available
+      const locationContribution = parameters.locationWeight * 100;
+      const sqftContribution = parameters.squareFootageWeight * 100;
+      const amenitiesContribution = parameters.amenitiesWeight * 100;
+      const marketContribution = Math.abs(parameters.marketTrendAdjustment * 100);
+      const renovationContribution = parameters.renovationImpact * 100;
+      
+      factorsChart.data.datasets[0].data = [
+        locationContribution,
+        sqftContribution,
+        amenitiesContribution,
+        marketContribution,
+        renovationContribution
+      ];
+    }
+    
+    // Update both charts
+    valuationChart.update();
+    factorsChart.update();
+  }
+</script>
+{% endblock %}

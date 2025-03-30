@@ -1,140 +1,147 @@
-// Simple HTTP server using Node.js
+/**
+ * Simple HTTP server to redirect requests to the appropriate backend services
+ * - Flask web application on port 5000
+ * - FastAPI REST API on port 8000
+ */
 const http = require('http');
+const { spawn } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
-// Create sample data
-const sampleProperties = [
-  {
-    "property_id": "BENT-12345",
-    "address": "123 Main St, Richland, WA 99352",
-    "estimated_value": 345000,
-    "confidence_score": 0.85,
-    "last_updated": new Date().toISOString().split('T')[0],
-    "bedrooms": 3,
-    "bathrooms": 2,
-    "square_feet": 1850,
-    "year_built": 2005,
-    "property_type": "Single Family"
-  },
-  {
-    "property_id": "BENT-67890",
-    "address": "456 Oak Ave, Kennewick, WA 99336",
-    "estimated_value": 289000,
-    "confidence_score": 0.78,
-    "last_updated": new Date().toISOString().split('T')[0],
-    "bedrooms": 2,
-    "bathrooms": 1.5,
-    "square_feet": 1550,
-    "year_built": 1995,
-    "property_type": "Single Family"
-  },
-  {
-    "property_id": "BENT-23456",
-    "address": "789 Pine Ln, Pasco, WA 99301",
-    "estimated_value": 425000,
-    "confidence_score": 0.92,
-    "last_updated": new Date().toISOString().split('T')[0],
-    "bedrooms": 4,
-    "bathrooms": 3,
-    "square_feet": 2200,
-    "year_built": 2018,
-    "property_type": "Single Family"
-  }
-];
+// Configuration
+const PORT = process.env.PORT || 3000;
+const FLASK_PORT = 5001;
+const FASTAPI_PORT = 8000;
 
-const validationResults = {
-  "validation_passed": true,
-  "total_records": 150,
-  "valid_records": 148,
-  "invalid_records": 2,
-  "validation_timestamp": new Date().toISOString().replace('T', ' ').substring(0, 19),
-  "validation_results": {
-    "missing_values": {
-      "count": 1,
-      "details": ["Property BENT-45678 missing square_feet value"]
-    },
-    "invalid_values": {
-      "count": 1,
-      "details": ["Property BENT-98765 has invalid year_built (value: 3005)"]
-    }
-  }
-};
+// Start the Flask web application
+console.log('Starting Flask web application...');
+const flaskProcess = spawn('python', ['main.py', '--web'], {
+  detached: true,
+  stdio: 'pipe'
+});
 
-// Create the HTTP server
+// Pipe Flask output to console and a log file
+flaskProcess.stdout.on('data', (data) => {
+  console.log(`[Flask] ${data.toString().trim()}`);
+});
+
+flaskProcess.stderr.on('data', (data) => {
+  console.error(`[Flask Error] ${data.toString().trim()}`);
+});
+
+flaskProcess.on('close', (code) => {
+  console.log(`Flask process exited with code ${code}`);
+});
+
+// Start the FastAPI server
+console.log('Starting FastAPI server...');
+const apiProcess = spawn('python', ['run_api.py'], {
+  detached: true,
+  stdio: 'pipe'
+});
+
+// Pipe API output to console and a log file
+apiProcess.stdout.on('data', (data) => {
+  console.log(`[FastAPI] ${data.toString().trim()}`);
+});
+
+apiProcess.stderr.on('data', (data) => {
+  console.error(`[FastAPI Error] ${data.toString().trim()}`);
+});
+
+apiProcess.on('close', (code) => {
+  console.log(`FastAPI process exited with code ${code}`);
+});
+
+// Create HTTP server that redirects to the appropriate service
 const server = http.createServer((req, res) => {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+  res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type');
   
-  // Handle OPTIONS requests for CORS preflight
+  // Respond to OPTIONS method for CORS preflight
   if (req.method === 'OPTIONS') {
-    res.statusCode = 200;
+    res.writeHead(200);
     res.end();
     return;
   }
   
-  // Parse the URL
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  const path = url.pathname;
-  
-  console.log(`Request received: ${req.method} ${path}`);
-  
-  // Set content type to JSON by default
-  res.setHeader('Content-Type', 'application/json');
-  
-  // Routes
-  if (path === '/' || path === '/index') {
-    // API root
-    const response = {
-      status: "running",
-      message: "BCBS Values API is running!",
-      version: "1.0",
-      endpoints: [
-        "/api/properties",
-        "/api/validation"
-      ]
+  // Check if the request is for the API (starts with /api)
+  if (req.url.startsWith('/api')) {
+    // Proxy request to FastAPI
+    const options = {
+      hostname: 'localhost',
+      port: FASTAPI_PORT,
+      path: req.url,
+      method: req.method,
+      headers: req.headers
     };
-    res.statusCode = 200;
-    res.end(JSON.stringify(response));
-  } 
-  else if (path === '/api/properties' || path === '/api/valuations') {
-    // Return all properties
-    res.statusCode = 200;
-    res.end(JSON.stringify(sampleProperties));
-  } 
-  else if (path.startsWith('/api/property/') || path.startsWith('/api/valuation/')) {
-    // Get a specific property by ID
-    const property_id = path.split('/').pop();
     
-    // Find the property
-    const property = sampleProperties.find(p => p.property_id === property_id);
+    console.log(`Proxying API request to FastAPI: ${req.url}`);
     
-    if (property) {
-      res.statusCode = 200;
-      res.end(JSON.stringify(property));
+    const apiReq = http.request(options, (apiRes) => {
+      res.writeHead(apiRes.statusCode, apiRes.headers);
+      apiRes.pipe(res);
+    });
+    
+    apiReq.on('error', (e) => {
+      console.error(`Error proxying to API: ${e.message}`);
+      res.writeHead(503, { 'Content-Type': 'text/plain' });
+      res.end('API server unavailable. Please try again later.');
+    });
+    
+    if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
+      req.pipe(apiReq);
     } else {
-      res.statusCode = 404;
-      res.end(JSON.stringify({ error: "Property not found" }));
+      apiReq.end();
     }
-  }
-  else if (path === '/api/validation' || path === '/api/etl-status') {
-    // Return validation results
-    res.statusCode = 200;
-    res.end(JSON.stringify(validationResults));
-  }
-  else {
-    // Not found
-    res.statusCode = 404;
-    res.end(JSON.stringify({ error: "Resource not found" }));
+  } else {
+    // Proxy request to Flask web application
+    const options = {
+      hostname: 'localhost',
+      port: FLASK_PORT,
+      path: req.url,
+      method: req.method,
+      headers: req.headers
+    };
+    
+    console.log(`Proxying web request to Flask: ${req.url}`);
+    
+    const flaskReq = http.request(options, (flaskRes) => {
+      res.writeHead(flaskRes.statusCode, flaskRes.headers);
+      flaskRes.pipe(res);
+    });
+    
+    flaskReq.on('error', (e) => {
+      console.error(`Error proxying to Flask: ${e.message}`);
+      res.writeHead(503, { 'Content-Type': 'text/plain' });
+      res.end('Web application unavailable. Please try again later.');
+    });
+    
+    if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
+      req.pipe(flaskReq);
+    } else {
+      flaskReq.end();
+    }
   }
 });
 
-// Start the server
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running at http://0.0.0.0:${PORT}/`);
-  console.log(`API endpoints:`);
-  console.log(`  - GET /api/properties`);
-  console.log(`  - GET /api/property/:id`);
-  console.log(`  - GET /api/validation`);
+// Start proxy server
+server.listen(PORT, () => {
+  console.log(`Gateway server running at http://localhost:${PORT}/`);
+  console.log(`Proxying to Flask application at http://localhost:${FLASK_PORT}/`);
+  console.log(`Proxying to FastAPI server at http://localhost:${FASTAPI_PORT}/api`);
+  console.log('\nPress Ctrl+C to stop the server.');
+});
+
+// Handle process termination
+process.on('SIGINT', () => {
+  console.log('Shutting down services...');
+  
+  // Kill child processes
+  process.kill(-flaskProcess.pid);
+  process.kill(-apiProcess.pid);
+  
+  process.exit(0);
 });

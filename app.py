@@ -35,8 +35,8 @@ db = SQLAlchemy(model_class=Base)
 db.init_app(app)
 
 # Initialize models using our db instance
-from models import Property, ValidationResult, PropertyValuation, init_models
-init_models(db)
+from models import init_models
+Property, ValidationResult, PropertyValuation = init_models(db)
 
 # Create all database tables if they don't exist yet
 with app.app_context():
@@ -177,6 +177,20 @@ def validation():
     # Fall back to sample data if no validation results in DB
     return render_template('validation.html', validation_results=ETL_STATUS)
 
+@app.route('/what-if-analysis')
+def what_if_analysis():
+    """Render the What-If Analysis page."""
+    # Get a random property to use for the analysis
+    property_obj = Property.query.filter(Property.estimated_value != None).first()
+    
+    if not property_obj:
+        return render_template('404.html', message="No properties with valuation data found. Please add property data first."), 404
+    
+    # Pass the property and its valuation to the template
+    return render_template('what_if_analysis.html', 
+                          property=property_obj, 
+                          original_valuation=property_obj.estimated_value or 0)
+
 @app.route('/search')
 def search():
     """Handle property search."""
@@ -281,6 +295,77 @@ def api_validation():
     # Fall back to sample data if no validation results in DB
     return jsonify(ETL_STATUS)
 
+@app.route('/api/what-if-analysis', methods=['POST'])
+def api_what_if_analysis():
+    """API endpoint for what-if analysis calculations."""
+    # Get JSON data from request
+    data = request.get_json()
+    
+    if not data or 'property_id' not in data or 'parameters' not in data:
+        return jsonify({"error": "Missing required data"}), 400
+    
+    # Get property from database
+    property_obj = Property.query.get(data['property_id'])
+    if not property_obj:
+        return jsonify({"error": "Property not found"}), 404
+    
+    # Get parameters
+    params = data['parameters']
+    
+    # Get base valuation from the property
+    base_value = property_obj.estimated_value or 0
+    
+    # Calculate new valuation based on parameters (simplified model)
+    cap_rate = params.get('capRate', 0.05)
+    market_adjustment = params.get('marketTrendAdjustment', 0)
+    renovation_impact = params.get('renovationImpact', 0)
+    
+    # Apply cap rate adjustment (lower cap rate = higher value)
+    cap_rate_adjustment = (0.05 / cap_rate) - 1
+    
+    # Apply other adjustments
+    market_adjustment_value = market_adjustment * base_value
+    renovation_adjustment_value = renovation_impact * base_value
+    
+    # Calculate new valuation with all adjustments
+    new_valuation = base_value * (1 + cap_rate_adjustment) + market_adjustment_value + renovation_adjustment_value
+    
+    # Ensure the value doesn't go below zero
+    new_valuation = max(new_valuation, 0)
+    
+    # Calculate factor contributions
+    location_weight = params.get('locationWeight', 0.4)
+    square_footage_weight = params.get('squareFootageWeight', 0.3)
+    amenities_weight = params.get('amenitiesWeight', 0.2)
+    market_weight = abs(market_adjustment)
+    renovation_weight = renovation_impact
+    
+    # Normalize weights to ensure they sum to 1
+    total_weight = location_weight + square_footage_weight + amenities_weight + market_weight + renovation_weight
+    if total_weight > 0:
+        location_factor = (location_weight / total_weight) * new_valuation
+        size_factor = (square_footage_weight / total_weight) * new_valuation
+        amenities_factor = (amenities_weight / total_weight) * new_valuation
+        market_factor = (market_weight / total_weight) * new_valuation
+        renovation_factor = (renovation_weight / total_weight) * new_valuation
+    else:
+        # Default equal distribution if all weights are zero
+        location_factor = size_factor = amenities_factor = market_factor = renovation_factor = new_valuation / 5
+    
+    # Return results
+    return jsonify({
+        "original_valuation": base_value,
+        "adjusted_valuation": new_valuation,
+        "percent_change": ((new_valuation - base_value) / base_value * 100) if base_value > 0 else 0,
+        "factors": {
+            "location": location_factor,
+            "size": size_factor,
+            "amenities": amenities_factor,
+            "market": market_factor,
+            "renovation": renovation_factor
+        }
+    })
+
 @app.errorhandler(404)
 def page_not_found(e):
     """Handle 404 errors."""
@@ -292,4 +377,4 @@ def server_error(e):
     return render_template('500.html'), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5001, debug=True)

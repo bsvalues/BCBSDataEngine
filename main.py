@@ -208,4 +208,4 @@ if __name__ == "__main__":
     # Start web application if requested or if no specific action was specified
     if args.web or not (args.sources):
         logger.info("Starting web application")
-        app.run(host="0.0.0.0", port=5000, debug=True)
+        app.run(host="0.0.0.0", port=5001, debug=True)

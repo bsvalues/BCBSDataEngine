@@ -1,4 +1,1 @@
-#!/bin/bash
-# Execute the simple API server directly with Python
-echo "Starting BCBS Values Simple API server on port 8000..."
-python simple_api.py
+#!/bin/bash\npython -m uvicorn simple_api:app --host 0.0.0.0 --port 8000 --reload
