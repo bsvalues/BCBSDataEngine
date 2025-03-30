@@ -1,5 +1,5 @@
 run = "node simple_http_server.js"
-modules = ["nodejs-20", "python-3.11"]
+modules = ["nodejs-20", "python-3.11", "python3"]
 
 [languages]
 [languages.javascript]

@@ -201,6 +201,7 @@ class PropertyValuationRequest(BaseModel):
     latitude: Optional[float] = Field(None, description="Property latitude")
     longitude: Optional[float] = Field(None, description="Property longitude")
     use_gis: Optional[bool] = Field(True, description="Whether to use GIS features for valuation")
+    model_type: Optional[str] = Field("basic", description="Valuation model type: basic, advanced_linear, advanced_lightgbm, advanced_ensemble, enhanced_gis")
     
     class Config:
         schema_extra = {
@@ -217,7 +218,8 @@ class PropertyValuationRequest(BaseModel):
                 "year_built": 1995,
                 "latitude": 46.2804,
                 "longitude": -119.2752,
-                "use_gis": True
+                "use_gis": True,
+                "model_type": "enhanced_gis"
             }
         }
 
@@ -775,16 +777,62 @@ async def create_property_valuation(
         target_property = pd.DataFrame([property_data])
         
         # Generate valuation using the valuation engine
-        logger.info("Generating property valuation")
+        logger.info(f"Generating property valuation using model: {request.model_type}")
         try:
-            # Call the valuation function from src.valuation
-            valuation_result = estimate_property_value(
-                property_data=TRAINING_DATA,
-                target_property=target_property,
-                ref_points=REF_POINTS if request.use_gis else None,
-                neighborhood_ratings=NEIGHBORHOOD_RATINGS if request.use_gis else None,
-                use_gis_features=request.use_gis
-            )
+            # For enhanced GIS and advanced models, use advanced_property_valuation
+            if request.model_type in ['advanced_linear', 'advanced_lightgbm', 'advanced_ensemble', 'enhanced_gis']:
+                # Import the advanced valuation function if not already imported
+                if 'advanced_property_valuation' not in globals():
+                    try:
+                        from src.valuation import advanced_property_valuation
+                        logger.info("Successfully imported advanced_property_valuation function")
+                    except ImportError as e:
+                        logger.error(f"Failed to import advanced_property_valuation: {str(e)}")
+                        raise HTTPException(status_code=503, detail="Advanced valuation model not available")
+                
+                # Set model type based on request
+                model_type = 'linear'  # default
+                if request.model_type == 'advanced_lightgbm':
+                    model_type = 'lightgbm'
+                elif request.model_type == 'advanced_ensemble':
+                    model_type = 'ensemble'
+                
+                # For enhanced_gis, use ensemble with enhanced GIS features
+                use_enhanced_gis = (request.model_type == 'enhanced_gis')
+                
+                # Create enhanced GIS datasets for advanced valuation
+                enhanced_gis_data = None
+                if use_enhanced_gis:
+                    # Create simple GIS datasets for demonstration
+                    # In production, this would load from a real GIS database
+                    enhanced_gis_data = {
+                        'flood_zones': pd.DataFrame(),  # These would normally contain real data
+                        'schools': pd.DataFrame(),
+                        'amenities': pd.DataFrame()
+                    }
+                    logger.info("Using enhanced GIS features")
+                
+                # Call the advanced valuation function
+                valuation_result = advanced_property_valuation(
+                    property_data=TRAINING_DATA,
+                    target_property=target_property,
+                    ref_points=REF_POINTS if request.use_gis else None,
+                    neighborhood_ratings=NEIGHBORHOOD_RATINGS if request.use_gis else None,
+                    use_gis_features=request.use_gis,
+                    gis_data=enhanced_gis_data if use_enhanced_gis else None,
+                    model_type=model_type,
+                    feature_selection='auto',
+                    normalize_features=True
+                )
+            else:
+                # Use the basic valuation function for 'basic' model type
+                valuation_result = estimate_property_value(
+                    property_data=TRAINING_DATA,
+                    target_property=target_property,
+                    ref_points=REF_POINTS if request.use_gis else None,
+                    neighborhood_ratings=NEIGHBORHOOD_RATINGS if request.use_gis else None,
+                    use_gis_features=request.use_gis
+                )
             
             # Check if valuation was successful
             if not valuation_result or 'predicted_value' not in valuation_result:

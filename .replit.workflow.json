@@ -1,14 +1,30 @@
 {
-  "StartApplication": {
-    "command": "node simple_http_server.js"
-  },
-  "ETLPipeline": {
-    "command": "echo 'Running validation...' && echo 'Validation complete with 148/150 records valid'"
-  },
-  "ValuationAPI": {
-    "command": "chmod +x .replit.workflow/ValuationAPI/run && .replit.workflow/ValuationAPI/run"
-  },
-  "SimpleValuationAPI": {
-    "command": "chmod +x .replit.workflow/SimpleValuationAPI/run && .replit.workflow/SimpleValuationAPI/run"
+  "deployment": {
+    "workflows": [
+      {
+        "name": "ValuationAPI",
+        "title": "Valuation API (Port 8000)",
+        "description": "Main valuation API with advanced models",
+        "environment": {
+          "enabledBy": "environment"
+        }
+      },
+      {
+        "name": "SimpleValuationAPI",
+        "title": "Simple Valuation API (Port 5001)",
+        "description": "Simple valuation API with basic features",
+        "environment": {
+          "enabledBy": "environment"
+        }
+      },
+      {
+        "name": "TestValuationAPI",
+        "title": "Test Valuation API",
+        "description": "Test script for the valuation API",
+        "environment": {
+          "enabledBy": "environment"
+        }
+      }
+    ]
   }
 }

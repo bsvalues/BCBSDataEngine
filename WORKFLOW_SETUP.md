@@ -19,27 +19,45 @@ We have two API implementations available:
 
 ## Starting the Simple Valuation API
 
-You can start the simple API either using the workflow or directly with the script:
+You can start the simple API with the provided scripts:
 
-### Using Replit Workflow (Recommended)
-
-1. Click on the **Workflow** option in the Replit sidebar
-2. Select the **SimpleValuationAPI** workflow
-3. Click **Run**
-
-This will start the Gunicorn server on port 5002.
-
-### Using the Script Directly
-
-Alternatively, you can run the API directly with the provided script:
+### Using the Run Script (Easiest)
 
 ```bash
-# Make the script executable
+# Run the user-friendly script
+./run_simple_api.sh
+```
+
+This script provides a nice overview of the API endpoints and starts the server.
+
+### Using the Server Script Directly
+
+For more control over the server configuration, you can use:
+
+```bash
+# Make the script executable (if needed)
 chmod +x start_simple_api.sh
 
 # Start the API
 ./start_simple_api.sh
 ```
+
+This starts the Gunicorn server on port 5002 with 4 workers by default.
+
+### Customizing Server Settings
+
+You can customize the API server by setting environment variables:
+
+```bash
+# Example: Using 2 workers and debug log level
+PORT=5002 WORKERS=2 LOG_LEVEL=debug ./start_simple_api.sh
+```
+
+Available options:
+- `PORT`: The port to listen on (default: 5002)
+- `WORKERS`: Number of Gunicorn worker processes (default: 4)
+- `TIMEOUT`: Request timeout in seconds (default: 120)
+- `LOG_LEVEL`: Logging level (default: info)
 
 ## Testing the Simple Valuation API
 

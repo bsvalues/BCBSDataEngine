@@ -110,11 +110,56 @@ def main():
             alpha=1.0
         )
         
+        logger.info("\n===== RUNNING LIGHTGBM VALUATION MODEL =====")
+        # Advanced with LightGBM gradient boosting
+        result5 = advanced_property_valuation(
+            training_data, 
+            target_property,
+            feature_selection='auto',
+            poly_degree=1,  # Polynomial features not needed for tree-based models
+            regularization=None,
+            model_type='lightgbm',
+            lightgbm_params={
+                'objective': 'regression',
+                'metric': 'rmse',
+                'boosting_type': 'gbdt',
+                'num_leaves': 31,
+                'learning_rate': 0.05,
+                'feature_fraction': 0.9,
+                'bagging_fraction': 0.8,
+                'bagging_freq': 5,
+                'verbose': -1,
+                'n_estimators': 100
+            }
+        )
+        
+        logger.info("\n===== RUNNING ENSEMBLE MODEL (LINEAR + LIGHTGBM) =====")
+        # Advanced with Ensemble (Linear + LightGBM)
+        result6 = advanced_property_valuation(
+            training_data, 
+            target_property,
+            feature_selection='auto',
+            poly_degree=1,
+            regularization='ridge',  # Use ridge for linear part
+            alpha=0.5,
+            model_type='ensemble',  # Ensemble of linear + LightGBM
+            lightgbm_params={
+                'objective': 'regression',
+                'metric': 'rmse',
+                'num_leaves': 31,
+                'learning_rate': 0.05,
+                'n_estimators': 100,
+                'verbose': -1
+            }
+        )
+        
         # Display results for each model
         display_model_results(result1, original_price, price_source, "Basic Model")
         display_model_results(result2, original_price, price_source, "Feature Selection Model")
         display_model_results(result3, original_price, price_source, "Polynomial Features Model")
         display_model_results(result4, original_price, price_source, "Regularized Model")
+        display_model_results(result5, original_price, price_source, "LightGBM Model")
+        display_model_results(result6, original_price, price_source, "Ensemble Model")
         
         # Comparison of all models
         logger.info("\n===== MODEL COMPARISON =====")
@@ -122,7 +167,9 @@ def main():
             ("Basic", result1),
             ("Feature Selection", result2),
             ("Polynomial", result3),
-            ("Regularized", result4)
+            ("Regularized", result4),
+            ("LightGBM", result5),
+            ("Ensemble", result6)
         ], original_price)
         
         # Close database connection

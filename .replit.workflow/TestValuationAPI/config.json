@@ -1,0 +1,6 @@
+{
+  "language": "bash",
+  "package_manager": "pip",
+  "cmd": "./test_enhanced_gis_api.sh",
+  "waitSeconds": 1
+}

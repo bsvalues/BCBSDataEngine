@@ -7,21 +7,51 @@ This module contains multiple valuation functions with different complexity leve
 - train_basic_valuation_model: Basic linear regression for property valuation
 - train_multiple_regression_model: Enhanced multiple regression with feature selection and statistics
 - estimate_property_value: Standard valuation with feature engineering
-- advanced_property_valuation: Advanced modeling with multiple algorithms
+- advanced_property_valuation: Advanced modeling with multiple algorithms including LightGBM
+
+The module now features enhanced GIS integration with sophisticated spatial analysis capabilities:
+- Improved proximity scoring with exponential decay functions
+- School district and quality integration
+- Flood zone risk assessment
+- Walkability and amenity scoring
+- Traffic and noise impact assessment
+- View quality estimation
+- Housing density analysis
+- Future development potential
 """
 import logging
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression, Ridge, Lasso, ElasticNet
-from sklearn.preprocessing import StandardScaler, RobustScaler, PolynomialFeatures
-from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
-from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
-from sklearn.feature_selection import SelectKBest, f_regression, RFE
+from sklearn.preprocessing import StandardScaler, RobustScaler, PolynomialFeatures, MinMaxScaler
+from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error, explained_variance_score
+from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV, KFold
+from sklearn.feature_selection import SelectKBest, f_regression, RFE, mutual_info_regression, RFECV
 from sklearn.pipeline import Pipeline
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 import statsmodels.api as sm
 from scipy import stats
+# Import LightGBM for gradient boosting
+import lightgbm as lgb
 import warnings
 import math
+import time
+from functools import partial
+
+# Import enhanced GIS integration
+try:
+    from src.gis_integration import (
+        enhance_property_with_gis, 
+        process_properties_with_gis,
+        calculate_proximity_score,
+        calculate_combined_gis_multiplier
+    )
+    has_enhanced_gis = True
+except ImportError:
+    # Fall back to built-in GIS functions if enhanced module is not available
+    has_enhanced_gis = False
+    logging.warning("Enhanced GIS module not available, using basic GIS functions")
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -580,6 +610,17 @@ def calculate_gis_features(properties_df, gis_data=None, ref_points=None, neighb
     distance to key reference points, neighborhood quality scores, and proximity
     to amenities.
     
+    The function now uses an enhanced GIS integration module when available for more
+    sophisticated spatial analysis, including:
+    - Improved proximity scoring with exponential decay functions
+    - School district and quality integration
+    - Flood zone risk assessment
+    - Walkability and amenity scoring
+    - Traffic and noise impact assessment
+    - View quality estimation
+    - Housing density analysis
+    - Future development potential
+    
     Args:
         properties_df (pd.DataFrame): DataFrame containing property data with latitude/longitude
         gis_data (pd.DataFrame, optional): DataFrame containing GIS-specific data like
@@ -600,6 +641,115 @@ def calculate_gis_features(properties_df, gis_data=None, ref_points=None, neighb
         ...                             neighborhood_ratings=neighborhood_ratings)
     """
     try:
+        # Check if enhanced GIS module is available
+        if has_enhanced_gis:
+            logger.info("Using enhanced GIS integration module")
+            
+            # Create GIS datasets dictionary for enhanced processing
+            gis_datasets = {
+                'ref_points': ref_points,
+                'neighborhood_ratings': neighborhood_ratings
+            }
+            
+            # Add additional GIS data if provided
+            if gis_data is not None:
+                if isinstance(gis_data, dict):
+                    # If gis_data is a dictionary, merge it with gis_datasets
+                    gis_datasets.update(gis_data)
+                else:
+                    # If it's a DataFrame, add it as 'generic_gis_data'
+                    gis_datasets['generic_gis_data'] = gis_data
+            
+            # Use enhanced processing function
+            enhanced_df = process_properties_with_gis(properties_df, gis_datasets)
+            
+            # Check if enhanced_df has the gis_value_multiplier, if not calculate it
+            if 'gis_value_multiplier' not in enhanced_df.columns:
+                logger.info("Adding combined GIS value multiplier")
+                
+                try:
+                    # Collect all multiplier factors from various GIS features
+                    gis_factors = {}
+                    
+                    # Location quality (basic)
+                    if 'gis_location_quality' in enhanced_df.columns:
+                        # Convert 0-1 score to 0.9-1.1 multiplier
+                        gis_factors['location_quality'] = 0.9 + 0.2 * enhanced_df['gis_location_quality']
+                    
+                    # School quality
+                    if 'school_quality_score' in enhanced_df.columns:
+                        # Convert 0-10 score to 0.95-1.15 multiplier
+                        school_impact = 0.95 + 0.02 * enhanced_df['school_quality_score']
+                        gis_factors['school_quality'] = school_impact
+                    
+                    # Flood zone risk (negative impact)
+                    if 'flood_zone_risk' in enhanced_df.columns:
+                        # Higher risk = lower value (0-5 risk to 0.95-0.75 multiplier)
+                        flood_impact = 0.95 - 0.04 * enhanced_df['flood_zone_risk']
+                        gis_factors['flood_risk'] = flood_impact
+                    
+                    # Amenity score
+                    if 'amenity_score' in enhanced_df.columns:
+                        # 0-1 score to 0.95-1.1 multiplier
+                        amenity_impact = 0.95 + 0.15 * enhanced_df['amenity_score']
+                        gis_factors['amenities'] = amenity_impact
+                    
+                    # View quality
+                    if 'view_score' in enhanced_df.columns:
+                        # 0-10 score to 1.0-1.2 multiplier for good views
+                        view_impact = 1.0 + 0.02 * enhanced_df['view_score']
+                        gis_factors['view'] = view_impact
+                    
+                    # Traffic and noise (negative impact)
+                    if 'traffic_noise_level' in enhanced_df.columns:
+                        # 0-10 score to 1.0-0.9 multiplier (higher noise = lower value)
+                        traffic_impact = 1.0 - 0.01 * enhanced_df['traffic_noise_level']
+                        gis_factors['traffic'] = traffic_impact
+                    
+                    # Proximity to reference points 
+                    if 'proximity_score' in enhanced_df.columns:
+                        # 0-1 score to 0.95-1.15 multiplier
+                        proximity_impact = 0.95 + 0.2 * enhanced_df['proximity_score']
+                        gis_factors['proximity'] = proximity_impact
+                    
+                    # Future growth potential
+                    if 'growth_potential' in enhanced_df.columns:
+                        # 0-5 score to 1.0-1.15 multiplier
+                        growth_impact = 1.0 + 0.03 * enhanced_df['growth_potential']
+                        gis_factors['growth'] = growth_impact
+                    
+                    # Combine all factors
+                    if len(gis_factors) > 0:
+                        # Start with neutral multiplier
+                        enhanced_df['gis_value_multiplier'] = 1.0
+                        
+                        # Apply each factor
+                        for factor, impact in gis_factors.items():
+                            enhanced_df['gis_value_multiplier'] *= impact
+                        
+                        # Limit to reasonable range (0.7 to 1.5)
+                        enhanced_df['gis_value_multiplier'] = enhanced_df['gis_value_multiplier'].clip(0.7, 1.5)
+                        
+                        # Add a GIS summary for reporting
+                        enhanced_df['gis_summary'] = enhanced_df.apply(
+                            lambda row: {
+                                factor: float(impact.loc[row.name]) if hasattr(impact, 'loc') else float(impact)
+                                for factor, impact in gis_factors.items()
+                            },
+                            axis=1
+                        )
+                        
+                        logger.info(f"Created combined GIS value multiplier with {len(gis_factors)} factors")
+                except Exception as e:
+                    logger.warning(f"Error calculating GIS value multiplier: {str(e)}")
+                    
+            # Return the enhanced DataFrame
+            logger.info("Completed enhanced GIS feature calculation")
+            return enhanced_df
+            
+        # Fall back to original implementation if enhanced module is not available
+        logger.info("Using standard GIS feature calculation (enhanced module not available)")
+        
         # Make a copy to avoid modifying the original DataFrame
         df = properties_df.copy()
         
@@ -882,6 +1032,8 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
         # ******** GIS INTEGRATION ********
         # Step 2b: Add GIS/spatial features if enabled
         gis_features_available = False
+        has_enhanced_gis = False
+        available_gis_features = []  # List to track available GIS features
         if use_gis_features:
             logger.info("Checking for GIS features")
             
@@ -896,18 +1048,37 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
                 
                 # Check which GIS features were successfully calculated
                 gis_columns = [
+                    # Basic GIS features from original implementation
                     'centrality_km',          # Distance to center of dataset
                     'location_price_index',   # Price index based on grid location
                     'proximity_score',        # Proximity to reference points
                     'neighborhood_rating',    # Quality rating of the neighborhood
                     'gis_location_quality',   # Overall location quality score
-                    'gis_price_multiplier'    # Price adjustment multiplier based on location
+                    'gis_price_multiplier',   # Price adjustment multiplier based on location
+                    
+                    # Enhanced GIS features from new implementation
+                    'gis_value_multiplier',   # Combined GIS value multiplier with multiple factors
+                    'amenity_score',          # Score based on proximity to amenities
+                    'flood_zone_risk',        # Flood zone risk assessment
+                    'school_quality_score',   # School quality impact on value
+                    'view_score',             # View quality score
+                    'traffic_noise_level',    # Traffic and noise impact
+                    'housing_density',        # Housing density analysis
+                    'growth_potential'        # Future development potential
                 ]
                 
                 available_gis_features = [col for col in gis_columns if col in df.columns]
                 
                 if available_gis_features:
                     gis_features_available = True
+                    
+                    # Check if we have enhanced GIS features available (from new GIS integration)
+                    enhanced_gis_features = ['gis_value_multiplier', 'amenity_score', 'flood_zone_risk',
+                                           'school_quality_score', 'view_score', 'traffic_noise_level',
+                                           'housing_density', 'growth_potential']
+                    if any(feature in available_gis_features for feature in enhanced_gis_features):
+                        has_enhanced_gis = True
+                        logger.info("Enhanced GIS features detected")
                     
                     # Add available GIS features to the model features
                     for feature in available_gis_features:
@@ -1014,9 +1185,13 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
                     target_df = calculate_gis_features(target_df, gis_data, ref_points, neighborhood_ratings)
                     
                     # Extract the location quality multiplier if available
-                    if 'gis_price_multiplier' in target_df.columns:
+                    # First check for enhanced GIS multiplier, otherwise fall back to basic multiplier
+                    if has_enhanced_gis and 'gis_value_multiplier' in target_df.columns:
+                        gis_adjustment_factor = float(target_df['gis_value_multiplier'].iloc[0])
+                        logger.info(f"Enhanced GIS value multiplier: {gis_adjustment_factor:.4f}")
+                    elif 'gis_price_multiplier' in target_df.columns:
                         gis_adjustment_factor = float(target_df['gis_price_multiplier'].iloc[0])
-                        logger.info(f"GIS location adjustment factor: {gis_adjustment_factor:.4f}")
+                        logger.info(f"Basic GIS location adjustment factor: {gis_adjustment_factor:.4f}")
                     
                     # For missing GIS features in target property, fill with median from training data
                     for feature in [f for f in features if f not in target_df.columns]:
@@ -1103,11 +1278,29 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
         
         # Add GIS-specific information to the results
         if gis_features_available and use_gis_features:
+            # Get list of all GIS features used in the model
+            gis_feature_list = [f for f in features if f in [
+                'centrality_km', 'proximity_score', 'neighborhood_rating', 
+                'gis_location_quality', 'amenity_score', 'flood_zone_risk',
+                'school_quality_score', 'view_score', 'traffic_noise_level',
+                'housing_density', 'growth_potential'
+            ]]
+            
+            # Create more comprehensive GIS metrics reporting
             result['gis_metrics'] = {
-                'features_used': [f for f in features if f in ['centrality_km', 'proximity_score', 'neighborhood_rating']],
+                'features_used': gis_feature_list,
                 'adjustment_factor': gis_adjustment_factor,
-                'location_quality_calculated': 'gis_location_quality' in df.columns
+                'location_quality_calculated': 'gis_location_quality' in df.columns,
+                'enhanced_gis_used': has_enhanced_gis and 'gis_value_multiplier' in df.columns,
+                'gis_features_available': available_gis_features
             }
+            
+            # For target property, include detailed GIS summary if available
+            if target_property is not None and has_enhanced_gis and 'target_df' in locals():
+                if 'gis_summary' in target_df.columns:
+                    result['gis_metrics']['target_summary'] = target_df['gis_summary'].iloc[0]
+                elif 'gis_analysis' in target_df.columns:
+                    result['gis_metrics']['target_analysis'] = target_df['gis_analysis'].iloc[0]
         
         return result
         
@@ -1123,15 +1316,19 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
 
 def advanced_property_valuation(property_data, target_property=None, test_size=0.2, random_state=42,
                           feature_selection='auto', poly_degree=2, regularization=None, alpha=1.0,
-                          gis_data=None, ref_points=None, neighborhood_ratings=None, use_gis_features=True):
+                          gis_data=None, ref_points=None, neighborhood_ratings=None, use_gis_features=True,
+                          model_type='linear', lightgbm_params=None, normalize_features=True,
+                          feature_selection_method='f_regression', cv_folds=5):
     """
     Advanced property valuation using multiple regression analysis with comprehensive
-    data processing, feature engineering, and model evaluation, now with GIS data integration.
+    data processing, feature engineering, and model evaluation, now with GIS data integration
+    and support for LightGBM models.
     
     This function performs sophisticated property valuation using multiple regression techniques,
     including polynomial features, regularization, feature selection, and statistical analysis
-    of results with p-values and confidence intervals. It now integrates spatial (GIS) data
-    to account for location-based factors that significantly affect property values.
+    of results with p-values and confidence intervals. It integrates spatial (GIS) data
+    to account for location-based factors that significantly affect property values, and now
+    supports advanced gradient boosting models through LightGBM.
     
     Args:
         property_data (pd.DataFrame): DataFrame containing property data with features and prices
@@ -1149,7 +1346,18 @@ def advanced_property_valuation(property_data, target_property=None, test_size=0
         neighborhood_ratings (dict, optional): Dictionary mapping neighborhoods or zip codes to quality ratings
             Example: {'West Richland': 0.9, 'Kennewick': 0.8, 'Richland': 0.85}
         use_gis_features (bool, optional): Whether to incorporate GIS features in the valuation model
-        
+        model_type (str, optional): The type of model to use ('linear', 'lightgbm', 'ensemble')
+            - 'linear': Uses sklearn's linear regression with optional regularization
+            - 'lightgbm': Uses LightGBM gradient boosting for potentially more accurate predictions
+            - 'ensemble': Combines multiple models for more robust predictions (default: 'linear')
+        lightgbm_params (dict, optional): Parameters for the LightGBM model if model_type='lightgbm'
+            Default parameters will be applied if None is provided
+        normalize_features (bool, optional): Whether to normalize features before training (default: True)
+            This can significantly improve performance of linear models
+        feature_selection_method (str, optional): Method for feature importance estimation
+            Options: 'f_regression', 'mutual_info', 'model_specific' (default: 'f_regression')
+        cv_folds (int, optional): Number of cross-validation folds for model evaluation (default: 5)
+            
     Returns:
         dict: Dictionary containing predicted value, model performance metrics, 
               feature importance, statistical significance, and more.
@@ -1562,24 +1770,151 @@ def advanced_property_valuation(property_data, target_property=None, test_size=0
             X_processed, y, test_size=test_size, random_state=random_state
         )
         
-        # Step 8: Train the regression model with appropriate regularization
-        logger.info("Training regression model with selected configuration")
-        
-        if regularization == 'ridge':
-            logger.info(f"Using Ridge regression with alpha={alpha}")
-            model = Ridge(alpha=alpha, random_state=random_state)
-        elif regularization == 'lasso':
-            logger.info(f"Using Lasso regression with alpha={alpha}")
-            model = Lasso(alpha=alpha, random_state=random_state, max_iter=2000)
-        elif regularization == 'elastic':
-            logger.info(f"Using ElasticNet regression with alpha={alpha}")
-            model = ElasticNet(alpha=alpha, l1_ratio=0.5, random_state=random_state, max_iter=2000)
+        # Step 8: Feature normalization if requested
+        if normalize_features and model_type != 'lightgbm':  # LightGBM can handle non-normalized features well
+            logger.info("Normalizing features for linear models")
+            # Use MinMaxScaler for interpretability of coefficients (esp. for LightGBM)
+            # or StandardScaler for better numerical stability in linear models
+            if model_type == 'linear':
+                scaler = StandardScaler()
+            else:
+                scaler = MinMaxScaler()
+                
+            X_train = scaler.fit_transform(X_train)
+            X_test = scaler.transform(X_test)
+            
+            # If we have a target property, normalize it too
+            if target_property is not None:
+                target_features = target_property[selected_features].values
+                target_features = scaler.transform(target_features)
         else:
-            logger.info("Using standard LinearRegression")
-            model = LinearRegression()
+            scaler = None
+            
+        # Step 9: Train the model based on selected model type
+        logger.info(f"Training model with type: {model_type}")
         
-        # Fit the model
-        model.fit(X_train, y_train)
+        # Define default parameters for LightGBM if none provided
+        if model_type == 'lightgbm' and lightgbm_params is None:
+            lightgbm_params = {
+                'objective': 'regression',
+                'metric': 'rmse',
+                'boosting_type': 'gbdt',
+                'num_leaves': 31,
+                'learning_rate': 0.05,
+                'feature_fraction': 0.9,
+                'bagging_fraction': 0.8,
+                'bagging_freq': 5,
+                'verbose': -1,
+                'n_estimators': 100
+            }
+            logger.info("Using default LightGBM parameters")
+            
+        # Create and train the model based on model_type
+        if model_type == 'lightgbm':
+            # Convert data to LightGBM dataset format for faster training
+            logger.info("Training LightGBM model for gradient boosting regression")
+            lgb_train = lgb.Dataset(X_train, y_train, feature_name=selected_features)
+            lgb_eval = lgb.Dataset(X_test, y_test, reference=lgb_train)
+            
+            # Train LightGBM model with early stopping
+            model = lgb.train(
+                lightgbm_params,
+                lgb_train,
+                num_boost_round=1000,
+                valid_sets=[lgb_eval],
+                callbacks=[lgb.early_stopping(50), lgb.log_evaluation(100)]
+            )
+            
+            # Store feature importance for LightGBM
+            lgb_importance = model.feature_importance(importance_type='gain')
+            feature_importance = dict(zip(selected_features, lgb_importance))
+            
+        elif model_type == 'ensemble':
+            # For ensemble, we train both a linear model and LightGBM model
+            # Then average their predictions (can be weighted)
+            logger.info("Training ensemble of linear and LightGBM models")
+            
+            # Train linear model
+            if regularization == 'ridge':
+                linear_model = Ridge(alpha=alpha, random_state=random_state)
+            elif regularization == 'lasso':
+                linear_model = Lasso(alpha=alpha, random_state=random_state, max_iter=2000)
+            elif regularization == 'elastic':
+                linear_model = ElasticNet(alpha=alpha, l1_ratio=0.5, random_state=random_state, max_iter=2000)
+            else:
+                linear_model = LinearRegression()
+                
+            linear_model.fit(X_train, y_train)
+            
+            # Train LightGBM model
+            lgb_train = lgb.Dataset(X_train, y_train)
+            lgb_model = lgb.train(lightgbm_params or {
+                'objective': 'regression',
+                'metric': 'rmse',
+                'verbose': -1,
+                'n_estimators': 100
+            }, lgb_train)
+            
+            # Create a composite model (simple class to wrap both models)
+            class EnsembleModel:
+                def __init__(self, linear_model, lgb_model, linear_weight=0.4):
+                    self.linear_model = linear_model
+                    self.lgb_model = lgb_model
+                    self.linear_weight = linear_weight
+                    self.lgb_weight = 1.0 - linear_weight
+                    
+                def predict(self, X):
+                    linear_pred = self.linear_model.predict(X)
+                    lgb_pred = self.lgb_model.predict(X)
+                    return (linear_pred * self.linear_weight) + (lgb_pred * self.lgb_weight)
+                    
+                def feature_importances(self, feature_names):
+                    # Combine feature importances from both models
+                    linear_importance = np.abs(self.linear_model.coef_)
+                    linear_importance = linear_importance / np.sum(linear_importance)
+                    
+                    lgb_importance = self.lgb_model.feature_importance(importance_type='gain')
+                    # Normalize LightGBM importance
+                    if np.sum(lgb_importance) > 0:
+                        lgb_importance = lgb_importance / np.sum(lgb_importance)
+                    
+                    # Weighted average of feature importances
+                    combined_importance = (linear_importance * self.linear_weight + 
+                                         lgb_importance * self.lgb_weight)
+                    
+                    return dict(zip(feature_names, combined_importance))
+            
+            # Create the ensemble model
+            model = EnsembleModel(linear_model, lgb_model)
+            feature_importance = model.feature_importances(selected_features)
+            
+        else:  # Default to linear models
+            if regularization == 'ridge':
+                logger.info(f"Using Ridge regression with alpha={alpha}")
+                model = Ridge(alpha=alpha, random_state=random_state)
+            elif regularization == 'lasso':
+                logger.info(f"Using Lasso regression with alpha={alpha}")
+                model = Lasso(alpha=alpha, random_state=random_state, max_iter=2000)
+            elif regularization == 'elastic':
+                logger.info(f"Using ElasticNet regression with alpha={alpha}")
+                model = ElasticNet(alpha=alpha, l1_ratio=0.5, random_state=random_state, max_iter=2000)
+            else:
+                logger.info("Using standard LinearRegression")
+                model = LinearRegression()
+            
+            # Fit the linear model
+            model.fit(X_train, y_train)
+            
+            # Calculate feature importance for linear models
+            if hasattr(model, 'coef_'):
+                # Standardize coefficients to get relative importance
+                coef_abs = np.abs(model.coef_)
+                if np.sum(coef_abs) > 0:  # Avoid division by zero
+                    feature_importance = dict(zip(selected_features, coef_abs / np.sum(coef_abs)))
+                else:
+                    feature_importance = dict(zip(selected_features, np.zeros_like(coef_abs)))
+            else:
+                feature_importance = {}
         
         # Step 9: Comprehensive model evaluation
         logger.info("Performing comprehensive model evaluation")
