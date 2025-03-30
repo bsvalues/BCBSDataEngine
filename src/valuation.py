@@ -27,6 +27,9 @@ from sklearn.feature_selection import SelectKBest, f_regression, mutual_info_reg
 from sklearn.decomposition import PCA
 import warnings
 
+# Import enhanced GIS features module
+from src.enhanced_gis_features import calculate_enhanced_gis_features
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -57,6 +60,220 @@ def has_lightgbm():
     LightGBM is available in the current environment.
     """
     return LIGHTGBM_AVAILABLE
+
+def haversine_distance(lat1, lon1, lat2, lon2):
+    """
+    Calculate the great circle distance between two points 
+    on the earth (specified in decimal degrees).
+    
+    Parameters:
+    -----------
+    lat1, lon1 : float
+        Latitude and longitude of the first point in decimal degrees
+    lat2, lon2 : float
+        Latitude and longitude of the second point in decimal degrees
+        
+    Returns:
+    --------
+    float
+        Distance between the points in kilometers
+    """
+    # Convert decimal degrees to radians
+    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
+
+    # Haversine formula
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+    c = 2 * math.asin(math.sqrt(a))
+    
+    # Earth radius in kilometers
+    r = 6371
+    
+    return c * r
+
+def engineer_property_features(property_data):
+    """
+    Engineer advanced property features based on existing property characteristics.
+    
+    This function creates derived features from basic property attributes to enhance
+    the predictive power of valuation models. These derived features capture complex
+    relationships between property attributes.
+    
+    Parameters:
+    -----------
+    property_data : pandas.DataFrame
+        Dataset containing property information including features like square feet,
+        bedrooms, bathrooms, year built, etc.
+    
+    Returns:
+    --------
+    pandas.DataFrame
+        The original property data enhanced with engineered features.
+    """
+    logger.info("Engineering advanced property features")
+    
+    # Create a copy of the input data to avoid modifying the original
+    result_data = property_data.copy()
+    
+    # Track newly created features
+    new_features = []
+    
+    try:
+        # 1. Calculate property age if year_built is available
+        current_year = 2025  # Using current year as of code writing
+        if 'year_built' in result_data.columns:
+            result_data['property_age'] = current_year - result_data['year_built']
+            # Handle invalid ages (negative or extremely large)
+            result_data.loc[result_data['property_age'] < 0, 'property_age'] = 0
+            result_data.loc[result_data['property_age'] > 150, 'property_age'] = 150
+            new_features.append('property_age')
+            
+            # Add property_age_squared for non-linear age effects
+            result_data['property_age_squared'] = result_data['property_age'] ** 2
+            new_features.append('property_age_squared')
+        
+        # 2. Calculate beds/baths ratio (capturing layout efficiency)
+        if 'bedrooms' in result_data.columns and 'bathrooms' in result_data.columns:
+            # Handle zero bathrooms to avoid division by zero
+            result_data['beds_baths_ratio'] = result_data.apply(
+                lambda row: row['bedrooms'] / max(row['bathrooms'], 0.5), axis=1
+            )
+            # Cap at reasonable values (to avoid outliers)
+            result_data['beds_baths_ratio'] = result_data['beds_baths_ratio'].clip(0, 10)
+            new_features.append('beds_baths_ratio')
+        
+        # 3. Calculate square feet per room (measure of spaciousness)
+        if 'square_feet' in result_data.columns and 'bedrooms' in result_data.columns:
+            # Calculate total rooms (bedrooms + assumed common areas)
+            if 'bathrooms' in result_data.columns:
+                result_data['total_rooms'] = result_data['bedrooms'] + result_data['bathrooms'] + 2  # +2 for living room and kitchen
+            else:
+                result_data['total_rooms'] = result_data['bedrooms'] + 2
+            new_features.append('total_rooms')
+            
+            # Calculate square feet per room
+            result_data['sqft_per_room'] = result_data.apply(
+                lambda row: row['square_feet'] / max(row['total_rooms'], 1), axis=1
+            )
+            new_features.append('sqft_per_room')
+        
+        # 4. Calculate bedroom ratio (bedrooms / total rooms)
+        if 'bedrooms' in result_data.columns and 'total_rooms' in result_data.columns:
+            result_data['bedroom_ratio'] = result_data.apply(
+                lambda row: row['bedrooms'] / max(row['total_rooms'], 1), axis=1
+            )
+            new_features.append('bedroom_ratio')
+        
+        # 5. Calculate luxury score (based on various premium features)
+        if 'has_pool' in result_data.columns or 'has_garage' in result_data.columns or 'has_view' in result_data.columns:
+            # Start with base score
+            result_data['luxury_score'] = 0
+            
+            # Add score for pool
+            if 'has_pool' in result_data.columns:
+                result_data['luxury_score'] += result_data['has_pool'].astype(float) * 0.3
+            
+            # Add score for garage
+            if 'has_garage' in result_data.columns:
+                result_data['luxury_score'] += result_data['has_garage'].astype(float) * 0.2
+                
+                # If garage_spaces is available, adjust score based on number of spaces
+                if 'garage_spaces' in result_data.columns:
+                    result_data['luxury_score'] += (result_data['garage_spaces'] - 1).clip(0, 3) * 0.1
+            
+            # Add score for view
+            if 'has_view' in result_data.columns:
+                result_data['luxury_score'] += result_data['has_view'].astype(float) * 0.3
+            
+            # Add score for lot size if available
+            if 'lot_size' in result_data.columns and 'avg_lot_size' in result_data.columns:
+                # Adjust based on relative lot size compared to average
+                avg_lot = result_data['avg_lot_size'].mean()
+                result_data['luxury_score'] += (result_data['lot_size'] / avg_lot - 1).clip(0, 1) * 0.2
+            elif 'lot_size' in result_data.columns:
+                # Use absolute lot size if no average available
+                mean_lot = result_data['lot_size'].mean()
+                std_lot = result_data['lot_size'].std()
+                if not pd.isna(mean_lot) and not pd.isna(std_lot) and std_lot > 0:
+                    # Z-score based approach
+                    z_scores = (result_data['lot_size'] - mean_lot) / std_lot
+                    result_data['luxury_score'] += (z_scores.clip(-2, 2) + 2) / 4 * 0.2
+            
+            # Normalize luxury score to 0-1 range
+            result_data['luxury_score'] = result_data['luxury_score'].clip(0, 1)
+            new_features.append('luxury_score')
+        
+        # 6. Add renovation impact if year_renovated exists
+        if 'year_built' in result_data.columns and 'year_renovated' in result_data.columns:
+            # Calculate years since renovation
+            result_data['years_since_renovation'] = current_year - result_data['year_renovated']
+            
+            # Handle missing renovation data
+            result_data.loc[result_data['year_renovated'].isna(), 'years_since_renovation'] = \
+                result_data.loc[result_data['year_renovated'].isna(), 'property_age']
+            
+            # Calculate renovation impact factor (more recent = higher impact)
+            result_data['renovation_impact'] = result_data.apply(
+                lambda row: 1.0 if row['years_since_renovation'] <= 0 else 
+                            max(0, 1 - (row['years_since_renovation'] / 20)), 
+                axis=1
+            )
+            new_features.append('renovation_impact')
+        
+        # 7. Create price per square foot benchmark if we have historical data
+        if 'price' in result_data.columns and 'square_feet' in result_data.columns:
+            # Calculate price per square foot
+            result_data['price_per_sqft'] = result_data.apply(
+                lambda row: row['price'] / max(row['square_feet'], 1) if not pd.isna(row['price']) else None, 
+                axis=1
+            )
+            
+            # Calculate neighborhood benchmarks if we have neighborhood data
+            if 'neighborhood' in result_data.columns:
+                # Get mean price per sqft by neighborhood
+                neighborhood_means = result_data.groupby('neighborhood')['price_per_sqft'].mean()
+                
+                # Map neighborhood means back to properties
+                result_data['neighborhood_price_per_sqft'] = result_data['neighborhood'].map(neighborhood_means)
+                
+                # Calculate relative price (property's price per sqft / neighborhood average)
+                result_data['relative_price'] = result_data.apply(
+                    lambda row: row['price_per_sqft'] / row['neighborhood_price_per_sqft'] 
+                                if not pd.isna(row['price_per_sqft']) and 
+                                   not pd.isna(row['neighborhood_price_per_sqft']) and 
+                                   row['neighborhood_price_per_sqft'] > 0 
+                                else None,
+                    axis=1
+                )
+                
+                new_features.extend(['price_per_sqft', 'neighborhood_price_per_sqft', 'relative_price'])
+            else:
+                new_features.append('price_per_sqft')
+        
+        # 8. Create interaction features between key property attributes
+        if 'bedrooms' in result_data.columns and 'bathrooms' in result_data.columns:
+            # Bedroom x bathroom interaction (captures combined effect)
+            result_data['bed_bath_interaction'] = result_data['bedrooms'] * result_data['bathrooms']
+            new_features.append('bed_bath_interaction')
+        
+        if 'square_feet' in result_data.columns and 'lot_size' in result_data.columns:
+            # Calculate house-to-lot ratio (footprint efficiency)
+            result_data['house_lot_ratio'] = result_data.apply(
+                lambda row: row['square_feet'] / max(row['lot_size'], 1) if row['lot_size'] > 0 else None,
+                axis=1
+            )
+            # Cap at reasonable values
+            if 'house_lot_ratio' in result_data.columns:
+                result_data['house_lot_ratio'] = result_data['house_lot_ratio'].clip(0, 1)
+                new_features.append('house_lot_ratio')
+        
+        logger.info(f"Created {len(new_features)} engineered property features: {', '.join(new_features)}")
+    except Exception as e:
+        logger.error(f"Error during feature engineering: {e}")
+        # Continue with whatever features were successfully created
+    
+    return result_data
 
 def calculate_gis_features(property_data, gis_data=None, ref_points=None, neighborhood_ratings=None):
     """

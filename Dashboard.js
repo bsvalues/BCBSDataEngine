@@ -5,6 +5,9 @@ import { Line, Bar, Pie } from 'react-chartjs-2';
 // Custom BarChart component with memoization to prevent excessive re-renders
 const BarChart = memo(({ data, options }) => {
   return <Bar data={data} options={options} />;
+}, (prevProps, nextProps) => {
+  // Deep comparison for data and options to prevent unnecessary re-renders
+  return JSON.stringify(prevProps) === JSON.stringify(nextProps);
 });
 
 // Register Chart.js components
@@ -561,44 +564,46 @@ const Dashboard = () => {
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="text-lg font-semibold mb-4">Value Distribution</h3>
               <div className="h-80">
-                <Bar 
-                  data={preparedChartData.valueDistribution}
-                  options={{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                      legend: {
-                        position: 'top',
+                {useMemo(() => (
+                  <BarChart 
+                    data={preparedChartData.valueDistribution}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: {
+                        legend: {
+                          position: 'top',
+                        },
+                        title: {
+                          display: true,
+                          text: 'Property Value Distribution'
+                        },
+                        tooltip: {
+                          callbacks: {
+                            label: function(context) {
+                              return `${context.dataset.label}: ${context.raw} properties`;
+                            }
+                          }
+                        }
                       },
-                      title: {
-                        display: true,
-                        text: 'Property Value Distribution'
-                      },
-                      tooltip: {
-                        callbacks: {
-                          label: function(context) {
-                            return `${context.dataset.label}: ${context.raw} properties`;
+                      scales: {
+                        y: {
+                          beginAtZero: true,
+                          title: {
+                            display: true,
+                            text: 'Number of Properties'
+                          }
+                        },
+                        x: {
+                          title: {
+                            display: true,
+                            text: 'Value Range'
                           }
                         }
                       }
-                    },
-                    scales: {
-                      y: {
-                        beginAtZero: true,
-                        title: {
-                          display: true,
-                          text: 'Number of Properties'
-                        }
-                      },
-                      x: {
-                        title: {
-                          display: true,
-                          text: 'Value Range'
-                        }
-                      }
-                    }
-                  }}
-                />
+                    }}
+                  />
+                ), [preparedChartData.valueDistribution])}
               </div>
             </div>
             
@@ -606,7 +611,8 @@ const Dashboard = () => {
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="text-lg font-semibold mb-4">Neighborhood Comparison</h3>
               <div className="h-80">
-                <Bar 
+                {useMemo(() => (
+                <BarChart 
                   data={preparedChartData.neighborhoodComparison}
                   options={{
                     responsive: true,
@@ -664,6 +670,7 @@ const Dashboard = () => {
                     }
                   }}
                 />
+                ), [preparedChartData.neighborhoodComparison])}
               </div>
             </div>
           </div>

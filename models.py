@@ -35,6 +35,7 @@ class Property(Base):
     county = Column(String(100))
     state = Column(String(50))
     zip_code = Column(String(20))
+    neighborhood = Column(String(100))
     latitude = Column(Float)
     longitude = Column(Float)
     

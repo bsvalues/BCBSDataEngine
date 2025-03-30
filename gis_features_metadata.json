@@ -1,0 +1,88 @@
+{
+  "features_added": [
+    "proximity_score",
+    "neighborhood_quality",
+    "relative_neighborhood_quality",
+    "healthcare_access",
+    "recreation_access",
+    "shopping_access",
+    "school_access",
+    "park_access",
+    "overall_amenity_access",
+    "transit_accessibility",
+    "crime_risk",
+    "spatial_cluster",
+    "spatial_cluster_0",
+    "spatial_cluster_1",
+    "dist_to_cluster_0",
+    "dist_to_cluster_1"
+  ],
+  "invalid_data": [],
+  "error_messages": [],
+  "missing_required_columns": [],
+  "spatial_coverage": {
+    "richland_downtown": {
+      "min_distance": 0.22702866470263824,
+      "max_distance": 15.164196486439547,
+      "avg_distance": 8.523263988355055,
+      "properties_in_range": 15
+    },
+    "kennewick_downtown": {
+      "min_distance": 0.9768194156708303,
+      "max_distance": 14.611819756174228,
+      "avg_distance": 7.0597343538710335,
+      "properties_in_range": 20
+    },
+    "pasco_downtown": {
+      "min_distance": 0.37238899248135465,
+      "max_distance": 16.25382668102076,
+      "avg_distance": 7.69657549323522,
+      "properties_in_range": 20
+    },
+    "columbia_center_mall": {
+      "min_distance": 4.906408497710342,
+      "max_distance": 11.209237034430913,
+      "avg_distance": 7.774916539282174,
+      "properties_in_range": 29
+    },
+    "richland_federal_building": {
+      "min_distance": 0.3591164852319429,
+      "max_distance": 15.246933159648572,
+      "avg_distance": 8.41531987652827,
+      "properties_in_range": 15
+    },
+    "columbia_river": {
+      "min_distance": 0.30847021728568724,
+      "max_distance": 15.441032985522542,
+      "avg_distance": 8.584227857100293,
+      "properties_in_range": 15
+    },
+    "wsutc_campus": {
+      "min_distance": 0.1872482642114512,
+      "max_distance": 15.256638062186548,
+      "avg_distance": 8.342925266593564,
+      "properties_in_range": 15
+    },
+    "hanford_site": {
+      "min_distance": 32.79848892244831,
+      "max_distance": 48.78631369107292,
+      "avg_distance": 41.65385167294723,
+      "properties_in_range": 0
+    },
+    "neighborhood_coverage": 1.0,
+    "cluster_statistics": {
+      "cluster_0": {
+        "count": 15,
+        "center_lat": 46.27432856431814,
+        "center_lon": -119.27281268050898,
+        "mean_sqft": 2446.4666666666667
+      },
+      "cluster_1": {
+        "count": 20,
+        "center_lat": 46.22481358041917,
+        "center_lon": -119.12165593438147,
+        "mean_sqft": 2389.95
+      }
+    }
+  }
+}

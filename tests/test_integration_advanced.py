@@ -607,7 +607,7 @@ class TestAPIEndpoints:
             {"name": "Columbia Park", "property_count": 175, "avg_valuation": 435000}
         ]
         
-        response = client.get("/api/neighborhoods")
+        response = client.get("/api/neighborhoods", headers={"X-API-KEY": os.environ.get("BCBS_VALUES_API_KEY", "test-api-key-123")})
         
         assert response.status_code == 200
         
@@ -684,7 +684,7 @@ class TestAPIEndpoints:
         
         # Add the query parameters to the URL
         query_string = "&".join([f"{k}={v}" for k, v in search_params.items()])
-        response = client.get(f"/api/properties/search?{query_string}")
+        response = client.get(f"/api/properties/search?{query_string}", headers={"X-API-KEY": os.environ.get("BCBS_VALUES_API_KEY", "test-api-key-123")})
         
         assert response.status_code == 200
         
@@ -750,7 +750,7 @@ class TestAPIEndpoints:
         mock_db.get_property_valuation_history.return_value = mock_valuation_history
         
         # Make the request
-        response = client.get("/api/properties/1/valuation-history")
+        response = client.get("/api/properties/1/valuation-history", headers={"X-API-KEY": os.environ.get("BCBS_VALUES_API_KEY", "test-api-key-123")})
         
         assert response.status_code == 200
         
@@ -828,7 +828,7 @@ class TestAPIEndpoints:
         mock_db.get_market_trends.return_value = mock_trends
         
         # Make the request
-        response = client.get("/api/market-trends")
+        response = client.get("/api/market-trends", headers={"X-API-KEY": os.environ.get("BCBS_VALUES_API_KEY", "test-api-key-123")})
         
         assert response.status_code == 200
         
