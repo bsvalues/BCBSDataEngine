@@ -7,7 +7,7 @@ from flask import Flask, render_template, request, jsonify, Response
 app = Flask(__name__)
 
 # API base URL
-API_BASE_URL = "http://localhost:5000"  # API server running on port 5000
+API_BASE_URL = "http://localhost:5001"  # API server running on port 5001
 
 # API Key for backend communication
 API_KEY = os.environ.get("BCBS_VALUES_API_KEY", "")

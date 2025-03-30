@@ -1,10 +1,23 @@
 {
-  "commandName": "API",
-  "runCommands": ["python3 -m uvicorn api:app --host 0.0.0.0 --port 5000"],
-  "displayName": "API Server",
-  "restartOn": {
-    "files": ["api.py", "src/**"]
-  },
-  "env": {},
-  "port": 5000
+  "id": "API",
+  "name": "API",
+  "icon": "🔌",
+  "description": "Real estate valuation API server",
+  "documentation": "FastAPI server for BCBS Property Valuation System",
+  "type": "script",
+  "run_command": [
+    "python",
+    "run_api.py"
+  ],
+  "entrypoint": "api.py",
+  "public_port": 5001,
+  "preferred_port": 5001,
+  "restart_policy": "on-failure",
+  "categories": [
+    "api"
+  ],
+  "dependencies": [
+    "fastapi",
+    "uvicorn"
+  ]
 }

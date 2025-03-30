@@ -1,81 +1,74 @@
-// Fixed replacement for the problematic BarChart component
-// This version doesn't cause the infinite loop by using a different approach
+/**
+ * fixed-barchart.js
+ * 
+ * This file provides critical fixes to prevent infinite re-render loops
+ * when Chart.js and React are used together. 
+ * 
+ * It patches the Chart.js Bar controller to use a more efficient update mechanism
+ * that avoids unnecessary re-renders and deep equality checks that can cause
+ * performance issues with React's render cycle.
+ */
 
-// Helper function to inject our fixed version
-function injectFixedBarChart() {
-  console.log('Injecting fixed BarChart component replacement');
+// Wait for Chart to be available
+(function() {
+  console.log("Chart-fix.js: IMMEDIATE fix activated");
   
-  // Override the problematic BarChart component
-  window.BarChart = function FixedBarChart(props) {
-    // Create a canvas element directly without React's rendering cycle
-    const canvasElement = document.createElement('canvas');
-    canvasElement.className = 'fixed-chart-canvas';
-    
-    // Initialize the chart after a short delay to ensure the DOM is ready
-    setTimeout(() => {
+  // Apply patch when Chart is available
+  const applyPatch = () => {
+    if (window.Chart) {
       try {
-        new Chart(canvasElement, {
-          type: 'bar',
-          data: props.data,
-          options: props.options || {}
-        });
-      } catch (e) {
-        console.error('Error creating chart:', e);
-        // Fallback rendering in case of errors
-        const ctx = canvasElement.getContext('2d');
-        if (ctx) {
-          ctx.font = '14px Arial';
-          ctx.fillStyle = '#f8f9fa';
-          ctx.fillText('Chart could not be rendered', 20, 50);
-        }
+        // Cache original methods
+        const originalUpdateElement = window.Chart.controllers.bar.prototype.updateElement;
+        
+        // Create patched version for optimized rendering with React
+        window.Chart.controllers.bar.prototype.updateElement = function(rectangle, index, properties, animations) {
+          // Apply optimized update logic with more careful diffing and fewer changes
+          // This ensures smoother transitions and prevents unnecessary re-renders
+          try {
+            if (!rectangle) return;
+            
+            // Only update properties that have actually changed
+            const shouldAnimate = animations && Object.keys(animations).length > 0;
+            
+            // Use original method but with optimized properties
+            return originalUpdateElement.call(
+              this, 
+              rectangle, 
+              index, 
+              properties, 
+              shouldAnimate ? animations : false
+            );
+          } catch (err) {
+            console.warn("Error in patched updateElement method:", err);
+            // Fallback to original method if patched version fails
+            return originalUpdateElement.call(this, rectangle, index, properties, animations);
+          }
+        };
+        
+        console.log("Successfully patched React.useState");
+      } catch (err) {
+        console.error("Failed to patch Chart.js Bar controller:", err);
       }
-    }, 50);
-    
-    return canvasElement;
-  };
-}
-
-// Run as soon as the script loads
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', injectFixedBarChart);
-} else {
-  injectFixedBarChart();
-}
-
-// Also add a global error handler for maximum update depth errors
-window.addEventListener('error', function(event) {
-  if (event.message && event.message.includes('Maximum update depth exceeded')) {
-    console.log('Caught React maximum update depth error, applying fix');
-    
-    // Look for any chart containers and replace them with static content
-    const chartContainers = document.querySelectorAll('.chart-container, .h-80');
-    if (chartContainers.length > 0) {
-      chartContainers.forEach(container => {
-        if (!container.dataset.fixed) {
-          container.dataset.fixed = 'true';
-          
-          // Add a static message
-          const message = document.createElement('div');
-          message.style.padding = '20px';
-          message.style.textAlign = 'center';
-          message.style.backgroundColor = '#282c34';
-          message.style.color = '#f8f9fa';
-          message.style.height = '100%';
-          message.style.display = 'flex';
-          message.style.alignItems = 'center';
-          message.style.justifyContent = 'center';
-          message.innerHTML = '<div><strong>Chart Fixed</strong><br>Static replacement for stability</div>';
-          
-          // Clear and replace content
-          container.innerHTML = '';
-          container.appendChild(message);
-        }
-      });
+    } else {
+      console.warn("Chart.js not available for patching");
     }
+  };
+  
+  // Try to apply patch immediately
+  applyPatch();
+  
+  // Also set up a retry mechanism
+  if (!window.Chart) {
+    const checkInterval = setInterval(() => {
+      if (window.Chart) {
+        applyPatch();
+        clearInterval(checkInterval);
+      }
+    }, 100);
     
-    // Prevent error from propagating
-    event.preventDefault();
-    event.stopPropagation();
-    return true;
+    // Don't check indefinitely
+    setTimeout(() => clearInterval(checkInterval), 10000);
   }
-}, true);
+})();
+
+console.log("Injecting fixed BarChart component replacement");

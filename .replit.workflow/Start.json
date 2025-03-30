@@ -1,0 +1,16 @@
+{
+  "id": "Start",
+  "name": "Start",
+  "icon": "🚀",
+  "description": "Install dependencies and set up the environment",
+  "documentation": "Initializes the project dependencies",
+  "type": "script",
+  "run_command": [
+    "echo", "Starting setup..."
+  ],
+  "entrypoint": "main.py",
+  "restart_policy": "on-failure",
+  "categories": [
+    "utility"
+  ]
+}

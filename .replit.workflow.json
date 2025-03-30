@@ -1,6 +1,30 @@
 {
-  "workflows": [
-    "WebApp",
-    "API"
+  "runnable": true,
+  "staticPreview": {
+    "url": "https://replit.com/@BCBS_Values/webapp"
+  },
+  "runs": [
+    {
+      "id": "WebApp",
+      "commands": [
+        "python -m flask --app start_webapp run --host 0.0.0.0 --port 5002"
+      ],
+      "restartOn": {
+        "files": ["**/*"],
+        "branch": "main"
+      },
+      "env": {}
+    },
+    {
+      "id": "API",
+      "commands": [
+        "python run_api.py"
+      ],
+      "restartOn": {
+        "files": ["**/*"],
+        "branch": "main"
+      },
+      "env": {}
+    }
   ]
 }
