@@ -1,0 +1,4 @@
+#!/bin/bash
+
+# Run the basic API server using Python
+python -u basic_api.py

@@ -1,0 +1,16 @@
+{
+    "run_command": "python basic_api.py",
+    "run_debug_command": "python basic_api.py",
+    "type": "web",
+    "start_paths": ["basic_api.py"],
+    "web_info": {
+        "port": 5000,
+        "proxy_port": 5000,
+        "protocol": "http",
+        "remote_protocol": "http",
+        "metadata": {
+            "path": "/",
+            "name": "BasicAPI"
+        }
+    }
+}
