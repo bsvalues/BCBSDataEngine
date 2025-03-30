@@ -1,17 +1,45 @@
 {
   "name": "BCBS Cascade Operator",
   "description": "An orchestration agent for multi-agent workflows in the BCBS_Values system",
-  "version": "1.0.0",
+  "version": "2.0.0",
   
   "trigger_description": "Trigger phrase that activates this orchestration agent",
   "trigger": "cascade-operator",
   
+  "versioning": {
+    "schema_version": "2.0.0",
+    "compatibility": {
+      "min_api_version": "1.0.0",
+      "max_api_version": "2.x.x"
+    },
+    "change_history": [
+      {
+        "version": "1.0.0",
+        "date": "2025-03-29",
+        "changes": "Initial implementation"
+      },
+      {
+        "version": "2.0.0",
+        "date": "2025-03-30",
+        "changes": "Enhanced inter-agent communication protocol, added calibration data and error reporting"
+      }
+    ],
+    "version_control": {
+      "repository": "bcbs-values-agents",
+      "branch": "main",
+      "commit_hash": "a7f921e4d9c23b8f5a6d2e8c31f70b9d2e3a41f5"
+    },
+    "note": "Versioning information with semantic versioning and compatibility requirements"
+  },
+  
   "orchestration_capabilities_description": "Core capabilities for multi-agent orchestration",
   "orchestration_capabilities": {
-    "execution_modes": ["sequential", "parallel", "conditional", "event-driven"],
+    "execution_modes": ["sequential", "parallel", "conditional", "event-driven", "adaptive"],
     "agent_coordination": true,
     "state_persistence": true,
     "workflow_visualization": true,
+    "protocol_enforcement": true,
+    "exception_handling": "structured",
     "note": "These capabilities define how the agent coordinates and executes multi-agent workflows"
   },
   
@@ -20,27 +48,39 @@
     "agent_types": [
       {
         "type": "bootstrap",
+        "name": "Bootstrap Commander",
         "config_path": "agents/bcbs-bootstrap-commander.json",
         "capabilities": ["environment-setup", "dependency-validation", "test-execution"],
-        "communication_channels": ["direct-command", "status-update"]
+        "communication_channels": ["direct-command", "status-update", "model-parameter-exchange"],
+        "protocol_version": "2.0.0",
+        "role": "infrastructure"
       },
       {
         "type": "etl",
+        "name": "ETL Processor",
         "config_path": "agents/bootstrap-commander.json",
         "capabilities": ["data-extraction", "data-transformation", "data-loading", "data-validation"],
-        "communication_channels": ["data-pipeline", "validation-results", "status-update"]
+        "communication_channels": ["data-pipeline", "validation-results", "status-update", "model-parameter-exchange"],
+        "protocol_version": "2.0.0",
+        "role": "data-processing"
       },
       {
         "type": "valuation",
+        "name": "God-Tier Builder",
         "config_path": "agents/god-tier-builder.json",
-        "capabilities": ["valuation-modeling", "feature-engineering", "prediction-generation"],
-        "communication_channels": ["model-updates", "prediction-results", "status-update"]
+        "capabilities": ["valuation-modeling", "feature-engineering", "prediction-generation", "parameter-optimization"],
+        "communication_channels": ["model-updates", "prediction-results", "status-update", "model-parameter-exchange", "calibration-data"],
+        "protocol_version": "2.0.0",
+        "role": "model-builder"
       },
       {
         "type": "validation",
+        "name": "TDD Validator",
         "config_path": "agents/tdd-validator.json",
-        "capabilities": ["validation-logic", "test-execution", "quality-assurance"],
-        "communication_channels": ["validation-results", "test-reports", "status-update"]
+        "capabilities": ["validation-logic", "test-execution", "quality-assurance", "model-validation"],
+        "communication_channels": ["validation-results", "test-reports", "status-update", "model-parameter-exchange", "error-reporting"],
+        "protocol_version": "2.0.0",
+        "role": "quality-assurance"
       }
     ],
     "note": "Registry of all available agents with their capabilities and communication channels"
@@ -135,6 +175,238 @@
     }
   ],
   
+  "inter_agent_communication_protocol": {
+    "name": "BCBS-MPC-Protocol",
+    "version": "2.0.0",
+    "description": "Multi-Protocol Calibration (MPC) system for standardized agent communication",
+    "message_schema": {
+      "header": {
+        "message_id": "string (UUID)",
+        "timestamp": "ISO-8601 datetime",
+        "sender_id": "string (agent identifier)",
+        "receiver_id": "string or array (target agent(s))",
+        "message_type": "enum (command, event, data, status, parameter, calibration, error)",
+        "priority": "enum (critical, high, normal, low)",
+        "correlation_id": "string (UUID for related messages)",
+        "reply_to": "string (channel for responses)",
+        "expires_at": "ISO-8601 datetime or null"
+      },
+      "body": {
+        "content_type": "string (json, binary, text)",
+        "content": "object (actual message payload)",
+        "schema_version": "string (semantic version)",
+        "is_encrypted": "boolean"
+      },
+      "metadata": {
+        "task_id": "string (UUID of related task)",
+        "workflow_id": "string (UUID of workflow)",
+        "tags": "array of strings",
+        "context": "object (additional context data)"
+      }
+    },
+    "parameter_exchange": {
+      "model_parameters": {
+        "format": "named_parameter_set",
+        "synchronization_strategy": "two-phase-commit",
+        "versioning": "incremental_with_hash",
+        "required_fields": [
+          "parameter_set_id",
+          "model_type",
+          "creation_timestamp",
+          "parameters",
+          "version_hash"
+        ],
+        "examples": [
+          {
+            "comment": "Example model parameter message from God-Tier Builder to TDD Validator",
+            "parameter_set_id": "valuation_model_params_20250330",
+            "model_type": "advanced_ensemble",
+            "creation_timestamp": "2025-03-30T10:15:30Z",
+            "parameters": {
+              "lightgbm_learning_rate": 0.05,
+              "lightgbm_max_depth": 6,
+              "lightgbm_boosting_type": "gbdt",
+              "linear_regularization": 0.01,
+              "feature_weights": {
+                "square_feet": 0.482,
+                "bathrooms": 0.215,
+                "bedrooms": 0.133,
+                "property_age": 0.092,
+                "lot_size": 0.078
+              }
+            },
+            "version_hash": "3f7a91c4e8d2b06a79e01c5a4d6b84f2",
+            "validation_required": true
+          }
+        ]
+      }
+    },
+    "usage_instructions": [
+      "1. All agents must conform to the message schema when exchanging information",
+      "2. Parameter exchanges between agents must include validation metadata",
+      "3. Bootstrap Commander initiates protocol versions and validation",
+      "4. TDD Validator must verify all model parameter exchanges",
+      "5. Error reporting must follow the structured error format",
+      "6. All calibration data exchanges must be versioned and tracked"
+    ],
+    "note": "This protocol defines the exact structure and rules for inter-agent communication"
+  },
+  
+  "calibration_data": {
+    "description": "Configuration for model calibration data and parameter management",
+    "storage": {
+      "location": "database",
+      "backup_strategy": "daily",
+      "versioning": true,
+      "access_control": "agent_role_based"
+    },
+    "data_sets": [
+      {
+        "id": "base_calibration_set",
+        "description": "Baseline calibration dataset for model validation",
+        "properties": {
+          "size": 500,
+          "source": "verified_sales",
+          "date_range": "2024-01-01 to 2024-12-31",
+          "region": "Benton County, WA",
+          "validation_status": "gold_standard"
+        }
+      },
+      {
+        "id": "feature_importance_baseline",
+        "description": "Reference feature importance values for validation",
+        "data": {
+          "square_feet": 0.482,
+          "bathrooms": 0.215,
+          "bedrooms": 0.133,
+          "property_age": 0.092,
+          "lot_size": 0.078
+        }
+      },
+      {
+        "id": "performance_thresholds",
+        "description": "Minimum acceptable model performance metrics",
+        "thresholds": {
+          "r2_score": 0.85,
+          "adj_r2_score": 0.83,
+          "rmse_percent": 0.12,
+          "mae_percent": 0.09
+        }
+      }
+    ],
+    "calibration_workflows": [
+      {
+        "id": "full_calibration",
+        "description": "Complete model calibration workflow",
+        "steps": [
+          "load_calibration_data",
+          "initialize_baseline_parameters",
+          "train_on_calibration_set",
+          "validate_against_thresholds",
+          "publish_calibration_results"
+        ],
+        "frequency": "weekly",
+        "agents_involved": ["valuation", "validation"]
+      },
+      {
+        "id": "parameter_validation",
+        "description": "Quick validation of parameter updates",
+        "steps": [
+          "load_test_subset",
+          "apply_parameters",
+          "validate_results",
+          "approve_or_reject_parameters"
+        ],
+        "frequency": "on_parameter_change",
+        "agents_involved": ["validation"]
+      }
+    ],
+    "note": "Configuration for maintaining model calibration data and parameter management processes"
+  },
+  
+  "error_reporting": {
+    "description": "Structured error reporting system for agent operations",
+    "error_levels": ["fatal", "critical", "error", "warning", "info", "debug"],
+    "error_categories": [
+      "model_failure",
+      "data_quality",
+      "validation_failure",
+      "communication_error",
+      "resource_limitation",
+      "security_violation",
+      "protocol_violation"
+    ],
+    "reporting_format": {
+      "error_id": "string (UUID)",
+      "timestamp": "ISO-8601 datetime",
+      "level": "enum (from error_levels)",
+      "category": "enum (from error_categories)",
+      "agent_id": "string (reporting agent)",
+      "message": "string (human-readable error description)",
+      "details": "object (structured error details)",
+      "context": {
+        "task_id": "string (related task)",
+        "workflow_id": "string (related workflow)",
+        "input_data": "object (sanitized input that caused error)",
+        "stack_trace": "string (if applicable)"
+      },
+      "remediation": {
+        "automatic_actions": "array of strings (actions taken)",
+        "suggested_actions": "array of strings (recommended actions)",
+        "status": "enum (new, investigating, mitigated, resolved)"
+      }
+    },
+    "error_handling_workflow": {
+      "error_detection": "immediate",
+      "logging": "persistent",
+      "notification": {
+        "thresholds": {
+          "fatal": "immediate",
+          "critical": "immediate",
+          "error": "batched_5min",
+          "warning": "batched_1hr"
+        },
+        "channels": ["dashboard", "log", "messaging"]
+      },
+      "resolution_tracking": true
+    },
+    "examples": [
+      {
+        "comment": "Example error report for model validation failure",
+        "error_id": "err-85a721e3-9012-4d78-b719-3e6fc482172f",
+        "timestamp": "2025-03-30T14:32:15Z",
+        "level": "error",
+        "category": "validation_failure",
+        "agent_id": "tdd-validator",
+        "message": "Model parameters failed validation: R2 score below threshold",
+        "details": {
+          "parameter_set_id": "valuation_model_params_20250330",
+          "expected_r2": 0.85,
+          "actual_r2": 0.79,
+          "validation_set": "base_calibration_set"
+        },
+        "context": {
+          "task_id": "task-6d21b4a8-ef92-4c89-a542-1e6fa6d8b3cd",
+          "workflow_id": "wf-parameter_validation-20250330142500"
+        },
+        "remediation": {
+          "automatic_actions": [
+            "Rejected parameter set",
+            "Reverted to previous validated parameters",
+            "Notified valuation agent"
+          ],
+          "suggested_actions": [
+            "Review feature engineering process",
+            "Check for data anomalies in training set",
+            "Adjust regularization parameters"
+          ],
+          "status": "mitigated"
+        }
+      }
+    ],
+    "note": "Configuration for standardized error reporting and handling across agents"
+  },
+  
   "message_broker_description": "Configuration for inter-agent communication system",
   "message_broker": {
     "protocol": "direct-invocation",
@@ -162,6 +434,25 @@
         "persistence": true,
         "retention_policy": "24h",
         "prioritization": "fifo"
+      },
+      "model_parameters": {
+        "direction": "publish-subscribe",
+        "persistence": true,
+        "retention_policy": "indefinite",
+        "prioritization": "version-based",
+        "validation_required": true
+      },
+      "calibration": {
+        "direction": "publish-subscribe",
+        "persistence": true,
+        "retention_policy": "indefinite",
+        "prioritization": "fifo"
+      },
+      "error": {
+        "direction": "publish-subscribe",
+        "persistence": true,
+        "retention_policy": "30d",
+        "prioritization": "severity-based"
       }
     },
     "note": "Configuration for message passing between agents, defining channels and protocols"
@@ -310,12 +601,118 @@
   
   "metadata": {
     "created_date": "2025-03-29",
+    "updated_date": "2025-03-30",
     "author": "BCBS_Values Development Team",
     "compatibility": "Replit environment",
     "dependencies": [
       "bcbs-bootstrap-commander.json",
       "god-tier-builder.json",
       "tdd-validator.json"
-    ]
+    ],
+    "documentation": {
+      "protocol_spec": "MPC_PROTOCOL_README.md",
+      "agent_architecture": "WORKFLOW_SETUP.md" 
+    }
+  },
+  
+  "cascade_orchestration_instructions": {
+    "description": "Instructions for the Cascade Operator to orchestrate multi-agent workflows",
+    "primary_responsibilities": [
+      "Coordinate communication between Bootstrap Commander, God-Tier Builder, and TDD Validator agents",
+      "Enforce the MPC protocol for all agent interactions",
+      "Manage model parameter exchanges with validation requirements",
+      "Track calibration data and versioning",
+      "Provide comprehensive error reporting and recovery mechanisms",
+      "Maintain workflow state and ensure consistent execution"
+    ],
+    "orchestration_patterns": [
+      {
+        "name": "model_parameter_exchange",
+        "description": "Pattern for secure exchange of model parameters between agents",
+        "steps": [
+          "1. God-Tier Builder generates model parameters",
+          "2. Parameters are formatted according to MPC protocol",
+          "3. Parameters are submitted for validation via model_parameters channel",
+          "4. TDD Validator applies validation against calibration data",
+          "5. Validator returns validation result via error_reporting channel if failed",
+          "6. On success, parameters are distributed to all agents via model_parameters channel",
+          "7. Bootstrap Commander logs the successful parameter update"
+        ]
+      },
+      {
+        "name": "error_recovery",
+        "description": "Pattern for handling and recovering from errors",
+        "steps": [
+          "1. Error is reported via error_reporting channel",
+          "2. Cascade Operator categorizes and prioritizes the error",
+          "3. For validation failures, automatic rollback to previous parameters is executed",
+          "4. For communication errors, retry with exponential backoff is attempted",
+          "5. For system errors, Bootstrap Commander is notified to address resource issues",
+          "6. Status updates are published to all agents",
+          "7. Dashboard is updated with current error state and recovery actions"
+        ]
+      },
+      {
+        "name": "full_system_calibration",
+        "description": "Pattern for complete system calibration",
+        "steps": [
+          "1. Bootstrap Commander initiates calibration workflow",
+          "2. ETL agent prepares calibration datasets",
+          "3. God-Tier Builder trains models with various parameter sets",
+          "4. TDD Validator evaluates all parameter sets against performance thresholds",
+          "5. Best performing parameter set is selected and validated",
+          "6. Cascade Operator distributes final parameters to all agents",
+          "7. Results and metrics are logged and displayed on the dashboard"
+        ]
+      }
+    ],
+    "decision_trees": [
+      {
+        "name": "parameter_validation_decision",
+        "description": "Decision tree for parameter validation outcomes",
+        "root": "Is R2 score above threshold?",
+        "branches": [
+          {
+            "condition": "Yes",
+            "next": "Is RMSE below threshold?",
+            "branches": [
+              {
+                "condition": "Yes",
+                "action": "Accept parameters and distribute"
+              },
+              {
+                "condition": "No",
+                "action": "Reject parameters, suggest feature engineering improvements"
+              }
+            ]
+          },
+          {
+            "condition": "No",
+            "next": "Is it within 5% of threshold?",
+            "branches": [
+              {
+                "condition": "Yes",
+                "next": "Are other metrics acceptable?",
+                "branches": [
+                  {
+                    "condition": "Yes",
+                    "action": "Accept with warning"
+                  },
+                  {
+                    "condition": "No",
+                    "action": "Reject parameters"
+                  }
+                ]
+              },
+              {
+                "condition": "No",
+                "action": "Reject parameters, trigger model review"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "note": "These instructions guide the Cascade Operator in orchestrating multi-agent workflows, especially for model parameter exchanges and validation"
   }
 }

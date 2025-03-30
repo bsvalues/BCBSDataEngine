@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Chart from 'chart.js/auto';
 
 /**
@@ -7,7 +7,13 @@ import Chart from 'chart.js/auto';
  * This component provides an interactive interface for users to adjust valuation parameters
  * and see the impact on property valuations in real-time.
  * 
- * It uses sliders for parameter adjustment and Chart.js for data visualization.
+ * Features:
+ * - Interactive sliders for adjusting key valuation parameters (cap rate, weights, etc.)
+ * - Real-time API requests to fetch updated valuation results
+ * - Chart.js visualization showing parameter impact on property valuations
+ * - Comparison of original vs adjusted valuations
+ * - Breakdown of factor contributions to valuation
+ * - Comprehensive error handling and loading indicators
  */
 const WhatIfAnalysis = ({ propertyId, initialValuation }) => {
   // State to track the current property data
@@ -29,7 +35,17 @@ const WhatIfAnalysis = ({ propertyId, initialValuation }) => {
     amenitiesWeight: 0.2, // Weight for property amenities in valuation
     marketTrendAdjustment: 0.0, // Adjustment for market trends (-0.1 to +0.1)
     renovationImpact: 0.0, // Impact of potential renovations (0 to 0.2)
+    schoolQualityWeight: 0.1, // Weight for school quality in valuation
+    propertyAgeDiscount: 0.0, // Discount factor based on property age (0 to 0.2)
+    floodRiskDiscount: 0.0, // Discount for flood risk areas (0 to 0.2)
+    appreciationRate: 0.03, // Annual appreciation rate projection (0.01 to 0.08)
   });
+  
+  // State for API update loading
+  const [updatingValuation, setUpdatingValuation] = useState(false);
+  
+  // Debounce timer for API calls
+  const apiRequestTimer = useRef(null);
 
   // Reference for the chart instance
   const chartRef = useRef(null);
@@ -73,10 +89,70 @@ const WhatIfAnalysis = ({ propertyId, initialValuation }) => {
   };
 
   /**
-   * Recalculates the property valuation based on adjusted parameters
-   * This uses a simplified model that you would replace with your actual valuation logic
+   * Fetches an updated valuation from the API based on the current parameters
    */
-  const recalculateValuation = () => {
+  const fetchUpdatedValuation = async () => {
+    if (!property || !propertyId) return;
+    
+    setUpdatingValuation(true);
+    
+    try {
+      // Build the request payload with property details and adjusted parameters
+      const payload = {
+        property_id: propertyId,
+        address: property.address,
+        // Include original property features
+        ...property.features_used,
+        // Include our adjusted parameters
+        cap_rate: parameters.capRate,
+        square_footage_weight: parameters.squareFootageWeight,
+        location_weight: parameters.locationWeight,
+        amenities_weight: parameters.amenitiesWeight,
+        market_trend_adjustment: parameters.marketTrendAdjustment,
+        renovation_impact: parameters.renovationImpact,
+        school_quality_weight: parameters.schoolQualityWeight,
+        property_age_discount: parameters.propertyAgeDiscount,
+        flood_risk_discount: parameters.floodRiskDiscount,
+        appreciation_rate: parameters.appreciationRate,
+        model_type: "enhanced_gis", // Use the most advanced model
+      };
+      
+      // Send request to what-if API endpoint
+      const response = await fetch('/api/what-if-valuation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`API request failed with status ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Update with the new valuation from the API
+      setAdjustedValuation(data.estimated_value);
+      
+      // Update the chart
+      updateChart(originalValuation, data.estimated_value);
+      
+      return data;
+    } catch (err) {
+      console.error('Error fetching updated valuation:', err);
+      // Fall back to client-side calculation if API fails
+      recalculateClientSide();
+    } finally {
+      setUpdatingValuation(false);
+    }
+  };
+
+  /**
+   * Recalculates the property valuation based on adjusted parameters
+   * This is a client-side fallback when the API is not available
+   */
+  const recalculateClientSide = () => {
     if (!property) return;
     
     // Base value from original valuation
@@ -86,7 +162,8 @@ const WhatIfAnalysis = ({ propertyId, initialValuation }) => {
     const { 
       square_feet = 2000, 
       location_score = 0.5, 
-      amenities_score = 0.5 
+      amenities_score = 0.5,
+      year_built = 2000
     } = property.features_used || {};
 
     // Calculate weighted contributions of each factor
@@ -103,9 +180,28 @@ const WhatIfAnalysis = ({ propertyId, initialValuation }) => {
     // Apply renovation impact
     const renovationAdjustment = parameters.renovationImpact * baseValue;
     
+    // Apply property age discount
+    const currentYear = new Date().getFullYear();
+    const propertyAge = currentYear - (year_built || 2000);
+    const ageDiscount = propertyAge * parameters.propertyAgeDiscount * 0.01 * baseValue;
+    
+    // Apply school quality adjustment
+    const schoolQualityAdjustment = parameters.schoolQualityWeight * 50000;
+    
+    // Apply flood risk discount
+    const floodRiskAdjustment = -parameters.floodRiskDiscount * baseValue;
+    
+    // Apply appreciation projection
+    const appreciationAdjustment = parameters.appreciationRate * baseValue;
+    
     // Calculate new valuation with all adjustments
-    // This is a simplified model - your actual calculation would be more sophisticated
-    let newValuation = baseValue * (1 + capRateAdjustment) + marketAdjustment + renovationAdjustment;
+    let newValuation = baseValue * (1 + capRateAdjustment) + 
+                       marketAdjustment + 
+                       renovationAdjustment +
+                       schoolQualityAdjustment + 
+                       floodRiskAdjustment - 
+                       ageDiscount +
+                       appreciationAdjustment;
     
     // Ensure the value doesn't go below zero
     newValuation = Math.max(newValuation, 0);
@@ -115,6 +211,24 @@ const WhatIfAnalysis = ({ propertyId, initialValuation }) => {
     
     // Update the chart with new data
     updateChart(baseValue, newValuation);
+  };
+  
+  /**
+   * Recalculates valuation - tries API first, falls back to client-side
+   */
+  const recalculateValuation = () => {
+    // Clear any pending API requests
+    if (apiRequestTimer.current) {
+      clearTimeout(apiRequestTimer.current);
+    }
+    
+    // Set a debounce timer for API requests (300ms)
+    apiRequestTimer.current = setTimeout(() => {
+      fetchUpdatedValuation().catch(() => {
+        // If API fails, fall back to client-side calculation
+        recalculateClientSide();
+      });
+    }, 300);
   };
 
   /**
@@ -226,15 +340,24 @@ const WhatIfAnalysis = ({ propertyId, initialValuation }) => {
     const { 
       square_feet = 2000, 
       location_score = 0.5, 
-      amenities_score = 0.5 
+      amenities_score = 0.5,
+      year_built = 2000,
+      school_quality = 0.7,
     } = property.features_used || {};
     
     // Calculate factor contributions
+    const currentYear = new Date().getFullYear();
+    const propertyAge = currentYear - (year_built || 2000);
+    
     const sqftContribution = square_feet * parameters.squareFootageWeight;
     const locationContribution = location_score * parameters.locationWeight * 100000;
     const amenitiesContribution = amenities_score * parameters.amenitiesWeight * 50000;
     const marketContribution = parameters.marketTrendAdjustment * originalValuation;
     const renovationContribution = parameters.renovationImpact * originalValuation;
+    const schoolQualityContribution = (school_quality || 0.7) * parameters.schoolQualityWeight * 50000;
+    const ageDiscountContribution = -(propertyAge * parameters.propertyAgeDiscount * 0.01 * originalValuation);
+    const floodRiskContribution = -(parameters.floodRiskDiscount * originalValuation);
+    const appreciationContribution = parameters.appreciationRate * originalValuation;
     
     // Create/update factors chart
     if (window.factorsChart) {
@@ -249,7 +372,11 @@ const WhatIfAnalysis = ({ propertyId, initialValuation }) => {
           'Location', 
           'Amenities', 
           'Market Trends', 
-          'Renovation Impact'
+          'Renovation Impact',
+          'School Quality',
+          'Property Age',
+          'Flood Risk',
+          'Appreciation'
         ],
         datasets: [{
           data: [
@@ -257,14 +384,22 @@ const WhatIfAnalysis = ({ propertyId, initialValuation }) => {
             locationContribution,
             amenitiesContribution,
             marketContribution,
-            renovationContribution
+            renovationContribution,
+            schoolQualityContribution,
+            ageDiscountContribution,
+            floodRiskContribution,
+            appreciationContribution
           ],
           backgroundColor: [
             'rgba(255, 99, 132, 0.7)',
             'rgba(54, 162, 235, 0.7)',
             'rgba(255, 206, 86, 0.7)',
             'rgba(75, 192, 192, 0.7)',
-            'rgba(153, 102, 255, 0.7)'
+            'rgba(153, 102, 255, 0.7)',
+            'rgba(255, 159, 64, 0.7)',
+            'rgba(201, 203, 207, 0.7)',
+            'rgba(0, 162, 235, 0.7)',
+            'rgba(0, 206, 86, 0.7)'
           ]
         }]
       },
@@ -279,9 +414,12 @@ const WhatIfAnalysis = ({ propertyId, initialValuation }) => {
             callbacks: {
               label: (context) => {
                 const value = context.raw;
-                const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                const percentage = Math.round((value / total) * 100);
-                return `${context.label}: $${value.toLocaleString()} (${percentage}%)`;
+                const total = context.dataset.data
+                  .filter(val => val > 0) // Filter out negative values for percentage calculation
+                  .reduce((a, b) => a + b, 0);
+                const percentage = Math.round((Math.abs(value) / total) * 100);
+                const sign = value < 0 ? '-' : '';
+                return `${context.label}: ${sign}$${Math.abs(value).toLocaleString()} (${percentage}%)`;
               }
             }
           }
@@ -509,6 +647,98 @@ const WhatIfAnalysis = ({ propertyId, initialValuation }) => {
                 </div>
               </div>
               
+              {/* School Quality Weight Slider */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  School Quality Weight: {(parameters.schoolQualityWeight * 100).toFixed(0)}%
+                </label>
+                <input
+                  type="range"
+                  name="schoolQualityWeight"
+                  min="0"
+                  max="0.3"
+                  step="0.01"
+                  value={parameters.schoolQualityWeight}
+                  onChange={handleParameterChange}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                />
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>0%</span>
+                  <span>30%</span>
+                </div>
+              </div>
+              
+              {/* Property Age Discount Slider */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Property Age Discount: {(parameters.propertyAgeDiscount * 100).toFixed(0)}%
+                </label>
+                <input
+                  type="range"
+                  name="propertyAgeDiscount"
+                  min="0"
+                  max="0.2"
+                  step="0.01"
+                  value={parameters.propertyAgeDiscount}
+                  onChange={handleParameterChange}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                />
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>0%</span>
+                  <span>20%</span>
+                </div>
+              </div>
+              
+              {/* Flood Risk Discount Slider */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Flood Risk Discount: {(parameters.floodRiskDiscount * 100).toFixed(0)}%
+                </label>
+                <input
+                  type="range"
+                  name="floodRiskDiscount"
+                  min="0"
+                  max="0.2"
+                  step="0.01"
+                  value={parameters.floodRiskDiscount}
+                  onChange={handleParameterChange}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                />
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>0%</span>
+                  <span>20%</span>
+                </div>
+              </div>
+              
+              {/* Appreciation Rate Slider */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Appreciation Rate: {(parameters.appreciationRate * 100).toFixed(1)}%
+                </label>
+                <input
+                  type="range"
+                  name="appreciationRate"
+                  min="0.01"
+                  max="0.08"
+                  step="0.001"
+                  value={parameters.appreciationRate}
+                  onChange={handleParameterChange}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                />
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>1%</span>
+                  <span>8%</span>
+                </div>
+              </div>
+              
+              {/* API Updating Indicator */}
+              {updatingValuation && (
+                <div className="flex items-center mb-4 text-blue-600">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 mr-2"></div>
+                  <span className="text-sm">Updating valuation...</span>
+                </div>
+              )}
+              
               {/* Reset Button */}
               <button
                 onClick={() => {
@@ -519,6 +749,10 @@ const WhatIfAnalysis = ({ propertyId, initialValuation }) => {
                     amenitiesWeight: 0.2,
                     marketTrendAdjustment: 0.0,
                     renovationImpact: 0.0,
+                    schoolQualityWeight: 0.1,
+                    propertyAgeDiscount: 0.0,
+                    floodRiskDiscount: 0.0,
+                    appreciationRate: 0.03,
                   });
                 }}
                 className="mt-4 px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500"
@@ -581,6 +815,34 @@ const WhatIfAnalysis = ({ propertyId, initialValuation }) => {
                   <h3 className="font-medium text-blue-600">Renovation Impact</h3>
                   <p className="text-sm text-gray-600">
                     Estimates the potential increase in property value from renovations or property improvements.
+                  </p>
+                </div>
+                <div>
+                  <h3 className="font-medium text-blue-600">School Quality Weight</h3>
+                  <p className="text-sm text-gray-600">
+                    Determines how much local school quality impacts property valuation. 
+                    Higher-rated school districts typically lead to increased property values.
+                  </p>
+                </div>
+                <div>
+                  <h3 className="font-medium text-blue-600">Property Age Discount</h3>
+                  <p className="text-sm text-gray-600">
+                    Applies a discount factor based on the property's age. Older properties 
+                    generally receive a larger discount due to expected maintenance and modernization needs.
+                  </p>
+                </div>
+                <div>
+                  <h3 className="font-medium text-blue-600">Flood Risk Discount</h3>
+                  <p className="text-sm text-gray-600">
+                    Accounts for potential value loss due to flood risk factors. Properties in flood zones
+                    may have lower valuations due to insurance requirements and potential damage risks.
+                  </p>
+                </div>
+                <div>
+                  <h3 className="font-medium text-blue-600">Appreciation Rate</h3>
+                  <p className="text-sm text-gray-600">
+                    Projects the expected annual appreciation rate for the property. This affects
+                    future value projections and investment potential calculations.
                   </p>
                 </div>
               </div>

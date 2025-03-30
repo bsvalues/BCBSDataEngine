@@ -1,0 +1,8 @@
+{
+  "name": "API",
+  "type": "web",
+  "command": "python run_api.py",
+  "restartOn": {
+    "files": ["./api.py", "./run_api.py", "./db/models.py", "./db/database.py", "./db/__init__.py", "./src/valuation.py", "./models.py"]
+  }
+}

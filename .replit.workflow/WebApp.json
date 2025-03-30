@@ -1,0 +1,8 @@
+{
+  "name": "WebApp",
+  "type": "web",
+  "command": "python app.py",
+  "restartOn": {
+    "files": ["./app.py", "./models.py", "./templates/*", "./static/*"]
+  }
+}

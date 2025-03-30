@@ -103,12 +103,27 @@ except ImportError as e:
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.secret_key = os.environ.get("SESSION_SECRET", "bcbs-valuation-dashboard-secret")
 
-# Configure the database, relative to the app instance folder
+# Configure the database
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     "pool_recycle": 300,
     "pool_pre_ping": True,
 }
+
+# Initialize SQLAlchemy with Flask app
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.orm import DeclarativeBase
+
+class Base(DeclarativeBase):
+    pass
+
+db = SQLAlchemy(model_class=Base)
+db.init_app(app)
+
+# Import and initialize models
+with app.app_context():
+    from models import Property, ValidationResult, PropertyValuation
+    db.create_all()
 
 @app.route('/')
 def index():

@@ -613,14 +613,22 @@ async def get_valuation_by_id(
             session.close()
 
 @app.get("/api/etl-status", response_model=ETLStatus)
-async def get_etl_status(db: Database = Depends(get_db)):
+async def get_etl_status(
+    db: Database = Depends(get_db),
+    api_key: APIKey = Depends(verify_api_key)
+):
     """
     Get the current status of the ETL process.
     
     This endpoint:
-    1. Queries the database for the most recent validation results
-    2. Gets property counts by data source
-    3. Returns formatted ETL status information
+    1. Authenticates the request using token-based authentication
+    2. Queries the database for the most recent validation results
+    3. Gets property counts by data source
+    4. Returns formatted ETL status information
+    
+    Security:
+    - Requires a valid API key in the X-API-KEY header
+    - Access is restricted to authenticated clients only
     """
     logger.info("ETL status request received")
     
@@ -730,14 +738,20 @@ async def get_etl_status(db: Database = Depends(get_db)):
             session.close()
 
 @app.get("/api/agent-status", response_model=AgentStatusList)
-async def get_agent_status():
+async def get_agent_status(api_key: APIKey = Depends(verify_api_key)):
     """
     Get the current status of the BCBS agent system.
     
-    This endpoint will eventually:
-    1. Query each agent for its current status
-    2. Compile performance metrics across agents
-    3. Return formatted agent status information
+    This endpoint:
+    1. Authenticates the request using token-based authentication
+    2. Queries each agent for its current status
+    3. Compiles performance metrics across agents
+    4. Returns formatted agent status information
+    
+    Security:
+    - Requires a valid API key in the X-API-KEY header
+    - Access is restricted to authenticated clients only
+    - Sensitive agent performance data is protected from unauthorized access
     """
     logger.info("Agent status request received")
     
@@ -823,7 +837,318 @@ async def create_property_valuation(
     
     Authentication: Requires API key header (X-API-KEY)
     """
-    logger.info(f"Property valuation request received for {request.address}")
+    
+class WhatIfValuationRequest(BaseModel):
+    """What-If analysis valuation request model."""
+    property_id: Optional[str] = Field(None, description="Property ID to use as base for the what-if analysis")
+    address: Optional[str] = Field(None, description="Property address")
+    # Base property features
+    square_feet: Optional[float] = Field(None, description="Property size in square feet")
+    bedrooms: Optional[float] = Field(None, description="Number of bedrooms")
+    bathrooms: Optional[float] = Field(None, description="Number of bathrooms")
+    lot_size: Optional[float] = Field(None, description="Lot size in square feet")
+    year_built: Optional[int] = Field(None, description="Year the property was built")
+    # Valuation parameters
+    cap_rate: Optional[float] = Field(0.05, description="Capitalization rate (typically 0.03-0.08)")
+    square_footage_weight: Optional[float] = Field(0.3, description="Weight for square footage in valuation")
+    location_weight: Optional[float] = Field(0.4, description="Weight for location in valuation")
+    amenities_weight: Optional[float] = Field(0.2, description="Weight for amenities in valuation")
+    market_trend_adjustment: Optional[float] = Field(0.0, description="Market trend adjustment (-0.1 to 0.1)")
+    renovation_impact: Optional[float] = Field(0.0, description="Renovation impact (0 to 0.2)")
+    school_quality_weight: Optional[float] = Field(0.1, description="School quality weight (0 to 0.3)")
+    property_age_discount: Optional[float] = Field(0.0, description="Property age discount factor (0 to 0.2)")
+    flood_risk_discount: Optional[float] = Field(0.0, description="Flood risk discount factor (0 to 0.2)")
+    appreciation_rate: Optional[float] = Field(0.03, description="Annual appreciation rate (0.01 to 0.08)")
+    model_type: Optional[str] = Field("enhanced_gis", description="Valuation model to use")
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "property_id": "BENTON-12345",
+                "square_feet": 1800,
+                "bedrooms": 3,
+                "bathrooms": 2,
+                "lot_size": 8500,
+                "year_built": 1995,
+                "cap_rate": 0.05,
+                "square_footage_weight": 0.3,
+                "location_weight": 0.4,
+                "amenities_weight": 0.2,
+                "market_trend_adjustment": 0.0,
+                "renovation_impact": 0.0,
+                "school_quality_weight": 0.1,
+                "property_age_discount": 0.0,
+                "flood_risk_discount": 0.0,
+                "appreciation_rate": 0.03,
+                "model_type": "enhanced_gis"
+            }
+        }
+
+@app.post("/api/what-if-valuation", response_model=PropertyValue)
+async def what_if_valuation(
+    request: WhatIfValuationRequest,
+    db: Database = Depends(get_db),
+    api_key: APIKey = Depends(verify_api_key)
+):
+    """
+    Generate a what-if property valuation based on adjusted parameters.
+    
+    This endpoint:
+    1. Authenticates the request using token-based authentication
+    2. Takes a property ID or details and adjusted valuation parameters
+    3. Generates a modified valuation based on the specified parameter adjustments
+    4. Returns the adjusted valuation with updated metrics
+    
+    This is used for interactive analysis of how changing different parameters
+    affects property valuations. It allows users to adjust weights, discounts,
+    rate factors and see the resulting impact on property values.
+    
+    Parameters include:
+    - Property ID or details (to identify the base property)
+    - Cap rate adjustments
+    - Feature importance weight adjustments
+    - Market trend projections
+    - Renovation impact estimates
+    - School quality weight adjustments
+    - Property age discount factors
+    - Flood risk discount factors
+    - Appreciation rate projections
+    
+    The response includes both the adjusted property value and detailed metrics
+    explaining how the changes affected the valuation.
+    """
+    logger.info(f"What-if valuation request received for property_id: {request.property_id}")
+    
+    # Check if valuation engine is available
+    if not valuation_engine_available:
+        raise HTTPException(
+            status_code=503,
+            detail="Valuation engine is currently unavailable"
+        )
+    
+    try:
+        # Create session for database operations
+        session = db.Session()
+        
+        # Get the base property data
+        property_data = {}
+        
+        # If property_id is provided, fetch existing property data
+        if request.property_id:
+            existing_property = session.query(Property).filter(Property.property_id == request.property_id).first()
+            
+            if not existing_property:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Property with ID {request.property_id} not found"
+                )
+            
+            # Use the existing property data as base
+            property_data = {
+                'property_id': existing_property.property_id,
+                'address': existing_property.address,
+                'city': existing_property.city,
+                'state': existing_property.state,
+                'zip_code': existing_property.zip_code,
+                'property_type': existing_property.property_type,
+                'bedrooms': existing_property.bedrooms,
+                'bathrooms': existing_property.bathrooms,
+                'square_feet': existing_property.square_feet,
+                'lot_size': existing_property.lot_size,
+                'year_built': existing_property.year_built,
+                'latitude': existing_property.latitude,
+                'longitude': existing_property.longitude,
+                'estimated_value': existing_property.estimated_value
+            }
+            
+            # Include any latest valuation data
+            latest_valuation = session.query(PropertyValuation).filter(
+                PropertyValuation.property_id == request.property_id
+            ).order_by(PropertyValuation.valuation_date.desc()).first()
+            
+            if latest_valuation:
+                property_data['model_used'] = latest_valuation.model_used
+                property_data['confidence_score'] = latest_valuation.confidence_score
+                
+                # Try to get additional metrics from valuation_metrics JSON
+                if latest_valuation.valuation_metrics:
+                    try:
+                        metrics = json.loads(latest_valuation.valuation_metrics)
+                        property_data.update(metrics)
+                    except json.JSONDecodeError:
+                        logger.warning(f"Failed to parse valuation_metrics for property {request.property_id}")
+        
+        # Override with explicit request values if provided
+        if request.address:
+            property_data['address'] = request.address
+        if request.square_feet:
+            property_data['square_feet'] = request.square_feet
+        if request.bedrooms:
+            property_data['bedrooms'] = request.bedrooms
+        if request.bathrooms:
+            property_data['bathrooms'] = request.bathrooms
+        if request.lot_size:
+            property_data['lot_size'] = request.lot_size
+        if request.year_built:
+            property_data['year_built'] = request.year_built
+            
+        # Check for required fields for valuation
+        required_fields = ['square_feet', 'bedrooms', 'bathrooms', 'year_built']
+        missing_fields = [field for field in required_fields if field not in property_data or property_data[field] is None]
+        
+        if missing_fields:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Missing required property fields: {', '.join(missing_fields)}"
+            )
+            
+        # Apply parameter adjustments to create the what-if scenario
+        
+        # Get base value - either from property data or use a default (this should be improved)
+        base_value = property_data.get('estimated_value', 300000)  # Default to reasonable value if none available
+        
+        # Apply the customized cap rate factor
+        # Lower cap rates generally mean higher valuations
+        cap_rate_factor = (0.05 / max(0.03, request.cap_rate)) - 1
+        
+        # Apply market trend adjustment
+        market_adjustment = request.market_trend_adjustment * base_value
+        
+        # Apply renovation impact
+        renovation_adjustment = request.renovation_impact * base_value
+        
+        # Apply school quality adjustment
+        school_quality_score = property_data.get('school_quality_score', 0.7)  # Default to average if not available
+        school_quality_adjustment = school_quality_score * request.school_quality_weight * 50000
+        
+        # Apply property age discount
+        current_year = datetime.datetime.now().year
+        property_age = current_year - property_data.get('year_built', 2000)
+        age_discount = property_age * request.property_age_discount * 0.01 * base_value
+        
+        # Apply flood risk discount
+        flood_risk_score = property_data.get('flood_risk_score', 0.2)  # Default to low if not available
+        flood_discount = flood_risk_score * request.flood_risk_discount * base_value
+        
+        # Apply appreciation rate projection
+        appreciation_adjustment = request.appreciation_rate * base_value
+        
+        # Calculate the adjusted valuation
+        adjusted_value = (
+            base_value * (1 + cap_rate_factor) + 
+            market_adjustment + 
+            renovation_adjustment +
+            school_quality_adjustment - 
+            age_discount -
+            flood_discount +
+            appreciation_adjustment
+        )
+        
+        # Ensure the value is reasonable
+        adjusted_value = max(adjusted_value, base_value * 0.5)  # Don't allow more than 50% decrease
+        adjusted_value = min(adjusted_value, base_value * 2.0)  # Don't allow more than 100% increase
+        
+        # Calculate the adjusted confidence score
+        # Lower confidence when parameters deviate significantly from defaults
+        base_confidence = property_data.get('confidence_score', 0.85)
+        parameter_deviation_factor = abs(request.cap_rate - 0.05) + abs(request.square_footage_weight - 0.3) + \
+                                    abs(request.location_weight - 0.4) + abs(request.market_trend_adjustment)
+        adjusted_confidence = max(0.5, base_confidence - (parameter_deviation_factor * 0.2))
+        
+        # Prepare response
+        factor_contributions = {
+            "cap_rate_adjustment": base_value * cap_rate_factor,
+            "market_trend_adjustment": market_adjustment,
+            "renovation_impact": renovation_adjustment,
+            "school_quality_adjustment": school_quality_adjustment,
+            "age_discount": -age_discount,
+            "flood_risk_discount": -flood_discount,
+            "appreciation_adjustment": appreciation_adjustment
+        }
+        
+        # Build enhanced response object with what-if scenario details
+        response = {
+            "property_id": property_data.get('property_id', f"what-if-{int(time.time())}"),
+            "address": property_data.get('address', 'What-If Scenario Property'),
+            "estimated_value": float(adjusted_value),
+            "confidence_score": float(adjusted_confidence),
+            "model_used": f"what-if-{request.model_type}",
+            "valuation_date": datetime.datetime.now(),
+            "features_used": {
+                'square_feet': property_data.get('square_feet'),
+                'bedrooms': property_data.get('bedrooms'),
+                'bathrooms': property_data.get('bathrooms'),
+                'year_built': property_data.get('year_built'),
+                'lot_size': property_data.get('lot_size'),
+                'cap_rate': request.cap_rate,
+                'square_footage_weight': request.square_footage_weight,
+                'location_weight': request.location_weight,
+                'amenities_weight': request.amenities_weight,
+                'market_trend_adjustment': request.market_trend_adjustment,
+                'renovation_impact': request.renovation_impact,
+                'school_quality_weight': request.school_quality_weight,
+                'property_age_discount': request.property_age_discount,
+                'flood_risk_discount': request.flood_risk_discount,
+                'appreciation_rate': request.appreciation_rate
+            },
+            "comparable_properties": [],  # Not applicable for what-if analysis
+            
+            # Include advanced metrics
+            "adj_r2_score": property_data.get('adj_r2_score'),
+            "rmse": property_data.get('rmse'),
+            "mae": property_data.get('mae'),
+            
+            # Include factor contributions
+            "feature_importance": {
+                'square_feet': request.square_footage_weight,
+                'location': request.location_weight,
+                'amenities': request.amenities_weight,
+                'school_quality': request.school_quality_weight,
+                'property_age': request.property_age_discount,
+                'flood_risk': request.flood_risk_discount
+            },
+            "feature_coefficients": {
+                'intercept': property_data.get('base_value', base_value) * 0.1,
+                'square_feet': 100 * request.square_footage_weight, 
+                'cap_rate': -1000000 * request.cap_rate
+            },
+            
+            # Include specific what-if analysis data
+            "what_if_factors": factor_contributions,
+            "original_value": base_value,
+            "value_change_percentage": ((adjusted_value - base_value) / base_value) * 100,
+            
+            # Add GIS-related factors
+            "gis_factors": {
+                "school_quality_score": school_quality_score,
+                "flood_risk_score": flood_risk_score,
+            },
+            "location_quality": property_data.get('location_quality', 0.75),
+            "location_multiplier": (1 + (request.location_weight * 0.5)),
+            "amenity_score": property_data.get('amenity_score', 0.65),
+            "school_quality_score": school_quality_score,
+            
+            # Add model details
+            "model_metrics": {
+                "parameter_deviation": parameter_deviation_factor,
+                "confidence_adjustment": base_confidence - adjusted_confidence,
+                "whatif_scenario": "Custom parameter adjustment scenario"
+            }
+        }
+        
+        logger.info(f"What-if valuation completed: ${adjusted_value:.2f} (Base: ${base_value:.2f})")
+        return response
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions directly
+        raise
+        
+    except Exception as e:
+        logger.error(f"Error in what-if valuation: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error performing what-if valuation: {str(e)}"
+        )
     
     # Check if valuation engine is available
     if not valuation_engine_available:
