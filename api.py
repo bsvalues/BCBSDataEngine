@@ -1,6 +1,9 @@
 """
 FastAPI implementation for the BCBS_Values real estate valuation API.
 This module provides HTTP endpoints for property valuation, ETL status, and agent status.
+
+This updated version includes advanced regression metrics and GIS adjustments 
+for more comprehensive property valuation reports.
 """
 import datetime
 import json
@@ -8,12 +11,14 @@ import os
 import time
 import logging
 import pandas as pd
-from typing import Dict, List, Optional, Union
+import numpy as np
+from typing import Dict, List, Optional, Union, Any
 
 from fastapi import FastAPI, HTTPException, Query, Path, Depends, Security, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security.api_key import APIKeyHeader, APIKey
 from pydantic import BaseModel, Field
+from fastapi.responses import JSONResponse
 
 # Import database and models
 from db.database import Database
@@ -157,6 +162,24 @@ class PropertyValue(BaseModel):
     valuation_date: datetime.datetime = Field(..., description="Date when valuation was performed")
     features_used: Dict[str, Union[float, str]] = Field(..., description="Features used in valuation")
     comparable_properties: Optional[List[Dict]] = Field(None, description="Similar properties used for comparison")
+    
+    # Advanced model metrics
+    adj_r2_score: Optional[float] = Field(None, description="Adjusted R-squared score for the model")
+    rmse: Optional[float] = Field(None, description="Root Mean Squared Error of the model")
+    mae: Optional[float] = Field(None, description="Mean Absolute Error of the model")
+    feature_importance: Optional[Dict[str, float]] = Field(None, description="Feature importance scores")
+    feature_coefficients: Optional[Dict[str, float]] = Field(None, description="Model coefficients for features")
+    p_values: Optional[Dict[str, float]] = Field(None, description="Statistical significance (p-values) for features")
+    
+    # GIS adjustment factors
+    gis_factors: Optional[Dict[str, Union[float, str]]] = Field(None, description="GIS-based adjustment factors")
+    location_quality: Optional[float] = Field(None, description="Location quality score based on GIS data")
+    location_multiplier: Optional[float] = Field(None, description="Value multiplier based on location")
+    amenity_score: Optional[float] = Field(None, description="Score based on proximity to amenities")
+    school_quality_score: Optional[float] = Field(None, description="Score based on school quality")
+    
+    # Model training and validation metrics
+    model_metrics: Optional[Dict[str, Union[float, str]]] = Field(None, description="Additional model performance metrics")
 
 class ETLStatus(BaseModel):
     """ETL process status response model."""
@@ -243,13 +266,22 @@ async def get_valuations(
     db: Database = Depends(get_db)
 ):
     """
-    Get property valuations based on specified criteria.
+    Get property valuations based on specified criteria with advanced analytics metrics.
     
     This endpoint connects to the database to:
     1. Query database for properties matching criteria
     2. Get the most recent property valuations for each property
     3. Filter results based on request parameters
-    4. Return formatted valuation results
+    4. Return formatted valuation results with comprehensive metrics
+    
+    The response includes a list of property valuations with detailed analytics:
+    - Basic property information and estimated values
+    - Advanced regression metrics when available
+    - Feature importance and statistical significance
+    - GIS adjustment factors for location-based valuation
+    - Model performance metrics and confidence indicators
+    
+    Use the filters to narrow down results by value range or property type.
     """
     logger.info(f"Valuation request received with limit={limit}, min_value={min_value}, max_value={max_value}")
     
@@ -340,8 +372,19 @@ async def get_valuations(
                     if hasattr(property, feature):
                         features_used[feature] = getattr(property, feature)
             
-            # Build the response object
-            valuations.append({
+            # Extract advanced model outputs from raw_model_outputs if available
+            advanced_metrics = {}
+            if hasattr(valuation, 'raw_model_outputs') and valuation.raw_model_outputs:
+                try:
+                    if isinstance(valuation.raw_model_outputs, str):
+                        advanced_metrics = json.loads(valuation.raw_model_outputs)
+                    else:
+                        advanced_metrics = valuation.raw_model_outputs
+                except json.JSONDecodeError:
+                    logger.warning(f"Failed to parse raw_model_outputs: {valuation.raw_model_outputs}")
+                
+            # Build enhanced response object with advanced metrics
+            valuation_response = {
                 "property_id": str(property.id),
                 "address": f"{property.address}, {property.city}, {property.state} {property.zip_code}",
                 "estimated_value": valuation.estimated_value,
@@ -349,8 +392,34 @@ async def get_valuations(
                 "model_used": valuation.model_name or "advanced_property_valuation",
                 "valuation_date": valuation.valuation_date,
                 "features_used": features_used,
-                "comparable_properties": comparables
-            })
+                "comparable_properties": comparables,
+                
+                # Add advanced model metrics if available from raw_model_outputs
+                "adj_r2_score": float(advanced_metrics.get('adj_r2_score', 0.0)) if advanced_metrics.get('adj_r2_score') is not None else None,
+                "rmse": float(advanced_metrics.get('rmse', 0.0)) if advanced_metrics.get('rmse') is not None else None,
+                "mae": float(advanced_metrics.get('mae', 0.0)) if advanced_metrics.get('mae') is not None else None,
+                
+                # Add feature importance and coefficients
+                "feature_importance": feature_importance,
+                "feature_coefficients": advanced_metrics.get('feature_coefficients', {}),
+                
+                # Add p-values if available (for statistical significance)
+                "p_values": advanced_metrics.get('p_values', {}),
+                
+                # Add GIS-related factors if available
+                "gis_factors": advanced_metrics.get('gis_factors', {}),
+                "location_quality": float(advanced_metrics.get('location_quality', 0.0)) if advanced_metrics.get('location_quality') is not None else None,
+                "location_multiplier": getattr(valuation, 'location_factor', None),
+                
+                # Add model metrics
+                "model_metrics": {
+                    "model_r2_score": getattr(valuation, 'model_r2_score', None),
+                    "prediction_interval": advanced_metrics.get('prediction_interval', [None, None]),
+                    "model_parameters": advanced_metrics.get('model_params', {})
+                }
+            }
+            
+            valuations.append(valuation_response)
         
         return valuations
     
@@ -369,12 +438,21 @@ async def get_valuation_by_id(
     db: Database = Depends(get_db)
 ):
     """
-    Get valuation for a specific property by ID.
+    Get detailed valuation for a specific property by ID with comprehensive analytics.
     
     This endpoint:
     1. Queries the database for the specific property
-    2. Retrieves the latest valuation for that property
-    3. Returns detailed valuation with confidence metrics
+    2. Retrieves the latest valuation for that property with all stored metrics
+    3. Returns complete valuation with:
+       - Property details and basic estimated value
+       - Advanced regression metrics (adj_r2_score, RMSE, MAE)
+       - Feature importance and coefficients with statistical significance
+       - GIS adjustment factors and location quality scores
+       - Prediction intervals and confidence metrics
+       - Model parameters and configuration details
+    
+    The response provides both the estimated value and a comprehensive set of 
+    metrics explaining the valuation's accuracy, reliability, and key factors.
     """
     logger.info(f"Valuation request for property ID: {property_id}")
     
@@ -455,7 +533,18 @@ async def get_valuation_by_id(
                 if hasattr(property, feature):
                     features_used[feature] = getattr(property, feature)
         
-        # Build the response object
+        # Extract advanced model outputs from raw_model_outputs if available
+        advanced_metrics = {}
+        if valuation.raw_model_outputs:
+            try:
+                if isinstance(valuation.raw_model_outputs, str):
+                    advanced_metrics = json.loads(valuation.raw_model_outputs)
+                else:
+                    advanced_metrics = valuation.raw_model_outputs
+            except json.JSONDecodeError:
+                logger.warning(f"Failed to parse raw_model_outputs: {valuation.raw_model_outputs}")
+                
+        # Build enhanced response object with advanced metrics
         result = {
             "property_id": str(property.id),
             "address": f"{property.address}, {property.city}, {property.state} {property.zip_code}",
@@ -464,7 +553,31 @@ async def get_valuation_by_id(
             "model_used": valuation.model_name or "advanced_property_valuation",
             "valuation_date": valuation.valuation_date,
             "features_used": features_used,
-            "comparable_properties": comparables
+            "comparable_properties": comparables,
+            
+            # Add advanced model metrics if available from raw_model_outputs
+            "adj_r2_score": float(advanced_metrics.get('adj_r2_score', 0.0)) if advanced_metrics.get('adj_r2_score') is not None else None,
+            "rmse": float(advanced_metrics.get('rmse', 0.0)) if advanced_metrics.get('rmse') is not None else None,
+            "mae": float(advanced_metrics.get('mae', 0.0)) if advanced_metrics.get('mae') is not None else None,
+            
+            # Add feature importance and coefficients
+            "feature_importance": feature_importance,
+            "feature_coefficients": advanced_metrics.get('feature_coefficients', {}),
+            
+            # Add p-values if available (for statistical significance)
+            "p_values": advanced_metrics.get('p_values', {}),
+            
+            # Add GIS-related factors if available
+            "gis_factors": advanced_metrics.get('gis_factors', {}),
+            "location_quality": float(advanced_metrics.get('location_quality', 0.0)) if advanced_metrics.get('location_quality') is not None else None,
+            "location_multiplier": valuation.location_factor,
+            
+            # Add model metrics
+            "model_metrics": {
+                "model_r2_score": valuation.model_r2_score,
+                "prediction_interval": advanced_metrics.get('prediction_interval', [None, None]),
+                "model_parameters": advanced_metrics.get('model_params', {})
+            }
         }
         
         return result
@@ -668,12 +781,27 @@ async def create_property_valuation(
     db: Database = Depends(get_db)
 ):
     """
-    Generate a property valuation based on provided property details.
+    Generate a property valuation based on provided property details with advanced analytics.
     
     This endpoint:
     1. Takes property details as input
-    2. Uses the valuation engine to estimate the property value
-    3. Returns the valuation with confidence metrics
+    2. Uses the enhanced valuation engine to estimate the property value
+    3. Returns the valuation with comprehensive metrics including:
+       - Advanced regression metrics (adj_r2_score, RMSE, MAE)
+       - Feature importance and coefficients
+       - Statistical significance measures (p-values)
+       - GIS adjustment factors (location quality, amenity scores)
+       - Model configuration and validation metrics
+    
+    The response includes both basic property value estimates and detailed
+    model metrics to explain how the valuation was derived and its confidence level.
+    
+    Advanced models available via model_type parameter:
+    - basic: Simple linear regression (fastest)
+    - advanced_linear: Multiple regression with feature engineering
+    - advanced_lightgbm: Gradient boosting with LightGBM
+    - advanced_ensemble: Ensemble of linear and LightGBM models (most accurate)
+    - enhanced_gis: Enhanced location-based valuation with GIS features
     
     Authentication: Requires API key header (X-API-KEY)
     """
@@ -865,7 +993,7 @@ async def create_property_valuation(
             if 'comparable_properties' in valuation_result:
                 comparable_properties = valuation_result['comparable_properties']
                 
-            # Build response object
+            # Build enhanced response object with advanced metrics
             response = {
                 "property_id": "temp-" + str(int(time.time())),
                 "address": f"{request.address or 'Custom Property'}, {request.city or 'Richland'}, {request.state} {request.zip_code or '99352'}",
@@ -874,7 +1002,37 @@ async def create_property_valuation(
                 "model_used": model_used,
                 "valuation_date": datetime.datetime.now(),
                 "features_used": features_used,
-                "comparable_properties": comparable_properties
+                "comparable_properties": comparable_properties,
+                
+                # Add advanced model metrics if available
+                "adj_r2_score": float(valuation_result.get('adj_r2_score', 0.0)) if valuation_result.get('adj_r2_score') is not None else None,
+                "rmse": float(valuation_result.get('rmse', 0.0)) if valuation_result.get('rmse') is not None else None,
+                "mae": float(valuation_result.get('mae', 0.0)) if valuation_result.get('mae') is not None else None,
+                
+                # Add feature importance and coefficients
+                "feature_importance": valuation_result.get('feature_importance', {}),
+                "feature_coefficients": valuation_result.get('feature_coefficients', {}),
+                
+                # Add p-values if available (for statistical significance)
+                "p_values": valuation_result.get('p_values', {}),
+                
+                # Add GIS-related factors if available
+                "gis_factors": valuation_result.get('gis_factors', {}),
+                "location_quality": float(valuation_result.get('location_quality', 0.0)) if valuation_result.get('location_quality') is not None else None,
+                "location_multiplier": float(valuation_result.get('location_multiplier', 0.0)) if valuation_result.get('location_multiplier') is not None else None,
+                "amenity_score": float(valuation_result.get('amenity_score', 0.0)) if valuation_result.get('amenity_score') is not None else None,
+                "school_quality_score": float(valuation_result.get('school_quality_score', 0.0)) if valuation_result.get('school_quality_score') is not None else None,
+                
+                # Add additional model metrics as a nested dictionary
+                "model_metrics": {
+                    "training_samples": valuation_result.get('training_samples', 0),
+                    "test_samples": valuation_result.get('test_samples', 0),
+                    "cross_validation_score": valuation_result.get('cross_val_score', 0.0),
+                    "explained_variance": valuation_result.get('explained_variance', 0.0),
+                    "normalization_method": valuation_result.get('normalization_method', 'standard'),
+                    "feature_selection_method": valuation_result.get('feature_selection_method', 'auto'),
+                    "model_parameters": valuation_result.get('model_params', {})
+                }
             }
             
             # Save the valuation to the database if we have all required data
@@ -911,7 +1069,7 @@ async def create_property_valuation(
                     # Update the property_id in the response
                     response["property_id"] = str(property_obj.id)
                     
-                    # Create a new valuation record
+                    # Create an enhanced valuation record with additional metrics
                     valuation_obj = PropertyValuation(
                         property_id=property_obj.id,
                         valuation_date=datetime.datetime.now(),
@@ -920,15 +1078,45 @@ async def create_property_valuation(
                         model_name=model_used,
                         model_version='1.0',
                         model_r2_score=confidence_score,
-                        feature_importance=json.dumps(feature_importance),
+                        feature_importance=json.dumps(valuation_result.get('feature_importance', {})),
                         comparable_properties=json.dumps(comparable_properties) if comparable_properties else None
                     )
+                    
+                    # Add raw model outputs with all advanced metrics for future reference
+                    # This allows the system to retrieve comprehensive model details later
+                    raw_outputs = {
+                        'adj_r2_score': valuation_result.get('adj_r2_score'),
+                        'rmse': valuation_result.get('rmse'),
+                        'mae': valuation_result.get('mae'),
+                        'p_values': valuation_result.get('p_values'),
+                        'feature_coefficients': valuation_result.get('feature_coefficients'),
+                        'cross_val_scores': valuation_result.get('cross_val_scores'),
+                        'gis_factors': valuation_result.get('gis_factors'),
+                        'model_params': valuation_result.get('model_params'),
+                        'prediction_interval': [
+                            valuation_result.get('prediction_interval_low'),
+                            valuation_result.get('prediction_interval_high')
+                        ]
+                    }
+                    valuation_obj.raw_model_outputs = json.dumps(raw_outputs)
                     
                     # Add location factors if available
                     if 'location_factor' in valuation_result:
                         valuation_obj.location_factor = valuation_result['location_factor']
                     if 'size_factor' in valuation_result:
                         valuation_obj.size_factor = valuation_result['size_factor']
+                    
+                    # Store additional factors if available
+                    if 'condition_factor' in valuation_result:
+                        valuation_obj.condition_factor = valuation_result['condition_factor']
+                    if 'market_factor' in valuation_result:
+                        valuation_obj.market_factor = valuation_result['market_factor']
+                        
+                    # Record prediction intervals if available
+                    if 'prediction_interval_low' in valuation_result:
+                        valuation_obj.prediction_interval_low = valuation_result['prediction_interval_low']
+                    if 'prediction_interval_high' in valuation_result:
+                        valuation_obj.prediction_interval_high = valuation_result['prediction_interval_high']
                         
                     session.add(valuation_obj)
                     session.commit()

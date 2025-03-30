@@ -1,0 +1,8 @@
+{
+  "entrypoint": "./test_enhanced_api.sh",
+  "displayName": "Test Enhanced API",
+  "icon": "🧪",
+  "environment": "bash",
+  "onStartPort": false,
+  "onStartMessage": "Starting enhanced API tests..."
+}

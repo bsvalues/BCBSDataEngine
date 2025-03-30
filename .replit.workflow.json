@@ -24,6 +24,22 @@
         "environment": {
           "enabledBy": "environment"
         }
+      },
+      {
+        "name": "EnhancedAPI",
+        "title": "Enhanced API (Port 8000)",
+        "description": "Enhanced API with advanced metrics and GIS features",
+        "environment": {
+          "enabledBy": "environment"
+        }
+      },
+      {
+        "name": "TestEnhancedAPI",
+        "title": "Test Enhanced API",
+        "description": "Test script for the enhanced valuation API",
+        "environment": {
+          "enabledBy": "environment"
+        }
       }
     ]
   }

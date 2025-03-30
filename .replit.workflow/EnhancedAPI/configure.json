@@ -1,0 +1,9 @@
+{
+  "entrypoint": "python api.py",
+  "displayName": "Enhanced API Server",
+  "icon": "🚀",
+  "port": 8000,
+  "env": {
+    "BCBS_VALUES_API_KEY": "test_api_key_1234"
+  }
+}
