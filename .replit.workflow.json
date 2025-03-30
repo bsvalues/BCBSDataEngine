@@ -1,25 +1,6 @@
 {
   "workflows": [
-    {
-      "name": "API",
-      "path": ".replit.workflow/API.json",
-      "environment": "python3"
-    },
-    {
-      "name": "WebApp",
-      "path": ".replit.workflow/WebApp.json",
-      "environment": "python3"
-    },
-    {
-      "name": "ValuationAPI",
-      "path": ".replit.workflow/ValuationAPI.json",
-      "environment": "python3"
-    },
-    {
-      "name": "EnhancedAPI",
-      "path": ".replit.workflow/EnhancedAPI.json",
-      "environment": "python3"
-    }
-  ],
-  "autosaves": ["*.py", "*.js", "*.html", "*.css", "*.json"]
+    "WebApp",
+    "API"
+  ]
 }

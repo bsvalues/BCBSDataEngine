@@ -1,18 +1,14 @@
 {
-  "name": "WebApp",
-  "run_command": "python -c \"import os; from app import app; app.run(host='0.0.0.0', port=5002, debug=True)\"",
-  "entrypoint": "app.py",
-  "language": "python3",
-  "environment": "python3",
-  "ports": {
-    "5002": {
-      "name": "Web UI",
-      "description": "BCBS Values Web Application"
-    }
+  "commandName": "WebApp",
+  "runCommands": ["python3 start_webapp.py"],
+  "displayName": "Web Application",
+  "restartOn": {
+    "files": ["start_webapp.py", "templates/**", "static/**"]
   },
-  "secrets": {
-    "SESSION_SECRET": "Session secret for securing user sessions"
+  "env": {
+    "FLASK_APP": "start_webapp.py",
+    "FLASK_ENV": "development",
+    "FLASK_DEBUG": "1"
   },
-  "hidden": false,
-  "exec_mode": "terminal"
+  "port": 5002
 }

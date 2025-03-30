@@ -1,18 +1,10 @@
 {
-  "name": "API",
-  "run_command": "./start_api_server.sh",
-  "entrypoint": "api.py",
-  "language": "python3",
-  "environment": "python3",
-  "ports": {
-    "5000": {
-      "name": "API",
-      "description": "BCBS Values RESTful API"
-    }
+  "commandName": "API",
+  "runCommands": ["python3 -m uvicorn api:app --host 0.0.0.0 --port 5000"],
+  "displayName": "API Server",
+  "restartOn": {
+    "files": ["api.py", "src/**"]
   },
-  "secrets": {
-    "BCBS_VALUES_API_KEY": "Production API key for authentication"
-  },
-  "hidden": false,
-  "exec_mode": "terminal"
+  "env": {},
+  "port": 5000
 }

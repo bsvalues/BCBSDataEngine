@@ -1,14 +1,8 @@
-import React, { useState, useEffect, useRef, useMemo, memo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
 import { Line, Bar, Pie } from 'react-chartjs-2';
 
-// Custom BarChart component with memoization to prevent excessive re-renders
-const BarChart = memo(({ data, options }) => {
-  return <Bar data={data} options={options} />;
-}, (prevProps, nextProps) => {
-  // Deep comparison for data and options to prevent unnecessary re-renders
-  return JSON.stringify(prevProps) === JSON.stringify(nextProps);
-});
+// Direct use of react-chartjs-2 Bar component without custom wrapper to avoid infinite render issues
 
 // Register Chart.js components
 ChartJS.register(
@@ -564,46 +558,48 @@ const Dashboard = () => {
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="text-lg font-semibold mb-4">Value Distribution</h3>
               <div className="h-80">
-                {useMemo(() => (
-                  <BarChart 
-                    data={preparedChartData.valueDistribution}
-                    options={{
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      plugins: {
-                        legend: {
-                          position: 'top',
+                {preparedChartData && preparedChartData.valueDistribution && 
+                  React.useMemo(() => (
+                    <Bar 
+                      data={preparedChartData.valueDistribution}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                          legend: {
+                            position: 'top',
+                          },
+                          title: {
+                            display: true,
+                            text: 'Property Value Distribution'
+                          },
+                          tooltip: {
+                            callbacks: {
+                              label: function(context) {
+                                return `${context.dataset.label}: ${context.raw} properties`;
+                              }
+                            }
+                          }
                         },
-                        title: {
-                          display: true,
-                          text: 'Property Value Distribution'
-                        },
-                        tooltip: {
-                          callbacks: {
-                            label: function(context) {
-                              return `${context.dataset.label}: ${context.raw} properties`;
+                        scales: {
+                          y: {
+                            beginAtZero: true,
+                            title: {
+                              display: true,
+                              text: 'Number of Properties'
+                            }
+                          },
+                          x: {
+                            title: {
+                              display: true,
+                              text: 'Value Range'
                             }
                           }
                         }
-                      },
-                      scales: {
-                        y: {
-                          beginAtZero: true,
-                          title: {
-                            display: true,
-                            text: 'Number of Properties'
-                          }
-                        },
-                        x: {
-                          title: {
-                            display: true,
-                            text: 'Value Range'
-                          }
-                        }
-                      }
-                    }}
-                  />
-                ), [preparedChartData.valueDistribution])}
+                      }}
+                    />
+                  ), [preparedChartData.valueDistribution])
+                }
               </div>
             </div>
             
@@ -611,66 +607,68 @@ const Dashboard = () => {
             <div className="bg-white rounded-lg shadow-md p-6">
               <h3 className="text-lg font-semibold mb-4">Neighborhood Comparison</h3>
               <div className="h-80">
-                {useMemo(() => (
-                <BarChart 
-                  data={preparedChartData.neighborhoodComparison}
-                  options={{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                      legend: {
-                        position: 'top',
-                      },
-                      title: {
-                        display: true,
-                        text: 'Property Count and Values by Neighborhood'
-                      },
-                      tooltip: {
-                        callbacks: {
-                          label: function(context) {
-                            const label = context.dataset.label;
-                            const value = context.raw;
-                            return label === 'Average Value' 
-                              ? `${label}: ${formatCurrency(value)}` 
-                              : `${label}: ${value}`;
+                {preparedChartData && preparedChartData.neighborhoodComparison && 
+                  React.useMemo(() => (
+                    <Bar 
+                      data={preparedChartData.neighborhoodComparison}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                          legend: {
+                            position: 'top',
+                          },
+                          title: {
+                            display: true,
+                            text: 'Property Count and Values by Neighborhood'
+                          },
+                          tooltip: {
+                            callbacks: {
+                              label: function(context) {
+                                const label = context.dataset.label;
+                                const value = context.raw;
+                                return label === 'Average Value' 
+                                  ? `${label}: ${formatCurrency(value)}` 
+                                  : `${label}: ${value}`;
+                              }
+                            }
+                          }
+                        },
+                        scales: {
+                          y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                              display: true,
+                              text: 'Property Count'
+                            },
+                            beginAtZero: true
+                          },
+                          y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                              display: true,
+                              text: 'Average Value ($)'
+                            },
+                            beginAtZero: true,
+                            grid: {
+                              drawOnChartArea: false
+                            }
+                          },
+                          x: {
+                            title: {
+                              display: true,
+                              text: 'Neighborhood'
+                            }
                           }
                         }
-                      }
-                    },
-                    scales: {
-                      y: {
-                        type: 'linear',
-                        display: true,
-                        position: 'left',
-                        title: {
-                          display: true,
-                          text: 'Property Count'
-                        },
-                        beginAtZero: true
-                      },
-                      y1: {
-                        type: 'linear',
-                        display: true,
-                        position: 'right',
-                        title: {
-                          display: true,
-                          text: 'Average Value ($)'
-                        },
-                        beginAtZero: true,
-                        grid: {
-                          drawOnChartArea: false
-                        }
-                      },
-                      x: {
-                        title: {
-                          display: true,
-                          text: 'Neighborhood'
-                        }
-                      }
-                    }
-                  }}
-                />
-                ), [preparedChartData.neighborhoodComparison])}
+                      }}
+                    />
+                  ), [preparedChartData.neighborhoodComparison])
+                }
               </div>
             </div>
           </div>
