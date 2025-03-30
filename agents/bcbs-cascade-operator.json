@@ -40,6 +40,28 @@
     "workflow_visualization": true,
     "protocol_enforcement": true,
     "exception_handling": "structured",
+    "multi_agent_capabilities": {
+      "coordination_patterns": ["centralized", "decentralized", "hierarchical"],
+      "consensus_algorithms": ["majority-vote", "weighted-vote", "threshold-based"],
+      "conflict_resolution": "priority-based",
+      "resource_allocation": "dynamic"
+    },
+    "workflow_optimization": {
+      "auto_scaling": true,
+      "task_prioritization": true,
+      "load_balancing": "adaptive",
+      "performance_monitoring": true
+    },
+    "real_time_feedback": {
+      "progress_reporting": true,
+      "health_monitoring": true,
+      "bottleneck_detection": true,
+      "alert_thresholds": {
+        "task_duration": "> 120s",
+        "error_rate": "> 5%",
+        "resource_utilization": "> 85%"
+      }
+    },
     "note": "These capabilities define how the agent coordinates and executes multi-agent workflows"
   },
   
@@ -52,8 +74,16 @@
         "config_path": "agents/bcbs-bootstrap-commander.json",
         "capabilities": ["environment-setup", "dependency-validation", "test-execution"],
         "communication_channels": ["direct-command", "status-update", "model-parameter-exchange"],
-        "protocol_version": "2.0.0",
-        "role": "infrastructure"
+        "protocol_version": "2.1.0",
+        "role": "infrastructure",
+        "priority": "high",
+        "startup_sequence": 1,
+        "security_clearance": "admin",
+        "resource_requirements": {
+          "memory": "medium",
+          "cpu": "low",
+          "disk": "low"
+        }
       },
       {
         "type": "etl",
@@ -61,8 +91,17 @@
         "config_path": "agents/bootstrap-commander.json",
         "capabilities": ["data-extraction", "data-transformation", "data-loading", "data-validation"],
         "communication_channels": ["data-pipeline", "validation-results", "status-update", "model-parameter-exchange"],
-        "protocol_version": "2.0.0",
-        "role": "data-processing"
+        "protocol_version": "2.1.0",
+        "role": "data-processing",
+        "priority": "normal",
+        "startup_sequence": 2,
+        "security_clearance": "data-admin",
+        "resource_requirements": {
+          "memory": "high",
+          "cpu": "medium",
+          "disk": "high"
+        },
+        "data_sources": ["mls", "narrpr", "pacs", "gis"]
       },
       {
         "type": "valuation",
@@ -70,8 +109,18 @@
         "config_path": "agents/god-tier-builder.json",
         "capabilities": ["valuation-modeling", "feature-engineering", "prediction-generation", "parameter-optimization"],
         "communication_channels": ["model-updates", "prediction-results", "status-update", "model-parameter-exchange", "calibration-data"],
-        "protocol_version": "2.0.0",
-        "role": "model-builder"
+        "protocol_version": "2.1.0",
+        "role": "model-builder",
+        "priority": "high",
+        "startup_sequence": 3,
+        "security_clearance": "model-admin",
+        "resource_requirements": {
+          "memory": "high",
+          "cpu": "high",
+          "disk": "medium"
+        },
+        "model_types": ["linear", "ensemble", "lightgbm", "spatial"],
+        "feature_engineering_capabilities": ["polynomial", "spatial", "interaction", "selection"]
       },
       {
         "type": "validation",
@@ -79,11 +128,46 @@
         "config_path": "agents/tdd-validator.json",
         "capabilities": ["validation-logic", "test-execution", "quality-assurance", "model-validation"],
         "communication_channels": ["validation-results", "test-reports", "status-update", "model-parameter-exchange", "error-reporting"],
-        "protocol_version": "2.0.0",
-        "role": "quality-assurance"
+        "protocol_version": "2.1.0",
+        "role": "quality-assurance",
+        "priority": "high",
+        "startup_sequence": 4,
+        "security_clearance": "validation-admin",
+        "resource_requirements": {
+          "memory": "medium",
+          "cpu": "medium",
+          "disk": "medium"
+        },
+        "validation_strategies": ["cross-validation", "holdout", "backtesting", "sensitivity"],
+        "metrics": ["r2", "adj_r2", "rmse", "mae", "mape", "calibration_error"]
       }
     ],
-    "note": "Registry of all available agents with their capabilities and communication channels"
+    "agent_relationships": {
+      "hierarchical": [
+        {
+          "parent": "bootstrap",
+          "children": ["etl", "valuation", "validation"],
+          "relationship_type": "deployment-control"
+        }
+      ],
+      "peer_to_peer": [
+        {
+          "agents": ["etl", "valuation"],
+          "relationship_type": "data-model-pipeline",
+          "communication_pattern": "sequential"
+        },
+        {
+          "agents": ["valuation", "validation"],
+          "relationship_type": "model-validation-feedback",
+          "communication_pattern": "bidirectional"
+        }
+      ],
+      "conflict_resolution": {
+        "mechanism": "priority-based",
+        "arbitrator": "bootstrap"
+      }
+    },
+    "note": "Registry of all available agents with their capabilities, relationships, and communication channels"
   },
   
   "workflow_templates_description": "Pre-defined workflow templates for common operations",
@@ -177,7 +261,7 @@
   
   "inter_agent_communication_protocol": {
     "name": "BCBS-MPC-Protocol",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "description": "Multi-Protocol Calibration (MPC) system for standardized agent communication",
     "message_schema": {
       "header": {
@@ -195,13 +279,17 @@
         "content_type": "string (json, binary, text)",
         "content": "object (actual message payload)",
         "schema_version": "string (semantic version)",
-        "is_encrypted": "boolean"
+        "is_encrypted": "boolean",
+        "compression": "enum (none, gzip, zstd)",
+        "digital_signature": "string (hash for verification)"
       },
       "metadata": {
         "task_id": "string (UUID of related task)",
         "workflow_id": "string (UUID of workflow)",
         "tags": "array of strings",
-        "context": "object (additional context data)"
+        "context": "object (additional context data)",
+        "security_level": "enum (public, restricted, confidential)",
+        "trace_id": "string (for distributed tracing)"
       }
     },
     "parameter_exchange": {
@@ -216,6 +304,14 @@
           "parameters",
           "version_hash"
         ],
+        "validation_mechanism": {
+          "validator": "TDD Validator",
+          "thresholds": {
+            "r2_score_min": 0.85,
+            "rmse_max_percent": 0.12
+          },
+          "calibration_set": "base_calibration_set"
+        },
         "examples": [
           {
             "comment": "Example model parameter message from God-Tier Builder to TDD Validator",
@@ -241,13 +337,36 @@
         ]
       }
     },
+    "communication_patterns": {
+      "request_response": {
+        "description": "Synchronous request/response pattern",
+        "timeout": 30000,
+        "retry_policy": {
+          "max_retries": 3,
+          "backoff_ms": 1000,
+          "backoff_multiplier": 2
+        }
+      },
+      "publish_subscribe": {
+        "description": "Asynchronous pub/sub pattern",
+        "delivery_guarantee": "at_least_once",
+        "filtering_capabilities": ["content-based", "topic-based"]
+      },
+      "streaming": {
+        "description": "Continuous data flow pattern",
+        "flow_control": "backpressure",
+        "chunking_enabled": true
+      }
+    },
     "usage_instructions": [
       "1. All agents must conform to the message schema when exchanging information",
       "2. Parameter exchanges between agents must include validation metadata",
       "3. Bootstrap Commander initiates protocol versions and validation",
       "4. TDD Validator must verify all model parameter exchanges",
       "5. Error reporting must follow the structured error format",
-      "6. All calibration data exchanges must be versioned and tracked"
+      "6. All calibration data exchanges must be versioned and tracked",
+      "7. Message compression should be used for payloads larger than 1MB",
+      "8. Digital signatures must be verified for security-critical messages"
     ],
     "note": "This protocol defines the exact structure and rules for inter-agent communication"
   },

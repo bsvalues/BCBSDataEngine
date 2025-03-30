@@ -23,10 +23,17 @@ from fastapi.responses import JSONResponse
 # Import database and models
 from db.database import Database
 from db.models import PropertyValuation, Property, ValidationResult
+from sqlalchemy import func
 
 # Import valuation engine
 try:
-    from src.valuation import estimate_property_value, train_basic_valuation_model, train_multiple_regression_model
+    from src.valuation import (
+        estimate_property_value, 
+        train_basic_valuation_model, 
+        train_multiple_regression_model,
+        advanced_property_valuation,
+        calculate_gis_features
+    )
     valuation_engine_available = True
 except ImportError:
     # Log the error but don't crash - API can still work with other endpoints
@@ -202,9 +209,82 @@ class AgentStatusList(BaseModel):
     """Agent status list response model."""
     agents: List[AgentStatus] = Field(..., description="List of agent statuses")
     system_status: str = Field(..., description="Overall system status")
-    active_agents: int = Field(..., description="Number of active agents")
-    tasks_in_progress: int = Field(..., description="Number of tasks currently in progress")
-    tasks_completed_today: int = Field(..., description="Number of tasks completed today")
+
+class Neighborhood(BaseModel):
+    """Neighborhood information response model."""
+    name: str = Field(..., description="Neighborhood name")
+    property_count: int = Field(..., description="Number of properties in the neighborhood")
+    avg_valuation: float = Field(..., description="Average property valuation in the neighborhood")
+    median_valuation: Optional[float] = Field(None, description="Median property valuation in the neighborhood")
+    price_per_sqft: Optional[float] = Field(None, description="Average price per square foot in the neighborhood")
+    avg_days_on_market: Optional[int] = Field(None, description="Average days on market for properties in the neighborhood")
+    
+class NeighborhoodList(BaseModel):
+    """Neighborhood list response model."""
+    neighborhoods: List[Neighborhood] = Field(..., description="List of neighborhoods")
+    total_neighborhoods: int = Field(..., description="Total number of neighborhoods")
+    total_properties: int = Field(..., description="Total number of properties across all neighborhoods")
+    
+class PropertySearchResult(BaseModel):
+    """Property search result model for search endpoint responses."""
+    id: str = Field(..., description="Unique identifier for the property")
+    parcel_id: str = Field(..., description="Parcel ID for the property")
+    address: str = Field(..., description="Property address")
+    city: str = Field(..., description="City where property is located")
+    state: str = Field(..., description="State where property is located") 
+    zip_code: str = Field(..., description="ZIP code for the property")
+    bedrooms: float = Field(..., description="Number of bedrooms")
+    bathrooms: float = Field(..., description="Number of bathrooms")
+    square_feet: float = Field(..., description="Property size in square feet")
+    lot_size: Optional[float] = Field(None, description="Lot size in square feet")
+    year_built: int = Field(..., description="Year the property was built")
+    property_type: str = Field(..., description="Type of property (single_family, condo, etc.)")
+    neighborhood: str = Field(..., description="Neighborhood name")
+    estimated_value: float = Field(..., description="Latest estimated property value")
+    last_valuation_date: datetime.datetime = Field(..., description="Date of the last valuation")
+    latitude: Optional[float] = Field(None, description="Latitude coordinate")
+    longitude: Optional[float] = Field(None, description="Longitude coordinate")
+
+class PropertySearchResponse(BaseModel):
+    """Property search response model."""
+    properties: List[PropertySearchResult] = Field(..., description="List of properties matching search criteria")
+    total: int = Field(..., description="Total number of properties matching criteria")
+    page: int = Field(..., description="Current page number")
+    limit: int = Field(..., description="Number of results per page")
+    pages: int = Field(..., description="Total number of pages")
+    
+class ValuationHistoryItem(BaseModel):
+    """Property valuation history item model."""
+    id: str = Field(..., description="Valuation ID")
+    property_id: str = Field(..., description="Property ID")
+    estimated_value: float = Field(..., description="Estimated property value")
+    confidence_interval_low: Optional[float] = Field(None, description="Lower bound of confidence interval")
+    confidence_interval_high: Optional[float] = Field(None, description="Upper bound of confidence interval")
+    valuation_date: datetime.datetime = Field(..., description="Date of valuation")
+    model_version: str = Field(..., description="Valuation model version used")
+    
+class ValuationHistoryResponse(BaseModel):
+    """Property valuation history response model."""
+    history: List[ValuationHistoryItem] = Field(..., description="List of historical valuations")
+    property_id: str = Field(..., description="Property ID")
+    latest_value: float = Field(..., description="Latest estimated property value")
+    value_change: Dict[str, Union[float, str]] = Field(..., description="Value changes over time periods")
+    
+class MarketPeriodMetrics(BaseModel):
+    """Market metrics for a specific time period."""
+    median_price: float = Field(..., description="Median property price")
+    avg_price: float = Field(..., description="Average property price")
+    num_sales: int = Field(..., description="Number of sales in the period")
+    days_on_market: float = Field(..., description="Average days on market")
+    price_per_sqft: float = Field(..., description="Average price per square foot")
+    
+class MarketTrendsResponse(BaseModel):
+    """Market trends response model."""
+    current_month: MarketPeriodMetrics = Field(..., description="Current month metrics")
+    previous_month: MarketPeriodMetrics = Field(..., description="Previous month metrics")
+    year_to_date: MarketPeriodMetrics = Field(..., description="Year-to-date metrics")
+    previous_year: MarketPeriodMetrics = Field(..., description="Previous year metrics")
+    changes: Dict[str, Dict[str, float]] = Field(..., description="Percentage changes between periods")
 
 class PropertyValuationRequest(BaseModel):
     """Property valuation request model."""
@@ -272,13 +352,14 @@ async def health_check():
         "version": "1.0.0"
     }
 
-@app.get("/api/valuations", response_model=List[PropertyValue])
+@app.get("/api/valuations", response_model=List[PropertyValue], dependencies=[Depends(verify_api_key)])
 async def get_valuations(
     limit: int = Query(10, description="Maximum number of results to return"),
     min_value: Optional[float] = Query(None, description="Minimum property value filter"),
     max_value: Optional[float] = Query(None, description="Maximum property value filter"),
     property_type: Optional[str] = Query(None, description="Property type filter"),
-    db: Database = Depends(get_db)
+    db: Database = Depends(get_db),
+    api_key: APIKey = Depends(verify_api_key)  # Token-based authentication
 ):
     """
     Get property valuations based on specified criteria with advanced analytics metrics.
@@ -447,10 +528,11 @@ async def get_valuations(
         if 'session' in locals():
             session.close()
 
-@app.get("/api/valuations/{property_id}", response_model=PropertyValue)
+@app.get("/api/valuations/{property_id}", response_model=PropertyValue, dependencies=[Depends(verify_api_key)])
 async def get_valuation_by_id(
     property_id: str = Path(..., description="Property ID to get valuation for"),
-    db: Database = Depends(get_db)
+    db: Database = Depends(get_db),
+    api_key: APIKey = Depends(verify_api_key)  # Token-based authentication
 ):
     """
     Get detailed valuation for a specific property by ID with comprehensive analytics.
@@ -807,7 +889,8 @@ async def get_agent_status(api_key: APIKey = Depends(verify_api_key)):
 @app.post("/api/valuations", response_model=PropertyValue, dependencies=[Depends(verify_api_key)])
 async def create_property_valuation(
     request: PropertyValuationRequest,
-    db: Database = Depends(get_db)
+    db: Database = Depends(get_db),
+    api_key: APIKey = Depends(verify_api_key)  # Token-based authentication
 ):
     """
     Generate a property valuation based on provided property details with advanced analytics.
@@ -884,7 +967,8 @@ class WhatIfValuationRequest(BaseModel):
 @app.post("/api/v1/valuations/advanced", response_model=PropertyValue, dependencies=[Depends(verify_api_key)])
 async def create_advanced_property_valuation(
     request: PropertyValuationRequest,
-    db: Database = Depends(get_db)
+    db: Database = Depends(get_db),
+    api_key: APIKey = Depends(verify_api_key)  # Token-based authentication
 ):
     """
     Generate an advanced property valuation with enhanced GIS integration.
@@ -1086,7 +1170,7 @@ async def create_advanced_property_valuation(
             detail=f"Error generating valuation: {str(e)}"
         )
 
-@app.post("/api/what-if-valuation", response_model=PropertyValue)
+@app.post("/api/what-if-valuation", response_model=PropertyValue, dependencies=[Depends(verify_api_key)])
 async def what_if_valuation(
     request: WhatIfValuationRequest,
     db: Database = Depends(get_db),
@@ -1697,6 +1781,493 @@ async def what_if_valuation(
 
 
 # Run the application when called directly (development mode)
+# --- Additional API Endpoints for Enhanced Property Analytics ---
+
+@app.get("/api/neighborhoods", response_model=NeighborhoodList, dependencies=[Depends(verify_api_key)])
+async def get_neighborhoods(
+    db: Database = Depends(get_db),
+    api_key: APIKey = Depends(verify_api_key)
+):
+    """
+    Get a list of neighborhoods in Benton County with associated property metrics.
+    
+    This endpoint retrieves neighborhood data including:
+    - Neighborhood names
+    - Number of properties in each neighborhood
+    - Average and median property valuations
+    - Price per square foot metrics
+    
+    The response includes a comprehensive list of neighborhoods in the area
+    along with aggregated property statistics for each neighborhood.
+    """
+    logger.info("Neighborhoods request received")
+    
+    try:
+        # Create a database session
+        session = db.Session()
+        
+        # Query neighborhoods data
+        neighborhoods_data = []
+        
+        # Query distinct neighborhoods
+        distinct_neighborhoods = session.query(Property.neighborhood).distinct().all()
+        
+        total_properties = 0
+        
+        # For each neighborhood, get property counts and valuation metrics
+        for (neighborhood_name,) in distinct_neighborhoods:
+            if not neighborhood_name:
+                continue
+                
+            # Count properties in this neighborhood
+            property_count = session.query(Property).filter(
+                Property.neighborhood == neighborhood_name
+            ).count()
+            
+            total_properties += property_count
+            
+            # Calculate average valuation
+            avg_valuation_result = session.query(
+                func.avg(PropertyValuation.estimated_value)
+            ).join(
+                Property, PropertyValuation.property_id == Property.id
+            ).filter(
+                Property.neighborhood == neighborhood_name
+            ).first()
+            
+            avg_valuation = avg_valuation_result[0] if avg_valuation_result and avg_valuation_result[0] else 0
+            
+            # Calculate median valuation if database supports it
+            median_valuation = None
+            try:
+                # This approach works for PostgreSQL
+                median_result = session.query(
+                    func.percentile_cont(0.5).within_group(
+                        PropertyValuation.estimated_value.asc()
+                    )
+                ).join(
+                    Property, PropertyValuation.property_id == Property.id
+                ).filter(
+                    Property.neighborhood == neighborhood_name
+                ).first()
+                
+                median_valuation = median_result[0] if median_result else None
+            except Exception as e:
+                logger.warning(f"Median calculation not supported: {str(e)}")
+            
+            # Calculate price per square foot
+            price_per_sqft_result = session.query(
+                func.avg(PropertyValuation.estimated_value / Property.square_feet)
+            ).join(
+                Property, PropertyValuation.property_id == Property.id
+            ).filter(
+                Property.neighborhood == neighborhood_name,
+                Property.square_feet > 0  # Prevent division by zero
+            ).first()
+            
+            price_per_sqft = price_per_sqft_result[0] if price_per_sqft_result and price_per_sqft_result[0] else None
+            
+            # Add neighborhood data to the result list
+            neighborhoods_data.append({
+                "name": neighborhood_name,
+                "property_count": property_count,
+                "avg_valuation": avg_valuation,
+                "median_valuation": median_valuation,
+                "price_per_sqft": price_per_sqft,
+                "avg_days_on_market": None  # This would come from MLS data if available
+            })
+        
+        # Sort neighborhoods by average valuation (highest first)
+        neighborhoods_data.sort(key=lambda x: x["avg_valuation"] if x["avg_valuation"] else 0, reverse=True)
+        
+        # Create response
+        response = {
+            "neighborhoods": neighborhoods_data,
+            "total_neighborhoods": len(neighborhoods_data),
+            "total_properties": total_properties
+        }
+        
+        return response
+    
+    except Exception as e:
+        logger.error(f"Error fetching neighborhoods data: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve neighborhoods data"
+        )
+    finally:
+        session.close()
+
+@app.get("/api/properties/search", response_model=PropertySearchResponse, dependencies=[Depends(verify_api_key)])
+async def search_properties(
+    neighborhood: Optional[str] = Query(None, description="Filter by neighborhood"),
+    min_price: Optional[float] = Query(None, description="Minimum property price"),
+    max_price: Optional[float] = Query(None, description="Maximum property price"),
+    bedrooms: Optional[int] = Query(None, description="Number of bedrooms"),
+    bathrooms: Optional[float] = Query(None, description="Number of bathrooms"),
+    min_square_feet: Optional[float] = Query(None, description="Minimum square footage"),
+    property_type: Optional[str] = Query(None, description="Property type"),
+    page: int = Query(1, description="Page number for pagination", ge=1),
+    limit: int = Query(10, description="Number of results per page", ge=1, le=100),
+    db: Database = Depends(get_db),
+    api_key: APIKey = Depends(verify_api_key)
+):
+    """
+    Search for properties with detailed filtering options.
+    
+    This endpoint allows searching for properties using various filters:
+    - Neighborhood
+    - Price range
+    - Bedrooms and bathrooms
+    - Square footage
+    - Property type
+    
+    Results are paginated and include detailed property information along with
+    the latest valuation for each property.
+    """
+    logger.info(f"Property search request with filters: neighborhood={neighborhood}, price={min_price}-{max_price}, bedrooms={bedrooms}")
+    
+    try:
+        # Create a database session
+        session = db.Session()
+        
+        # Base query for properties with their latest valuations
+        property_query = session.query(
+            Property, 
+            PropertyValuation
+        ).join(
+            PropertyValuation,
+            Property.id == PropertyValuation.property_id
+        )
+        
+        # Apply filters
+        if neighborhood:
+            property_query = property_query.filter(Property.neighborhood == neighborhood)
+        
+        if min_price:
+            property_query = property_query.filter(PropertyValuation.estimated_value >= min_price)
+        
+        if max_price:
+            property_query = property_query.filter(PropertyValuation.estimated_value <= max_price)
+        
+        if bedrooms:
+            property_query = property_query.filter(Property.bedrooms == bedrooms)
+        
+        if bathrooms:
+            property_query = property_query.filter(Property.bathrooms == bathrooms)
+        
+        if min_square_feet:
+            property_query = property_query.filter(Property.square_feet >= min_square_feet)
+        
+        if property_type:
+            property_query = property_query.filter(Property.property_type == property_type)
+        
+        # Get total count for pagination
+        total_count = property_query.count()
+        
+        # Calculate pagination
+        offset = (page - 1) * limit
+        total_pages = (total_count + limit - 1) // limit  # Ceiling division
+        
+        # Get paginated results
+        paginated_query = property_query.order_by(PropertyValuation.estimated_value.desc()).offset(offset).limit(limit)
+        results = paginated_query.all()
+        
+        # Format results
+        properties_list = []
+        for property_obj, valuation in results:
+            properties_list.append({
+                "id": str(property_obj.id),
+                "parcel_id": property_obj.parcel_id,
+                "address": property_obj.address,
+                "city": property_obj.city,
+                "state": property_obj.state,
+                "zip_code": property_obj.zip_code,
+                "bedrooms": property_obj.bedrooms,
+                "bathrooms": property_obj.bathrooms,
+                "square_feet": property_obj.square_feet,
+                "lot_size": property_obj.lot_size,
+                "year_built": property_obj.year_built,
+                "property_type": property_obj.property_type,
+                "neighborhood": property_obj.neighborhood,
+                "estimated_value": valuation.estimated_value,
+                "last_valuation_date": valuation.valuation_date,
+                "latitude": property_obj.latitude,
+                "longitude": property_obj.longitude
+            })
+        
+        # Create response with pagination info
+        response = {
+            "properties": properties_list,
+            "total": total_count,
+            "page": page,
+            "limit": limit,
+            "pages": total_pages
+        }
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error searching properties: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to search properties"
+        )
+    finally:
+        session.close()
+
+@app.get("/api/properties/{property_id}/valuation-history", response_model=ValuationHistoryResponse, dependencies=[Depends(verify_api_key)])
+async def get_property_valuation_history(
+    property_id: str = Path(..., description="Property ID to get valuation history for"),
+    db: Database = Depends(get_db),
+    api_key: APIKey = Depends(verify_api_key)
+):
+    """
+    Get the valuation history for a specific property.
+    
+    This endpoint retrieves the complete valuation history for a property,
+    showing how the estimated value has changed over time. The response includes:
+    - Chronological list of valuations
+    - Value change statistics for different time periods
+    - Confidence intervals and model versions
+    
+    This history is useful for tracking property value trends and evaluating
+    the performance of different valuation models over time.
+    """
+    logger.info(f"Valuation history requested for property {property_id}")
+    
+    try:
+        # Create a database session
+        session = db.Session()
+        
+        # Verify property exists
+        property_obj = session.query(Property).filter(Property.id == property_id).first()
+        if not property_obj:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Property with ID {property_id} not found"
+            )
+        
+        # Get valuation history sorted by date (most recent first)
+        valuation_history = session.query(PropertyValuation).filter(
+            PropertyValuation.property_id == property_id
+        ).order_by(
+            PropertyValuation.valuation_date.desc()
+        ).all()
+        
+        if not valuation_history:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No valuation history found for property {property_id}"
+            )
+        
+        # Format valuation history
+        history_list = []
+        for valuation in valuation_history:
+            history_list.append({
+                "id": str(valuation.id),
+                "property_id": str(valuation.property_id),
+                "estimated_value": valuation.estimated_value,
+                "confidence_interval_low": valuation.confidence_interval_low,
+                "confidence_interval_high": valuation.confidence_interval_high,
+                "valuation_date": valuation.valuation_date,
+                "model_version": valuation.model_name or "unknown"
+            })
+        
+        # Calculate value changes
+        latest_value = valuation_history[0].estimated_value
+        
+        # Calculate changes for different time periods
+        value_changes = {
+            "latest": latest_value
+        }
+        
+        # Calculate month, quarter, and year changes if history is available
+        if len(valuation_history) > 1:
+            # Get dates sorted from oldest to newest for change calculations
+            sorted_valuations = sorted(valuation_history, key=lambda v: v.valuation_date)
+            
+            # Get oldest valuation for overall change
+            oldest_value = sorted_valuations[0].estimated_value
+            value_changes["overall_change"] = latest_value - oldest_value
+            value_changes["overall_percent"] = (value_changes["overall_change"] / oldest_value) * 100 if oldest_value else 0
+            
+            # Calculate yearly change if we have history spanning at least a year
+            now = datetime.datetime.now()
+            one_year_ago = now - datetime.timedelta(days=365)
+            
+            year_ago_valuation = None
+            for valuation in sorted_valuations:
+                if valuation.valuation_date <= one_year_ago:
+                    year_ago_valuation = valuation
+            
+            if year_ago_valuation:
+                year_ago_value = year_ago_valuation.estimated_value
+                value_changes["year_change"] = latest_value - year_ago_value
+                value_changes["year_percent"] = (value_changes["year_change"] / year_ago_value) * 100 if year_ago_value else 0
+        
+        # Create response
+        response = {
+            "history": history_list,
+            "property_id": property_id,
+            "latest_value": latest_value,
+            "value_change": value_changes
+        }
+        
+        return response
+        
+    except HTTPException:
+        # Re-raise HTTPExceptions
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching valuation history: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve valuation history"
+        )
+    finally:
+        session.close()
+
+@app.get("/api/market-trends", response_model=MarketTrendsResponse, dependencies=[Depends(verify_api_key)])
+async def get_market_trends(
+    neighborhood: Optional[str] = Query(None, description="Filter trends by neighborhood"),
+    property_type: Optional[str] = Query(None, description="Filter trends by property type"),
+    db: Database = Depends(get_db),
+    api_key: APIKey = Depends(verify_api_key)
+):
+    """
+    Get market trend data for Benton County real estate.
+    
+    This endpoint provides comprehensive market trends data including:
+    - Current month and previous month metrics
+    - Year-to-date and previous year comparisons
+    - Percentage changes between time periods
+    
+    Key metrics include median prices, average prices, sales volumes,
+    days on market, and price per square foot analysis.
+    
+    Optional neighborhood and property type filters allow for
+    more targeted market analysis.
+    """
+    logger.info(f"Market trends requested with filters: neighborhood={neighborhood}, property_type={property_type}")
+    
+    try:
+        # Create a database session
+        session = db.Session()
+        
+        # Calculate current date ranges
+        now = datetime.datetime.now()
+        current_month_start = datetime.datetime(now.year, now.month, 1)
+        previous_month_start = (current_month_start - datetime.timedelta(days=1)).replace(day=1)
+        current_year_start = datetime.datetime(now.year, 1, 1)
+        previous_year_start = datetime.datetime(now.year - 1, 1, 1)
+        previous_year_end = datetime.datetime(now.year - 1, 12, 31)
+        
+        # Function to get market metrics for a specific date range
+        def get_metrics_for_period(start_date, end_date=None):
+            # Base query
+            query = session.query(
+                Property, 
+                PropertyValuation
+            ).join(
+                PropertyValuation,
+                Property.id == PropertyValuation.property_id
+            ).filter(
+                PropertyValuation.valuation_date >= start_date
+            )
+            
+            if end_date:
+                query = query.filter(PropertyValuation.valuation_date <= end_date)
+            
+            # Apply filters
+            if neighborhood:
+                query = query.filter(Property.neighborhood == neighborhood)
+            
+            if property_type:
+                query = query.filter(Property.property_type == property_type)
+            
+            # Get results
+            results = query.all()
+            
+            # If no results, return empty metrics
+            if not results:
+                return {
+                    "median_price": 0,
+                    "avg_price": 0,
+                    "num_sales": 0,
+                    "days_on_market": 0,
+                    "price_per_sqft": 0
+                }
+            
+            # Calculate metrics
+            prices = [v.estimated_value for _, v in results]
+            sqft_values = [(v.estimated_value, p.square_feet) for p, v in results if p.square_feet and p.square_feet > 0]
+            
+            median_price = sorted(prices)[len(prices) // 2] if prices else 0
+            avg_price = sum(prices) / len(prices) if prices else 0
+            price_per_sqft = sum(p / s for p, s in sqft_values) / len(sqft_values) if sqft_values else 0
+            
+            # Days on market would typically come from MLS data
+            days_on_market = 22  # Average value as placeholder
+            
+            return {
+                "median_price": median_price,
+                "avg_price": avg_price,
+                "num_sales": len(results),
+                "days_on_market": days_on_market,
+                "price_per_sqft": price_per_sqft
+            }
+        
+        # Get metrics for each time period
+        current_month = get_metrics_for_period(current_month_start)
+        previous_month = get_metrics_for_period(previous_month_start, current_month_start - datetime.timedelta(days=1))
+        year_to_date = get_metrics_for_period(current_year_start)
+        previous_year = get_metrics_for_period(previous_year_start, previous_year_end)
+        
+        # Calculate percentage changes
+        def calculate_percent_change(current, previous, metric):
+            if previous[metric] == 0:
+                return 0
+            change = ((current[metric] - previous[metric]) / previous[metric]) * 100
+            return round(change, 2)
+        
+        monthly_changes = {
+            "median_price": calculate_percent_change(current_month, previous_month, "median_price"),
+            "num_sales": calculate_percent_change(current_month, previous_month, "num_sales"),
+            "days_on_market": calculate_percent_change(current_month, previous_month, "days_on_market"),
+            "price_per_sqft": calculate_percent_change(current_month, previous_month, "price_per_sqft")
+        }
+        
+        yearly_changes = {
+            "median_price": calculate_percent_change(year_to_date, previous_year, "median_price"),
+            "num_sales": calculate_percent_change(year_to_date, previous_year, "num_sales"),
+            "days_on_market": calculate_percent_change(year_to_date, previous_year, "days_on_market"),
+            "price_per_sqft": calculate_percent_change(year_to_date, previous_year, "price_per_sqft")
+        }
+        
+        # Create response
+        response = {
+            "current_month": current_month,
+            "previous_month": previous_month,
+            "year_to_date": year_to_date,
+            "previous_year": previous_year,
+            "changes": {
+                "monthly": monthly_changes,
+                "yearly": yearly_changes
+            }
+        }
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error fetching market trends: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve market trends data"
+        )
+    finally:
+        session.close()
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("API_PORT", 8000))

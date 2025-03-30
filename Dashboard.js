@@ -1,6 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
 import { Line, Bar, Pie } from 'react-chartjs-2';
+
+// Custom BarChart component with memoization to prevent excessive re-renders
+const BarChart = memo(({ data, options }) => {
+  return <Bar data={data} options={options} />;
+});
 
 // Register Chart.js components
 ChartJS.register(
@@ -20,7 +25,8 @@ ChartJS.register(
  * 
  * This component fetches property valuation data from the API and displays it in a
  * filterable table and interactive visualizations. It includes options for filtering 
- * by neighborhood or date, and handles loading states and errors gracefully.
+ * by neighborhood, price range, property type, and date, and handles loading states 
+ * and errors gracefully.
  * 
  * Key Features:
  * - Data fetching with loading indicators and error handling
@@ -46,9 +52,6 @@ const Dashboard = () => {
     toDate: ''
   });
   
-  // State for chart data and configuration
-  const [chartData, setChartData] = useState(null);
-  
   // Refs for chart containers
   const valueDistributionChartRef = useRef(null);
   const neighborhoodChartRef = useRef(null);
@@ -66,18 +69,19 @@ const Dashboard = () => {
       if (filters.maxValue) queryParams.append('max_value', filters.maxValue);
       if (filters.propertyType) queryParams.append('property_type', filters.propertyType);
       
-      // Make the API request
+      // Make the API request to the valuations endpoint
       const response = await fetch(`/api/valuations?${queryParams.toString()}`);
       
       if (!response.ok) {
-        throw new Error(`API request failed with status ${response.status}`);
+        throw new Error(`API request failed with status ${response.status}: ${response.statusText}`);
       }
       
       const data = await response.json();
       setProperties(data);
+      console.log(`Loaded ${data.length} properties from API`);
     } catch (err) {
       console.error('Error fetching property valuations:', err);
-      setError('Failed to load property valuations. Please try again later.');
+      setError(`Failed to load property valuations: ${err.message}. Please try again later.`);
     } finally {
       setLoading(false);
     }
@@ -133,38 +137,39 @@ const Dashboard = () => {
   };
 
   // Function to filter properties by neighborhood if that filter is active
-  const filteredProperties = properties.filter(property => {
-    // Apply neighborhood filter (client-side filtering since API doesn't support it)
-    if (filters.neighborhood && !extractNeighborhood(property.address).toLowerCase().includes(filters.neighborhood.toLowerCase())) {
-      return false;
-    }
-    
-    // Apply date filters if they exist (assuming valuation_date is available)
-    if (filters.fromDate && new Date(property.valuation_date) < new Date(filters.fromDate)) {
-      return false;
-    }
-    
-    if (filters.toDate && new Date(property.valuation_date) > new Date(filters.toDate)) {
-      return false;
-    }
-    
-    return true;
-  });
+  const filteredProperties = useMemo(() => {
+    return properties.filter(property => {
+      // Apply neighborhood filter (client-side filtering since API doesn't support it)
+      if (filters.neighborhood && !extractNeighborhood(property.address).toLowerCase().includes(filters.neighborhood.toLowerCase())) {
+        return false;
+      }
+      
+      // Apply date filters if they exist (assuming valuation_date is available)
+      if (filters.fromDate && new Date(property.valuation_date) < new Date(filters.fromDate)) {
+        return false;
+      }
+      
+      if (filters.toDate && new Date(property.valuation_date) > new Date(filters.toDate)) {
+        return false;
+      }
+      
+      return true;
+    });
+  }, [properties, filters]); // Removed extractNeighborhood from dependencies
   
   // Load property valuations when component mounts
   useEffect(() => {
     fetchPropertyValuations();
   }, []); // Empty dependency array means this runs once on mount
   
-  // Prepare chart data when properties change
-  useEffect(() => {
-    if (filteredProperties.length > 0) {
-      prepareChartData();
-    }
-  }, [filteredProperties]);
-  
   // Function to prepare chart data based on filtered properties
-  const prepareChartData = () => {
+  // Using useMemo to prevent unnecessary recalculations and avoid infinite render loops
+  const preparedChartData = useMemo(() => {
+    if (filteredProperties.length === 0) {
+      return null;
+    }
+    
+    // Prepare chart data based on filtered properties
     // Group properties by value ranges for distribution chart
     const valueRanges = [
       '< $200K', 
@@ -222,8 +227,8 @@ const Dashboard = () => {
       Math.round(neighborhoods[name].totalValue / neighborhoods[name].count)
     );
     
-    // Set chart data
-    setChartData({
+    // Return prepared chart data
+    return {
       valueDistribution: {
         labels: valueRanges,
         datasets: [
@@ -259,8 +264,8 @@ const Dashboard = () => {
           }
         ]
       }
-    });
-  };
+    };
+  }, [filteredProperties]); // Dependencies for the useMemo
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -547,7 +552,7 @@ const Dashboard = () => {
       )}
       
       {/* Data Visualizations */}
-      {!loading && !error && filteredProperties.length > 0 && chartData && (
+      {!loading && !error && filteredProperties.length > 0 && preparedChartData && (
         <div className="mt-8">
           <h2 className="text-xl font-semibold mb-4">Valuation Analytics</h2>
           
@@ -557,7 +562,7 @@ const Dashboard = () => {
               <h3 className="text-lg font-semibold mb-4">Value Distribution</h3>
               <div className="h-80">
                 <Bar 
-                  data={chartData.valueDistribution}
+                  data={preparedChartData.valueDistribution}
                   options={{
                     responsive: true,
                     maintainAspectRatio: false,
@@ -583,9 +588,12 @@ const Dashboard = () => {
                         title: {
                           display: true,
                           text: 'Number of Properties'
-                        },
-                        ticks: {
-                          precision: 0
+                        }
+                      },
+                      x: {
+                        title: {
+                          display: true,
+                          text: 'Value Range'
                         }
                       }
                     }
@@ -596,10 +604,10 @@ const Dashboard = () => {
             
             {/* Neighborhood Comparison Chart */}
             <div className="bg-white rounded-lg shadow-md p-6">
-              <h3 className="text-lg font-semibold mb-4">Neighborhood Analysis</h3>
+              <h3 className="text-lg font-semibold mb-4">Neighborhood Comparison</h3>
               <div className="h-80">
                 <Bar 
-                  data={chartData.neighborhoodComparison}
+                  data={preparedChartData.neighborhoodComparison}
                   options={{
                     responsive: true,
                     maintainAspectRatio: false,
@@ -630,12 +638,9 @@ const Dashboard = () => {
                         position: 'left',
                         title: {
                           display: true,
-                          text: 'Number of Properties'
+                          text: 'Property Count'
                         },
-                        beginAtZero: true,
-                        ticks: {
-                          precision: 0
-                        }
+                        beginAtZero: true
                       },
                       y1: {
                         type: 'linear',
@@ -647,12 +652,13 @@ const Dashboard = () => {
                         },
                         beginAtZero: true,
                         grid: {
-                          drawOnChartArea: false,
-                        },
-                        ticks: {
-                          callback: function(value) {
-                            return '$' + value.toLocaleString();
-                          }
+                          drawOnChartArea: false
+                        }
+                      },
+                      x: {
+                        title: {
+                          display: true,
+                          text: 'Neighborhood'
                         }
                       }
                     }

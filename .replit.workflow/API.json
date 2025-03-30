@@ -1,17 +1,18 @@
 {
   "name": "API",
-  "language": "bash",
-  "run": "chmod +x .replit.workflow/API/run.sh && .replit.workflow/API/run.sh",
-  "mountable": false,
-  "env": {},
-  "ports": [
-    {
-      "port": 5001,
-      "name": "API Server",
-      "access": "public",
-      "description": "The BCBS_Values API server running on port 5001",
-      "protocol": "http"
+  "run_command": "./start_api_server.sh",
+  "entrypoint": "api.py",
+  "language": "python3",
+  "environment": "python3",
+  "ports": {
+    "5000": {
+      "name": "API",
+      "description": "BCBS Values RESTful API"
     }
-  ],
-  "onBoot": "true"
+  },
+  "secrets": {
+    "BCBS_VALUES_API_KEY": "Production API key for authentication"
+  },
+  "hidden": false,
+  "exec_mode": "terminal"
 }

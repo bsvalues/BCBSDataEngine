@@ -14,6 +14,7 @@ A sophisticated real estate valuation platform specifically for Benton County, W
   - [Prerequisites](#prerequisites)
   - [Installation](#installation)
   - [Configuration](#configuration)
+- [Workflow Setup](#workflow-setup)
 - [Usage Guide](#usage-guide)
   - [Running the ETL Pipeline](#running-the-etl-pipeline)
   - [Accessing API Endpoints](#accessing-api-endpoints)
@@ -53,7 +54,7 @@ The system follows a modular architecture with the following high-level componen
 3. **Processing Layer**: Valuation engine and BS Army of Agents
 4. **Presentation Layer**: Web interface and API endpoints
 
-The application runs through a Flask web server (port 5001) for the user interface and a FastAPI server (port 8000) for API endpoints.
+The application runs through a Flask web server (port 5001) for the user interface and a FastAPI server (port 5000) for API endpoints.
 
 ## Key Modules
 
@@ -137,15 +138,21 @@ The web dashboard includes:
 3. Set up environment variables (create a `.env` file):
    ```
    DATABASE_URL=postgresql://username:password@localhost:5432/bcbs_values
-   FLASK_SECRET_KEY=your_secret_key
+   SESSION_SECRET=your_secret_key
    NARRPR_USERNAME=your_narrpr_username
    NARRPR_PASSWORD=your_narrpr_password
    PACS_API_KEY=your_pacs_api_key
+   BCBS_VALUES_API_KEY=your_api_key
    ```
 
 4. Initialize the database:
    ```bash
    python -c "from db.database import Database; db = Database(); db.create_tables()"
+   ```
+   
+5. Set up API key for authentication:
+   ```bash
+   ./set_api_key.sh your_api_key
    ```
 
 ### Configuration
@@ -157,6 +164,27 @@ Configuration files are stored in the `configs/` directory:
 - `module_config.json`: Core module configuration
 
 Modify these files to adjust system behavior according to your needs.
+
+## Workflow Setup
+
+The system uses Replit workflows to manage long-running tasks such as the API server and the web application. Workflows are defined in `.replit.workflow/` directory.
+
+To use workflows:
+
+1. Access the Replit workflow menu in the top-right corner of the Replit interface
+2. Select the desired workflow (API or WebApp)
+3. Click "Run" to start the workflow
+
+Available workflows:
+
+- **API**: Starts the FastAPI server for accessing the valuation endpoints
+- **WebApp**: Starts the Flask web application for the user interface
+- **EnhancedAPI**: Runs the version with enhanced GIS integration
+- **BasicAPI**: Runs a simpler version without database requirements
+- **ValuationAPI**: Specifically for valuation endpoints
+- **TestAPI**: For testing API functionality
+
+See the `WORKFLOW_SETUP.md` file for more details on configuring and using workflows.
 
 ## Usage Guide
 
@@ -265,10 +293,17 @@ curl -X POST "http://localhost:5002/api/valuation" \
 The full FastAPI implementation includes additional features but requires database connectivity:
 
 ```bash
+# Start the API using the workflow system:
+# Use the Replit workflow menu to start the API workflow
+# 
+# Or run directly:
+./start_api_server.sh
+# 
+# Or using Python directly:
 python run_api.py
 ```
 
-The Full API will be available at `http://localhost:8000` with these endpoints:
+The Full API will be available at `http://localhost:5000` with these endpoints:
 
 - `GET /api/valuations`: Get property valuations with filtering options
 - `GET /api/valuations/{property_id}`: Get valuation for a specific property
@@ -280,10 +315,10 @@ Example API calls:
 
 ```bash
 # Get a list of property valuations with filtering
-curl "http://localhost:8000/api/valuations?limit=5&min_value=300000"
+curl "http://localhost:5000/api/valuations?limit=5&min_value=300000" -H "X-API-KEY: your_api_key_here"
 
 # Generate a new property valuation with LightGBM model (requires authentication)
-curl -X POST "http://localhost:8000/api/valuations" \
+curl -X POST "http://localhost:5000/api/valuations" \
   -H "Content-Type: application/json" \
   -H "X-API-KEY: your_api_key_here" \
   -d '{
@@ -321,10 +356,17 @@ The POST `/api/valuations` endpoint generates a new property valuation using our
 Start the integrated web server:
 
 ```bash
+# Start via workflow system:
+# Use the Replit workflow menu to start the WebApp workflow
+#
+# Or run directly:
+python start_web_app.py
+#
+# Or traditional method:
 python run_integrated.py
 ```
 
-This will start both the Flask web application and the FastAPI server. Access the web dashboard at `http://localhost:5001`.
+This will start the Flask web application. Access the web dashboard at `http://localhost:5001`.
 
 The main dashboard features:
 - Search for properties by address, ID, or features
@@ -400,6 +442,9 @@ pytest tests/test_integration.py
 
 # Test the Simple Valuation API
 ./test_simple_api.sh
+
+# Test the authenticated API (requires API key)
+./test_api_with_auth.sh
 ```
 
 Test coverage reports are available in the `htmlcov/` directory after running the tests with coverage.

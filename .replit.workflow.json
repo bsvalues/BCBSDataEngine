@@ -1,45 +1,25 @@
 {
   "workflows": [
     {
-      "name": "WebApp",
-      "type": "web",
-      "command": "python app.py",
-      "serviceCommand": "python app.py",
-      "restartOn": {
-        "files": ["./app.py", "./models.py", "./templates/*", "./static/*"]
-      }
-    },
-    {
-      "name": "APIServer",
-      "type": "web",
-      "command": "python run_api.py",
-      "restartOn": {
-        "files": ["./api.py", "./run_api.py", "./db/models.py", "./db/database.py", "./db/__init__.py", "./src/valuation.py", "./models.py"]
-      }
-    },
-    {
       "name": "API",
-      "type": "web",
-      "command": "chmod +x .replit.workflow/API/run.sh && .replit.workflow/API/run.sh",
-      "restartOn": {
-        "files": ["./api.py", "./run_api.py", "./src/valuation.py", "./db/models.py", "./db/database.py", "./db/__init__.py", "./models.py"]
-      }
+      "path": ".replit.workflow/API.json",
+      "environment": "python3"
     },
     {
-      "name": "BasicAPI",
-      "type": "web",
-      "command": "./run_basic_api.sh",
-      "restartOn": {
-        "files": ["./basic_api.py"]
-      }
+      "name": "WebApp",
+      "path": ".replit.workflow/WebApp.json",
+      "environment": "python3"
     },
     {
-      "name": "SimpleValuationAPI",
-      "type": "web",
-      "command": "./run_simple_api.sh",
-      "restartOn": {
-        "files": ["./simple_valuation_api.py"]
-      }
+      "name": "ValuationAPI",
+      "path": ".replit.workflow/ValuationAPI.json",
+      "environment": "python3"
+    },
+    {
+      "name": "EnhancedAPI",
+      "path": ".replit.workflow/EnhancedAPI.json",
+      "environment": "python3"
     }
-  ]
+  ],
+  "autosaves": ["*.py", "*.js", "*.html", "*.css", "*.json"]
 }

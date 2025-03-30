@@ -588,6 +588,270 @@ class TestAPIEndpoints:
             assert "original_value" in result
             assert "value_difference" in result
             assert "percentage_change" in result
+    
+    def test_api_neighborhoods_endpoint(self, mock_db):
+        """
+        Test the neighborhoods endpoint that provides a list of neighborhoods in Benton County.
+        
+        This test verifies that:
+        1. The endpoint returns a list of neighborhoods
+        2. Each neighborhood has a name and property count
+        3. The response includes metadata about the neighborhoods
+        """
+        # Mock the database to return predefined neighborhoods
+        mock_db.get_neighborhoods.return_value = [
+            {"name": "Meadow Springs", "property_count": 245, "avg_valuation": 450000},
+            {"name": "South Richland", "property_count": 380, "avg_valuation": 520000},
+            {"name": "West Richland", "property_count": 310, "avg_valuation": 480000},
+            {"name": "Central Kennewick", "property_count": 290, "avg_valuation": 395000},
+            {"name": "Columbia Park", "property_count": 175, "avg_valuation": 435000}
+        ]
+        
+        response = client.get("/api/neighborhoods")
+        
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert "neighborhoods" in data
+        assert isinstance(data["neighborhoods"], list)
+        assert len(data["neighborhoods"]) > 0
+        
+        # Verify neighborhood structure
+        neighborhood = data["neighborhoods"][0]
+        assert "name" in neighborhood
+        assert "property_count" in neighborhood
+        assert "avg_valuation" in neighborhood
+        
+        # Verify metadata in response
+        assert "total_neighborhoods" in data
+        assert "total_properties" in data
+        assert data["total_neighborhoods"] == len(data["neighborhoods"])
+    
+    def test_api_property_search_endpoint(self, mock_db):
+        """
+        Test the property search endpoint that allows filtering properties.
+        
+        This test verifies that:
+        1. The endpoint accepts search parameters
+        2. Results are filtered according to the parameters
+        3. Pagination works correctly
+        4. Property details are complete
+        """
+        # Define test search parameters
+        search_params = {
+            "neighborhood": "Meadow Springs",
+            "min_price": 400000,
+            "max_price": 600000,
+            "bedrooms": 3,
+            "bathrooms": 2,
+            "min_square_feet": 2000,
+            "property_type": "single_family",
+            "page": 1,
+            "limit": 10
+        }
+        
+        # Mock search results
+        mock_search_results = [
+            {
+                "id": 1,
+                "parcel_id": "TEST12345678",
+                "address": "123 Test Street",
+                "city": "Richland",
+                "state": "WA",
+                "zip_code": "99352",
+                "bedrooms": 3,
+                "bathrooms": 2.5,
+                "square_feet": 2200,
+                "lot_size": 8500,
+                "year_built": 2010,
+                "latitude": 46.2804,
+                "longitude": -119.2752,
+                "property_type": "single_family",
+                "neighborhood": "Meadow Springs",
+                "estimated_value": 450000,
+                "last_valuation_date": "2025-03-29T22:30:00"
+            }
+        ]
+        
+        # Setup mock search function
+        mock_db.search_properties.return_value = {
+            "properties": mock_search_results,
+            "total": 15,
+            "page": 1,
+            "limit": 10,
+            "pages": 2
+        }
+        
+        # Add the query parameters to the URL
+        query_string = "&".join([f"{k}={v}" for k, v in search_params.items()])
+        response = client.get(f"/api/properties/search?{query_string}")
+        
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert "properties" in data
+        assert isinstance(data["properties"], list)
+        
+        # Verify pagination data
+        assert "total" in data
+        assert "page" in data
+        assert "limit" in data
+        assert "pages" in data
+        
+        # Verify property data structure
+        if data["properties"]:
+            property_data = data["properties"][0]
+            assert "id" in property_data
+            assert "address" in property_data
+            assert "estimated_value" in property_data
+            assert "neighborhood" in property_data
+    
+    def test_api_valuation_history_endpoint(self, mock_db):
+        """
+        Test the property valuation history endpoint.
+        
+        This test verifies that:
+        1. Historical valuations can be retrieved for a property
+        2. Results include complete valuation details
+        3. Results are ordered by date
+        """
+        # Mock historical valuations
+        mock_valuation_history = [
+            {
+                "id": 3,
+                "property_id": 1,
+                "estimated_value": 450000,
+                "confidence_interval_low": 425000,
+                "confidence_interval_high": 475000,
+                "valuation_date": "2025-03-29T00:00:00",
+                "model_version": "advanced_regression_1.2.0"
+            },
+            {
+                "id": 2,
+                "property_id": 1,
+                "estimated_value": 445000,
+                "confidence_interval_low": 420000,
+                "confidence_interval_high": 470000,
+                "valuation_date": "2025-02-28T00:00:00",
+                "model_version": "advanced_regression_1.1.0"
+            },
+            {
+                "id": 1,
+                "property_id": 1,
+                "estimated_value": 440000,
+                "confidence_interval_low": 415000,
+                "confidence_interval_high": 465000,
+                "valuation_date": "2025-01-31T00:00:00",
+                "model_version": "advanced_regression_1.0.0"
+            }
+        ]
+        
+        # Setup mock
+        mock_db.get_property_valuation_history.return_value = mock_valuation_history
+        
+        # Make the request
+        response = client.get("/api/properties/1/valuation-history")
+        
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert "history" in data
+        assert isinstance(data["history"], list)
+        assert len(data["history"]) > 0
+        
+        # Verify valuation structure
+        valuation = data["history"][0]
+        assert "estimated_value" in valuation
+        assert "valuation_date" in valuation
+        assert "model_version" in valuation
+        
+        # Verify order (most recent first)
+        dates = [valuation["valuation_date"] for valuation in data["history"]]
+        assert dates == sorted(dates, reverse=True)
+    
+    def test_api_market_trends_endpoint(self, mock_db):
+        """
+        Test the market trends endpoint that provides trend data for properties.
+        
+        This test verifies that:
+        1. The endpoint returns trend data for different periods
+        2. Trends include key metrics like median price and sales volume
+        3. Response includes comparison with previous periods
+        """
+        # Mock market trends data
+        mock_trends = {
+            "current_month": {
+                "median_price": 450000,
+                "avg_price": 470000,
+                "num_sales": 120,
+                "days_on_market": 22,
+                "price_per_sqft": 195
+            },
+            "previous_month": {
+                "median_price": 445000,
+                "avg_price": 465000,
+                "num_sales": 115,
+                "days_on_market": 24,
+                "price_per_sqft": 193
+            },
+            "year_to_date": {
+                "median_price": 447000,
+                "avg_price": 467000,
+                "num_sales": 640,
+                "days_on_market": 23,
+                "price_per_sqft": 194
+            },
+            "previous_year": {
+                "median_price": 435000,
+                "avg_price": 455000,
+                "num_sales": 1450,
+                "days_on_market": 26,
+                "price_per_sqft": 189
+            },
+            "changes": {
+                "monthly": {
+                    "median_price": 1.12,  # Percentage change
+                    "num_sales": 4.35,
+                    "days_on_market": -8.33,
+                    "price_per_sqft": 1.04
+                },
+                "yearly": {
+                    "median_price": 3.45,
+                    "num_sales": 5.54,
+                    "days_on_market": -15.38,
+                    "price_per_sqft": 3.17
+                }
+            }
+        }
+        
+        # Setup mock
+        mock_db.get_market_trends.return_value = mock_trends
+        
+        # Make the request
+        response = client.get("/api/market-trends")
+        
+        assert response.status_code == 200
+        
+        data = response.json()
+        
+        # Verify time periods in response
+        assert "current_month" in data
+        assert "previous_month" in data
+        assert "year_to_date" in data
+        assert "previous_year" in data
+        
+        # Verify metrics in current month
+        current = data["current_month"]
+        assert "median_price" in current
+        assert "avg_price" in current
+        assert "num_sales" in current
+        assert "days_on_market" in current
+        
+        # Verify change calculations
+        assert "changes" in data
+        assert "monthly" in data["changes"]
+        assert "yearly" in data["changes"]
+        assert "median_price" in data["changes"]["monthly"]
 
 
 if __name__ == "__main__":

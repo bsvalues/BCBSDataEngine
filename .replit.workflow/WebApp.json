@@ -1,9 +1,18 @@
 {
   "name": "WebApp",
-  "type": "web",
-  "command": "python app.py",
-  "restartOn": {
-    "files": ["./app.py", "./models.py", "./templates/*", "./static/*"]
+  "run_command": "python -c \"import os; from app import app; app.run(host='0.0.0.0', port=5002, debug=True)\"",
+  "entrypoint": "app.py",
+  "language": "python3",
+  "environment": "python3",
+  "ports": {
+    "5002": {
+      "name": "Web UI",
+      "description": "BCBS Values Web Application"
+    }
   },
-  "serviceCommand": "python app.py"
+  "secrets": {
+    "SESSION_SECRET": "Session secret for securing user sessions"
+  },
+  "hidden": false,
+  "exec_mode": "terminal"
 }

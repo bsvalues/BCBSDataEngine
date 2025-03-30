@@ -1,109 +1,96 @@
-# Setting Up the Valuation API Workflow
+# BCBS Values Workflow Setup Guide
 
-This guide explains how to run the BCBS_Values Valuation API.
+This document provides instructions for setting up and running the BCBS Values application workflows in Replit.
 
-## Valuation API Options
+## Available Workflows
 
-We have two API implementations available:
+The project has several workflows configured:
 
-1. **Simple Valuation API** (Flask-based):
-   - Lightweight API that doesn't require database access
-   - Provides core property valuation functionality
-   - Runs on port 5002 by default
+1. **API** - The main FastAPI REST API server on port 5000
+2. **WebApp** - The Flask web application UI on port 5001
+3. **ValuationAPI** - Specialized valuation API service
+4. **EnhancedAPI** - Advanced valuation API with GIS features
 
-2. **Full Valuation API** (FastAPI-based):
-   - Comprehensive API with database integration
-   - Requires PostgreSQL database connection
-   - Includes ETL status and agent management endpoints
-   - Runs on port 8000 by default
+## Setting Up Environment Variables
 
-## Starting the Simple Valuation API
+Before running the workflows, you should set up the required environment variables.
 
-You can start the simple API with the provided scripts:
+### API Key Setup
 
-### Using the Run Script (Easiest)
+The API requires authentication using an API key. You can set this up using:
 
 ```bash
-# Run the user-friendly script
-./run_simple_api.sh
+# Set API key in environment
+./set_api_key.sh your_secret_key
+
+# For testing, you can use the sample key
+./set_api_key.sh sample_test_key
 ```
 
-This script provides a nice overview of the API endpoints and starts the server.
+### Database Configuration
 
-### Using the Server Script Directly
-
-For more control over the server configuration, you can use:
+The application uses PostgreSQL. Make sure your database is properly configured:
 
 ```bash
-# Make the script executable (if needed)
-chmod +x start_simple_api.sh
+# Check database status
+echo $DATABASE_URL
 
-# Start the API
-./start_simple_api.sh
+# For local testing, the URL should look like:
+# postgresql://username:password@localhost:5432/bcbs_values
 ```
 
-This starts the Gunicorn server on port 5002 with 4 workers by default.
+### Web Application Setup
 
-### Customizing Server Settings
-
-You can customize the API server by setting environment variables:
+The web application requires a session secret:
 
 ```bash
-# Example: Using 2 workers and debug log level
-PORT=5002 WORKERS=2 LOG_LEVEL=debug ./start_simple_api.sh
+# Set a secure session secret
+export SESSION_SECRET="your_secure_secret_key"
 ```
 
-Available options:
-- `PORT`: The port to listen on (default: 5002)
-- `WORKERS`: Number of Gunicorn worker processes (default: 4)
-- `TIMEOUT`: Request timeout in seconds (default: 120)
-- `LOG_LEVEL`: Logging level (default: info)
+## Starting Workflows
 
-## Testing the Simple Valuation API
+To start a workflow, use the Replit workflow system or run the appropriate script:
 
-Once the API is running, you can test it using the provided test script:
+### API Server
+
+```bash
+# Start via workflow
+# or
+./start_api_server.sh
+```
+
+### Web Application
+
+```bash
+# Start via workflow
+# or
+python start_web_app.py
+```
+
+## Testing the API
+
+You can test the API using the included script:
 
 ```bash
 # Make the script executable
-chmod +x test_simple_api.sh
+chmod +x test_api_with_auth.sh
 
-# Run the test (includes starting/stopping the API)
-./test_simple_api.sh
+# Run the tests
+./test_api_with_auth.sh
 ```
 
-The test script will:
-1. Start the API server
-2. Send a sample property valuation request
-3. Display the results
-4. Stop the API server
+## Workflow Configuration Files
 
-## Using the Full Valuation API
+Workflow configurations are stored in:
 
-If you need the full API with database integration:
+- `.replit.workflow/API.json`
+- `.replit.workflow/WebApp.json`
+- `.replit.workflow/ValuationAPI.json`
+- `.replit.workflow/EnhancedAPI.json`
 
-```bash
-# Make sure the script is executable
-chmod +x test_new_valuation_endpoint.sh
+These files define how each workflow operates, what ports are used, and what environment variables are required.
 
-# Run the test (which includes starting the API)
-./test_new_valuation_endpoint.sh
-```
+## Advanced Configuration
 
-## API Endpoints
-
-### Simple Valuation API (port 5002)
-
-- `GET /api/health`: Health check endpoint
-- `POST /api/valuation`: Generate a property valuation
-- `GET /api/neighborhoods`: Get neighborhood quality ratings
-- `GET /api/reference-points`: Get GIS reference points
-
-### Full Valuation API (port 8000)
-
-- `GET /api/valuations`: Get property valuations with filtering options
-- `GET /api/valuations/{property_id}`: Get valuation for a specific property
-- `POST /api/valuations`: Generate a new property valuation (requires API key)
-- `GET /api/etl-status`: Get the current status of the ETL process
-- `GET /api/agent-status`: Get the status of the BS Army of Agents
-
-For more details, see the API documentation in the README.md file.
+For more advanced configuration needs, edit the workflow JSON files in the `.replit.workflow/` directory.
