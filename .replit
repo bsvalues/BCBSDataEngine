@@ -28,3 +28,33 @@ support = true
 
 [multiplayer]
 transport = "mp_transport"
+
+[workflows]
+runButton = "WebApp"
+
+[[workflows.workflow]]
+name = "WebApp"
+author = 37274620
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python start_webapp.py"
+
+[[workflows.workflow]]
+name = "API"
+author = 37274620
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python run_api.py"
+
+[[workflows.workflow]]
+name = "BasicAPI"
+author = 37274620
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python basic_api.py"
