@@ -1,28 +1,19 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[project]
-name = "bcbs_values"
+[tool.poetry]
+name = "bcbs-values"
 version = "0.1.0"
-authors = [
-  { name = "BCBS Team" },
-]
-description = "Real estate valuation platform for Benton County"
-readme = "README.md"
-requires-python = ">=3.8"
-dependencies = [
-  "flask",
-  "flask-sqlalchemy",
-  "flask-login",
-  "flask-wtf",
-  "flask-migrate",
-  "werkzeug",
-  "sqlalchemy",
-  "psycopg2-binary",
-  "email-validator",
-]
+description = "BCBS Values - Real Estate Valuation Platform for Benton County"
+authors = ["Replit"]
 
-[project.urls]
-"Homepage" = "https://github.com/bcbs/values"
-"Bug Tracker" = "https://github.com/bcbs/values/issues"
+[tool.poetry.dependencies]
+python = ">=3.10,<4.0"
+flask = "^2.3.3"
+flask-sqlalchemy = "^3.1.1"
+requests = "^2.31.0"
+python-dotenv = "^1.0.0"
+flask-migrate = "^4.0.5"
+flask-dance = "^7.0.0"
+werkzeug = "^2.3.7"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

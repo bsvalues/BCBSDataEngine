@@ -3,13 +3,23 @@
 {% block title %}BCBS Values - Page Not Found{% endblock %}
 
 {% block content %}
-<div class="container text-center py-5">
-    <div class="row justify-content-center">
-        <div class="col-md-8">
-            <h1 class="display-1 fw-bold">404</h1>
-            <h2 class="mb-4">Page Not Found</h2>
-            <p class="lead mb-5">The page you're looking for doesn't exist or has been moved.</p>
-            <a href="{{ url_for('index') }}" class="btn btn-primary">Go Home</a>
+<div class="container py-5 text-center">
+    <div class="error-page">
+        <div class="mb-4">
+            <i class="bi bi-patch-question text-warning display-1"></i>
+        </div>
+        <h1 class="display-4 mb-4">404 - Page Not Found</h1>
+        <p class="lead mb-5">
+            Sorry, the page you were looking for doesn't exist.
+            You might have mistyped the address or the page may have moved.
+        </p>
+        <div class="d-flex justify-content-center gap-3">
+            <a href="/" class="btn btn-primary">
+                <i class="bi bi-house me-2"></i>Go Home
+            </a>
+            <a href="/dashboard" class="btn btn-outline-secondary">
+                <i class="bi bi-graph-up me-2"></i>Dashboard
+            </a>
         </div>
     </div>
 </div>
