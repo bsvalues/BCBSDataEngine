@@ -37,15 +37,17 @@ ChartJS.register(
  * - Advanced data visualization with Chart.js showing trends and distributions
  * - Responsive design with Tailwind CSS
  * - Detailed property information with advanced metrics
+ * - ETL and agent status monitoring
  */
 const Dashboard = () => {
-  // State for storing property valuations data
+  // --- State Management ---
+  
+  // Property data state
   const [properties, setProperties] = useState([]);
-  // State for tracking loading status
   const [loading, setLoading] = useState(true);
-  // State for storing any error messages
   const [error, setError] = useState(null);
-  // State for tracking filter values
+  
+  // Filter state
   const [filters, setFilters] = useState({
     neighborhood: '',
     minValue: '',
@@ -57,22 +59,27 @@ const Dashboard = () => {
     sortBy: 'estimated_value',
     sortDirection: 'desc'
   });
-  // State for active tab in the chart section
+  
+  // UI state
   const [activeTab, setActiveTab] = useState('distribution');
-  // State for selected property detail view
   const [selectedProperty, setSelectedProperty] = useState(null);
-  // State for available neighborhoods from data
   const [availableNeighborhoods, setAvailableNeighborhoods] = useState([]);
-  // State for tracking pagination
+  const [availablePropertyTypes, setAvailablePropertyTypes] = useState([
+    'single_family', 'condo', 'townhouse', 'multi_family', 'land'
+  ]);
+  
+  // Pagination state
   const [pagination, setPagination] = useState({
     currentPage: 1,
     itemsPerPage: 10,
-    totalItems: 0
+    totalItems: 0,
+    totalPages: 1
   });
-  // State for API key
+  
+  // Auth state
   const [apiKey, setApiKey] = useState('');
   
-  // State for ETL pipeline status
+  // ETL pipeline status state
   const [etlStatus, setEtlStatus] = useState({
     status: 'unknown',
     lastUpdate: null,
@@ -92,7 +99,7 @@ const Dashboard = () => {
     error: null
   });
   
-  // State for agent status
+  // Agent status state
   const [agentStatus, setAgentStatus] = useState({
     agents: [],
     isLoading: false,
@@ -100,31 +107,32 @@ const Dashboard = () => {
     lastUpdate: null
   });
   
-  // State for selected agent (for detailed view)
+  // Selected agent for detailed view
   const [selectedAgent, setSelectedAgent] = useState(null);
   
-  // State for controlling the status refresh intervals
+  // Refresh settings
   const [refreshSettings, setRefreshSettings] = useState({
     autoRefresh: true,
-    interval: 60000, // 1 minute
+    interval: 60000, // 1 minute default
     lastRefreshTime: null
   });
   
-  // State for active dashboard tab
+  // Dashboard tab navigation
   const [activeDashboardTab, setActiveDashboardTab] = useState('properties');
   
-  // Refs for chart containers and observer for dashboard metrics
+  // --- Chart References ---
   const valueDistributionChartRef = useRef(null);
   const neighborhoodChartRef = useRef(null);
   const trendChartRef = useRef(null);
   const etlProgressChartRef = useRef(null);
   const agentPerformanceChartRef = useRef(null);
-  const metricsObserverRef = useRef(null);
+  const metricsObserverRef = useRef(null); // For animation triggering with Intersection Observer
+  const refreshTimerRef = useRef(null); // For tracking auto-refresh interval
 
   /**
    * Function to fetch property valuations from the enhanced API endpoint
    * Includes pagination, sorting, and filtering capabilities
-   * Wrapped in useCallback to prevent recreation on each render
+   * @returns {Promise<void>}
    */
   const fetchPropertyValuations = useCallback(async () => {
     setLoading(true);
@@ -134,17 +142,20 @@ const Dashboard = () => {
       // Build query parameters based on active filters
       const queryParams = new URLSearchParams();
       
+      // Add filter parameters if they exist
+      if (filters.neighborhood) queryParams.append('neighborhood', filters.neighborhood);
       if (filters.minValue) queryParams.append('min_value', filters.minValue);
       if (filters.maxValue) queryParams.append('max_value', filters.maxValue);
       if (filters.propertyType) queryParams.append('property_type', filters.propertyType);
       if (filters.fromDate) queryParams.append('from_date', filters.fromDate);
       if (filters.toDate) queryParams.append('to_date', filters.toDate);
+      if (filters.searchQuery) queryParams.append('search', filters.searchQuery);
       if (filters.sortBy) queryParams.append('sort_by', filters.sortBy);
       if (filters.sortDirection) queryParams.append('sort_direction', filters.sortDirection);
       
       // Add pagination parameters
       queryParams.append('page', pagination.currentPage);
-      queryParams.append('page_size', pagination.itemsPerPage);
+      queryParams.append('per_page', pagination.itemsPerPage);
       
       // Headers for the API request including the API key
       const headers = {
@@ -153,10 +164,11 @@ const Dashboard = () => {
       
       // Add API key header if available
       if (apiKey) {
-        headers['X-API-KEY'] = apiKey;
+        headers['X-API-Key'] = apiKey;
       }
       
       // Make the API request to the enhanced valuations endpoint
+      console.log(`Fetching from /api/valuations?${queryParams.toString()}`);
       const response = await fetch(`/api/valuations?${queryParams.toString()}`, {
         method: 'GET',
         headers: headers
@@ -168,78 +180,108 @@ const Dashboard = () => {
       
       const data = await response.json();
       
-      // Check if the API returns data in the expected format
-      if (Array.isArray(data.properties)) {
-        // New API format with pagination info
-        setProperties(data.properties);
-        setPagination(prev => ({
-          ...prev,
-          totalItems: data.total_count || data.properties.length
-        }));
-      } else if (Array.isArray(data)) {
-        // Legacy API format (just an array of properties)
-        setProperties(data);
-        setPagination(prev => ({
-          ...prev,
-          totalItems: data.length
-        }));
+      // Update the UI based on response data format
+      if (data && typeof data === 'object') {
+        if (Array.isArray(data.properties)) {
+          // New API format with pagination info
+          setProperties(data.properties);
+          setPagination(prev => ({
+            ...prev,
+            totalItems: data.total_count || data.properties.length,
+            totalPages: data.total_pages || Math.ceil((data.total_count || data.properties.length) / prev.itemsPerPage)
+          }));
+          
+          // Extract metadata if available
+          if (data.metadata) {
+            if (Array.isArray(data.metadata.neighborhoods)) {
+              setAvailableNeighborhoods(data.metadata.neighborhoods);
+            }
+            
+            if (Array.isArray(data.metadata.property_types)) {
+              setAvailablePropertyTypes(data.metadata.property_types);
+            }
+          }
+        } else if (Array.isArray(data)) {
+          // Legacy API format (just an array of properties)
+          setProperties(data);
+          setPagination(prev => ({
+            ...prev,
+            totalItems: data.length,
+            totalPages: Math.ceil(data.length / prev.itemsPerPage)
+          }));
+          
+          // Extract neighborhoods from the data
+          extractUniqueNeighborhoods(data);
+        } else {
+          throw new Error("Unexpected data format received from API");
+        }
+        
+        console.log(`Loaded ${Array.isArray(data.properties) ? data.properties.length : data.length} properties from API`);
       } else {
-        throw new Error("Unexpected data format received from API");
+        throw new Error("Invalid response data");
       }
-      
-      console.log(`Loaded ${Array.isArray(data.properties) ? data.properties.length : data.length} properties from API`);
-      
-      // Extract unique neighborhoods for the filter dropdown
-      extractUniqueNeighborhoods(Array.isArray(data.properties) ? data.properties : data);
-      
     } catch (err) {
       console.error('Error fetching property valuations:', err);
       setError(`Failed to load property valuations: ${err.message}. Please try again later.`);
     } finally {
       setLoading(false);
+      
+      // Update last refresh time
+      setRefreshSettings(prev => ({
+        ...prev,
+        lastRefreshTime: new Date()
+      }));
     }
-  }, [filters, pagination, extractUniqueNeighborhoods, apiKey]); // Add all dependencies
-
-  /**
-   * Function to extract neighborhood from address
-   * @param {string} address - The property address
-   * @returns {string} - Extracted neighborhood
-   */
-  const extractNeighborhood = (address) => {
-    // This is a simple extraction - you might need more complex logic
-    // based on your actual address format
-    const parts = address.split(',');
-    if (parts.length >= 2) {
-      return parts[1].trim();
-    }
-    return 'Unknown';
-  };
+  }, [filters, pagination.currentPage, pagination.itemsPerPage, apiKey]);
 
   /**
    * Extract unique neighborhoods from the property data
    * @param {Array} propertyData - Array of property objects
    */
   const extractUniqueNeighborhoods = useCallback((propertyData) => {
-    const neighborhoods = propertyData.map(property => 
-      extractNeighborhood(property.address)
-    ).filter((value, index, self) => 
-      value !== 'Unknown' && self.indexOf(value) === index
-    ).sort();
+    if (!Array.isArray(propertyData) || propertyData.length === 0) return;
+    
+    // Extract neighborhoods, preferring the neighborhood property if available
+    const neighborhoods = propertyData
+      .map(property => property.neighborhood || extractNeighborhoodFromAddress(property.address))
+      .filter(Boolean) // Remove null/undefined/empty values
+      .filter((value, index, self) => self.indexOf(value) === index) // Remove duplicates
+      .sort(); // Sort alphabetically
     
     setAvailableNeighborhoods(neighborhoods);
-  }, [extractNeighborhood]);
+  }, []);
 
   /**
-   * Function to handle filter changes with optimized search capability
+   * Function to extract neighborhood from address if needed
+   * @param {string} address - The property address
+   * @returns {string} - Extracted neighborhood or empty string
+   */
+  const extractNeighborhoodFromAddress = (address) => {
+    if (!address) return '';
+    
+    // This is a simple extraction - you might need more complex logic
+    // based on your actual address format
+    const parts = address.split(',');
+    if (parts.length >= 2) {
+      return parts[1].trim();
+    }
+    
+    return '';
+  };
+
+  /**
+   * Function to handle filter changes
+   * @param {Event} e - The input change event
    */
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
+    
     setFilters(prevFilters => ({
       ...prevFilters,
       [name]: value
     }));
     
-    // Reset to first page when filters change
+    // Reset to first page when filters change except for search query
     if (name !== 'searchQuery') {
       setPagination(prev => ({
         ...prev,
@@ -265,27 +307,32 @@ const Dashboard = () => {
       }));
       
       // Only fetch if we're not already searching or if query length is appropriate
-      if (query.length === 0 || query.length >= 3) {
+      if (query.length === 0 || query.length >= 2) {
         fetchPropertyValuations();
       }
     }, 500),
-    [fetchPropertyValuations] // Include fetchPropertyValuations in the dependency array
+    [fetchPropertyValuations]
   );
 
   /**
-   * Function to apply filters
+   * Function to apply filters (for form submission)
+   * @param {Event} e - The form submit event
    */
   const applyFilters = (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
+    
+    // Reset to first page
     setPagination(prev => ({
       ...prev,
       currentPage: 1
     }));
+    
+    // Fetch with current filters
     fetchPropertyValuations();
   };
 
   /**
-   * Function to reset all filters
+   * Function to reset all filters to default values
    */
   const resetFilters = () => {
     setFilters({
@@ -300,68 +347,14 @@ const Dashboard = () => {
       sortDirection: 'desc'
     });
     
+    // Reset pagination to first page
     setPagination(prev => ({
       ...prev,
       currentPage: 1
     }));
     
-    // Re-fetch data with cleared filters
-    fetchPropertyValuations();
-  };
-
-  /**
-   * Function to format currency
-   * @param {number} value - The numeric value to format as currency
-   * @returns {string} - Formatted currency string
-   */
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: 0
-    }).format(value);
-  };
-
-  /**
-   * Format percentage values for display
-   * @param {number} value - Value to format as percentage
-   * @returns {string} - Formatted percentage string
-   */
-  const formatPercentage = (value) => {
-    return `${(value * 100).toFixed(1)}%`;
-  };
-
-  /**
-   * Format date values for display
-   * @param {string} dateString - ISO date string
-   * @returns {string} - Formatted date string
-   */
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-  
-  /**
-   * Format date values for display with time included
-   * @param {string|Date} dateTimeValue - Date object or ISO date string
-   * @returns {string} - Formatted date and time string
-   */
-  const formatDateTime = (dateTimeValue) => {
-    if (!dateTimeValue) return 'N/A';
-    
-    const date = dateTimeValue instanceof Date ? dateTimeValue : new Date(dateTimeValue);
-    return date.toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
+    // Fetch with cleared filters (deferred to next render cycle)
+    setTimeout(() => fetchPropertyValuations(), 0);
   };
 
   /**
@@ -369,12 +362,20 @@ const Dashboard = () => {
    * @param {string} columnName - The name of the column to sort by
    */
   const handleSortColumn = (columnName) => {
-    setFilters(prevFilters => ({
-      ...prevFilters,
-      sortDirection: prevFilters.sortBy === columnName && prevFilters.sortDirection === 'asc' ? 'desc' : 'asc',
-      sortBy: columnName
-    }));
-    fetchPropertyValuations();
+    setFilters(prevFilters => {
+      // Toggle sort direction if clicking the same column
+      const newDirection = prevFilters.sortBy === columnName && 
+                           prevFilters.sortDirection === 'asc' ? 'desc' : 'asc';
+      
+      return {
+        ...prevFilters,
+        sortBy: columnName,
+        sortDirection: newDirection
+      };
+    });
+    
+    // Fetch data with new sort settings (deferred to next render cycle)
+    setTimeout(() => fetchPropertyValuations(), 0);
   };
 
   /**
@@ -382,12 +383,14 @@ const Dashboard = () => {
    * @param {number} newPage - The new page number to navigate to
    */
   const handlePageChange = (newPage) => {
-    if (newPage >= 1 && newPage <= Math.ceil(pagination.totalItems / pagination.itemsPerPage)) {
+    if (newPage >= 1 && newPage <= pagination.totalPages) {
       setPagination(prev => ({
         ...prev,
         currentPage: newPage
       }));
-      fetchPropertyValuations();
+      
+      // Fetch data for the new page
+      setTimeout(() => fetchPropertyValuations(), 0);
     }
   };
 
@@ -397,12 +400,15 @@ const Dashboard = () => {
    */
   const handleItemsPerPageChange = (e) => {
     const newItemsPerPage = parseInt(e.target.value, 10);
+    
     setPagination(prev => ({
       ...prev,
       itemsPerPage: newItemsPerPage,
       currentPage: 1 // Reset to first page when changing items per page
     }));
-    fetchPropertyValuations();
+    
+    // Fetch data with new pagination settings
+    setTimeout(() => fetchPropertyValuations(), 0);
   };
 
   /**
@@ -421,30 +427,8 @@ const Dashboard = () => {
   };
 
   /**
-   * Function to filter properties by search query and neighborhood
-   * for client-side filtering in addition to API-based filtering
-   */
-  const filteredProperties = useMemo(() => {
-    return properties.filter(property => {
-      // Apply neighborhood filter (client-side filtering if needed)
-      if (filters.neighborhood && !extractNeighborhood(property.address).toLowerCase().includes(filters.neighborhood.toLowerCase())) {
-        return false;
-      }
-      
-      // Apply search query filter on address or property_id
-      if (filters.searchQuery && 
-          !(property.address.toLowerCase().includes(filters.searchQuery.toLowerCase()) || 
-            property.property_id.toLowerCase().includes(filters.searchQuery.toLowerCase()))) {
-        return false;
-      }
-      
-      return true;
-    });
-  }, [properties, filters.neighborhood, filters.searchQuery]);
-  
-  /**
    * Function to fetch ETL pipeline status data
-   * Retrieves the current status of all ETL processes
+   * @returns {Promise<void>}
    */
   const fetchEtlStatus = useCallback(async () => {
     setEtlStatus(prev => ({ ...prev, isLoading: true, error: null }));
@@ -457,7 +441,7 @@ const Dashboard = () => {
       
       // Add API key header if available
       if (apiKey) {
-        headers['X-API-KEY'] = apiKey;
+        headers['X-API-Key'] = apiKey;
       }
       
       // Make the API request to the ETL status endpoint
@@ -472,7 +456,7 @@ const Dashboard = () => {
       
       const data = await response.json();
       
-      // Update ETL status state with the fetched data
+      // Transform API response to our state format
       setEtlStatus({
         status: data.status || 'unknown',
         lastUpdate: data.last_update ? new Date(data.last_update) : null,
@@ -492,7 +476,7 @@ const Dashboard = () => {
         error: null
       });
       
-      // Update last refresh time
+      // Update refresh timestamp
       setRefreshSettings(prev => ({
         ...prev,
         lastRefreshTime: new Date()
@@ -508,10 +492,10 @@ const Dashboard = () => {
       }));
     }
   }, [apiKey]);
-  
+
   /**
    * Function to fetch agent status data
-   * Retrieves the current status of all agents in the system
+   * @returns {Promise<void>}
    */
   const fetchAgentStatus = useCallback(async () => {
     setAgentStatus(prev => ({ ...prev, isLoading: true, error: null }));
@@ -524,7 +508,7 @@ const Dashboard = () => {
       
       // Add API key header if available
       if (apiKey) {
-        headers['X-API-KEY'] = apiKey;
+        headers['X-API-Key'] = apiKey;
       }
       
       // Make the API request to the agent status endpoint
@@ -539,7 +523,7 @@ const Dashboard = () => {
       
       const data = await response.json();
       
-      // Update agent status state with the fetched data
+      // Transform API response to our state format
       setAgentStatus({
         agents: Array.isArray(data.agents) ? data.agents : [],
         isLoading: false,
@@ -547,13 +531,13 @@ const Dashboard = () => {
         lastUpdate: new Date()
       });
       
-      // Update last refresh time
+      // Update refresh timestamp
       setRefreshSettings(prev => ({
         ...prev,
         lastRefreshTime: new Date()
       }));
       
-      console.log(`Loaded status data for ${Array.isArray(data.agents) ? data.agents.length : 0} agents.`);
+      console.log(`Loaded status for ${data.agents?.length || 0} agents.`);
     } catch (err) {
       console.error('Error fetching agent status:', err);
       setAgentStatus(prev => ({
@@ -563,16 +547,14 @@ const Dashboard = () => {
       }));
     }
   }, [apiKey]);
-  
+
   /**
    * Function to fetch detailed information for a specific agent
    * @param {string} agentId - The ID of the agent to retrieve detailed information for
+   * @returns {Promise<void>}
    */
   const fetchAgentDetails = useCallback(async (agentId) => {
-    if (!agentId) {
-      console.error('Agent ID is required to fetch agent details');
-      return;
-    }
+    if (!agentId) return;
     
     try {
       // Headers for the API request including the API key
@@ -582,62 +564,77 @@ const Dashboard = () => {
       
       // Add API key header if available
       if (apiKey) {
-        headers['X-API-KEY'] = apiKey;
+        headers['X-API-Key'] = apiKey;
       }
       
-      // Make the API request to the agent details endpoint
-      const response = await fetch(`/api/agent-status/${agentId}`, {
+      // Make the API request to the agent logs endpoint
+      const response = await fetch(`/api/agent-logs/${agentId}`, {
         method: 'GET',
         headers: headers
       });
       
       if (!response.ok) {
-        throw new Error(`Agent details API request failed with status ${response.status}: ${response.statusText}`);
+        throw new Error(`Agent logs API request failed with status ${response.status}: ${response.statusText}`);
       }
       
       const data = await response.json();
       
-      // Update selectedAgent state with the fetched data
-      setSelectedAgent(data);
+      // Find the agent in our current state
+      const agent = agentStatus.agents.find(a => a.agent_id === agentId);
       
-      console.log(`Loaded detailed information for agent ${agentId}.`);
+      if (agent) {
+        // Set selected agent with the logs from the API
+        setSelectedAgent({
+          ...agent,
+          logs: data.logs || []
+        });
+      } else {
+        throw new Error(`Agent ${agentId} not found in current state`);
+      }
+      
+      console.log(`Loaded ${data.logs?.length || 0} logs for agent ${agentId}`);
     } catch (err) {
-      console.error(`Error fetching agent details for ${agentId}:`, err);
-      // Show error message in the UI
-      setError(`Failed to load agent details: ${err.message}. Please try again later.`);
+      console.error(`Error fetching agent logs for ${agentId}:`, err);
+      // Set error in selected agent
+      setSelectedAgent(prev => ({
+        ...prev,
+        logsError: `Failed to load agent logs: ${err.message}. Please try again later.`
+      }));
     }
-  }, [apiKey]);
-  
+  }, [apiKey, agentStatus.agents]);
+
   /**
    * Function to refresh all dashboard data
    * This will fetch property valuations, ETL status, and agent status
    */
   const refreshAllData = useCallback(() => {
-    fetchPropertyValuations();
-    fetchEtlStatus();
-    fetchAgentStatus();
+    console.log('Refreshing all dashboard data...');
     
-    // Update last refresh time
+    // Update refresh timestamp
     setRefreshSettings(prev => ({
       ...prev,
       lastRefreshTime: new Date()
     }));
     
-    console.log('All dashboard data refreshed.');
+    // Fetch all data
+    fetchPropertyValuations();
+    fetchEtlStatus();
+    fetchAgentStatus();
   }, [fetchPropertyValuations, fetchEtlStatus, fetchAgentStatus]);
-  
+
   /**
    * Handle auto-refresh interval change
    * @param {Event} e - The change event
    */
   const handleRefreshIntervalChange = (e) => {
     const newInterval = parseInt(e.target.value, 10);
+    
     setRefreshSettings(prev => ({
       ...prev,
       interval: newInterval
     }));
   };
-  
+
   /**
    * Toggle auto-refresh on/off
    */
@@ -647,644 +644,468 @@ const Dashboard = () => {
       autoRefresh: !prev.autoRefresh
     }));
   };
-  
+
   /**
    * Handle selecting an agent for detailed view
    * @param {Object} agent - The agent object to view in detail
    */
   const handleAgentSelect = (agent) => {
-    if (agent && agent.id) {
-      fetchAgentDetails(agent.id);
-    }
+    setSelectedAgent(agent);
+    
+    // Fetch detailed information for this agent
+    fetchAgentDetails(agent.agent_id);
   };
-  
+
   /**
    * Close the agent detail view
    */
   const closeAgentDetail = () => {
     setSelectedAgent(null);
   };
-  
+
   /**
    * Handle switching between dashboard tabs
    * @param {string} tabName - The name of the tab to switch to
    */
   const handleDashboardTabChange = (tabName) => {
     setActiveDashboardTab(tabName);
+  };
+
+  // --- Utility functions ---
+  
+  /**
+   * Format currency values for display
+   * @param {number} value - The numeric value to format as currency
+   * @returns {string} - Formatted currency string
+   */
+  const formatCurrency = (value) => {
+    if (value === null || value === undefined) return 'N/A';
     
-    // If switching to ETL tab and we don't have data yet, fetch it
-    if (tabName === 'etl' && (!etlStatus.data || etlStatus.data.length === 0)) {
-      fetchEtlStatus();
-    }
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0
+    }).format(value);
+  };
+
+  /**
+   * Format percentage values for display
+   * @param {number} value - Value to format as percentage
+   * @returns {string} - Formatted percentage string
+   */
+  const formatPercentage = (value) => {
+    if (value === null || value === undefined) return 'N/A';
     
-    // If switching to Agents tab and we don't have data yet, fetch it
-    if (tabName === 'agents' && (!agentStatus.data || agentStatus.data.length === 0)) {
-      fetchAgentStatus();
+    return `${(value * 100).toFixed(1)}%`;
+  };
+
+  /**
+   * Format date values for display
+   * @param {string} dateString - ISO date string
+   * @returns {string} - Formatted date string
+   */
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch (e) {
+      return 'Invalid Date';
     }
   };
   
   /**
-   * Load property valuations when component mounts
-   * Also set up the IntersectionObserver for dashboard metrics animations
-   * and configure the auto-refresh timer
+   * Format date values for display with time included
+   * @param {string|Date} dateTimeValue - Date object or ISO date string
+   * @returns {string} - Formatted date and time string
    */
-  useEffect(() => {
-    // Initial data load
-    fetchPropertyValuations();
-    fetchEtlStatus();
-    fetchAgentStatus();
+  const formatDateTime = (dateTimeValue) => {
+    if (!dateTimeValue) return 'N/A';
     
-    // Set up IntersectionObserver for dashboard metrics animations
-    const options = {
-      root: null,
-      rootMargin: '0px',
-      threshold: 0.1
-    };
-    
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('animate-fade-in');
-        }
+    try {
+      const date = dateTimeValue instanceof Date ? dateTimeValue : new Date(dateTimeValue);
+      return date.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
       });
-    }, options);
-    
-    const metricsContainer = document.getElementById('dashboard-metrics');
-    if (metricsContainer) {
-      metricsContainer.querySelectorAll('.metric-card').forEach(card => {
-        observer.observe(card);
-      });
+    } catch (e) {
+      return 'Invalid Date';
     }
-    
-    metricsObserverRef.current = observer;
-    
-    // Set up auto-refresh timer for data
-    const autoRefreshTimer = setInterval(() => {
-      if (refreshSettings.autoRefresh) {
-        refreshAllData();
-      }
-    }, refreshSettings.interval);
-    
-    return () => {
-      // Clean up observer and timer when component unmounts
-      if (metricsObserverRef.current) {
-        metricsObserverRef.current.disconnect();
-      }
-      clearInterval(autoRefreshTimer);
-    };
-  }, [refreshSettings.autoRefresh, refreshSettings.interval, fetchPropertyValuations, fetchEtlStatus, fetchAgentStatus, refreshAllData]); // Dependencies for useEffect
-  
-  /**
-   * Prepare ETL status chart data
-   * Using useMemo to prevent unnecessary recalculations
-   */
-  const preparedEtlChartData = useMemo(() => {
-    if (etlStatus.sources.length === 0) {
-      return null;
-    }
-    
-    // Prepare data for ETL data quality chart
-    const qualityLabels = ['Completeness', 'Accuracy', 'Timeliness'];
-    const qualityValues = [
-      etlStatus.dataQuality.completeness * 100, 
-      etlStatus.dataQuality.accuracy * 100, 
-      etlStatus.dataQuality.timeliness * 100
-    ];
-    
-    // Prepare data for sources processing chart
-    const sourceNames = etlStatus.sources.map(source => source.name);
-    const sourceProgress = etlStatus.sources.map(source => source.progress * 100);
-    const sourceRecords = etlStatus.sources.map(source => source.records_processed);
-    
-    return {
-      etlProgress: {
-        type: 'doughnut',
-        data: {
-          labels: ['Completed', 'Remaining'],
-          datasets: [
-            {
-              data: [etlStatus.progress * 100, 100 - (etlStatus.progress * 100)],
-              backgroundColor: [
-                'rgba(75, 192, 192, 0.7)',
-                'rgba(220, 220, 220, 0.7)'
-              ],
-              borderColor: [
-                'rgba(75, 192, 192, 1)',
-                'rgba(220, 220, 220, 1)'
-              ],
-              borderWidth: 1
-            }
-          ]
-        }
-      },
-      sourceProgress: {
-        type: 'bar',
-        data: {
-          labels: sourceNames,
-          datasets: [
-            {
-              label: 'Progress (%)',
-              data: sourceProgress,
-              backgroundColor: 'rgba(54, 162, 235, 0.7)',
-              borderColor: 'rgba(54, 162, 235, 1)',
-              borderWidth: 1,
-              yAxisID: 'y'
-            },
-            {
-              label: 'Records Processed',
-              data: sourceRecords,
-              type: 'line',
-              backgroundColor: 'rgba(255, 99, 132, 0.3)',
-              borderColor: 'rgba(255, 99, 132, 1)',
-              borderWidth: 2,
-              fill: false,
-              yAxisID: 'y1'
-            }
-          ]
-        }
-      },
-      dataQuality: {
-        type: 'radar',
-        data: {
-          labels: qualityLabels,
-          datasets: [
-            {
-              label: 'Data Quality (%)',
-              data: qualityValues,
-              backgroundColor: 'rgba(153, 102, 255, 0.2)',
-              borderColor: 'rgba(153, 102, 255, 1)',
-              borderWidth: 2,
-              pointBackgroundColor: 'rgba(153, 102, 255, 1)',
-              pointBorderColor: '#fff',
-              pointHoverBackgroundColor: '#fff',
-              pointHoverBorderColor: 'rgba(153, 102, 255, 1)'
-            }
-          ]
-        }
-      }
-    };
-  }, [etlStatus]);
-  
-  /**
-   * Prepare agent status chart data
-   * Using useMemo to prevent unnecessary recalculations
-   */
-  const preparedAgentChartData = useMemo(() => {
-    if (agentStatus.agents.length === 0) {
-      return null;
-    }
-    
-    // Count agents by status
-    const statusCounts = {};
-    agentStatus.agents.forEach(agent => {
-      const status = agent.status || 'unknown';
-      statusCounts[status] = (statusCounts[status] || 0) + 1;
-    });
-    
-    const statusLabels = Object.keys(statusCounts);
-    const statusValues = statusLabels.map(status => statusCounts[status]);
-    const statusColors = statusLabels.map(status => {
-      switch (status.toLowerCase()) {
-        case 'active':
-          return 'rgba(75, 192, 192, 0.7)';
-        case 'idle':
-          return 'rgba(54, 162, 235, 0.7)';
-        case 'error':
-          return 'rgba(255, 99, 132, 0.7)';
-        case 'busy':
-          return 'rgba(255, 206, 86, 0.7)';
-        case 'starting':
-          return 'rgba(153, 102, 255, 0.7)';
-        case 'stopping':
-          return 'rgba(255, 159, 64, 0.7)';
-        default:
-          return 'rgba(201, 203, 207, 0.7)';
-      }
-    });
-    
-    // Performance metrics by agent type
-    const agentTypes = {};
-    agentStatus.agents.forEach(agent => {
-      if (!agent.type) return;
-      
-      if (!agentTypes[agent.type]) {
-        agentTypes[agent.type] = {
-          count: 0,
-          tasksCompleted: 0,
-          avgTaskTime: 0,
-          errorRate: 0,
-          resourceUsage: 0
-        };
-      }
-      
-      agentTypes[agent.type].count++;
-      agentTypes[agent.type].tasksCompleted += agent.metrics?.tasks_completed || 0;
-      agentTypes[agent.type].avgTaskTime += agent.metrics?.avg_task_time || 0;
-      agentTypes[agent.type].errorRate += agent.metrics?.error_rate || 0;
-      agentTypes[agent.type].resourceUsage += (agent.resources?.cpu_usage || 0) / 100; // Normalize to 0-1
-    });
-    
-    // Calculate averages
-    Object.keys(agentTypes).forEach(type => {
-      if (agentTypes[type].count > 0) {
-        agentTypes[type].avgTaskTime /= agentTypes[type].count;
-        agentTypes[type].errorRate /= agentTypes[type].count;
-        agentTypes[type].resourceUsage /= agentTypes[type].count;
-      }
-    });
-    
-    const typeLabels = Object.keys(agentTypes);
-    const typeCounts = typeLabels.map(type => agentTypes[type].count);
-    const typeTasksCompleted = typeLabels.map(type => agentTypes[type].tasksCompleted);
-    const typeAvgTaskTime = typeLabels.map(type => agentTypes[type].avgTaskTime);
-    const typeErrorRate = typeLabels.map(type => agentTypes[type].errorRate * 100); // Convert to percentage
-    const typeResourceUsage = typeLabels.map(type => agentTypes[type].resourceUsage * 100); // Convert to percentage
-    
-    return {
-      agentStatus: {
-        type: 'pie',
-        data: {
-          labels: statusLabels,
-          datasets: [
-            {
-              data: statusValues,
-              backgroundColor: statusColors,
-              borderColor: statusColors.map(color => color.replace('0.7', '1')),
-              borderWidth: 1
-            }
-          ]
-        }
-      },
-      agentTypes: {
-        type: 'bar',
-        data: {
-          labels: typeLabels,
-          datasets: [
-            {
-              label: 'Agent Count',
-              data: typeCounts,
-              backgroundColor: 'rgba(75, 192, 192, 0.7)',
-              borderColor: 'rgba(75, 192, 192, 1)',
-              borderWidth: 1
-            }
-          ]
-        }
-      },
-      agentPerformance: {
-        type: 'radar',
-        data: {
-          labels: typeLabels,
-          datasets: [
-            {
-              label: 'Tasks Completed',
-              data: typeTasksCompleted,
-              backgroundColor: 'rgba(54, 162, 235, 0.2)',
-              borderColor: 'rgba(54, 162, 235, 1)',
-              borderWidth: 2,
-              pointBackgroundColor: 'rgba(54, 162, 235, 1)',
-              pointBorderColor: '#fff'
-            },
-            {
-              label: 'Resource Usage (%)',
-              data: typeResourceUsage,
-              backgroundColor: 'rgba(255, 99, 132, 0.2)',
-              borderColor: 'rgba(255, 99, 132, 1)',
-              borderWidth: 2,
-              pointBackgroundColor: 'rgba(255, 99, 132, 1)',
-              pointBorderColor: '#fff'
-            },
-            {
-              label: 'Error Rate (%)',
-              data: typeErrorRate,
-              backgroundColor: 'rgba(255, 206, 86, 0.2)',
-              borderColor: 'rgba(255, 206, 86, 1)',
-              borderWidth: 2,
-              pointBackgroundColor: 'rgba(255, 206, 86, 1)',
-              pointBorderColor: '#fff'
-            }
-          ]
-        }
-      }
-    };
-  }, [agentStatus]);
-  
+  };
+
   /**
    * Helper function to get status color class based on status string
    * @param {string} status - Status string
    * @returns {string} - Tailwind CSS color class
    */
   const getStatusColorClass = (status) => {
-    if (!status) return 'bg-gray-200 text-gray-800'; // Default/unknown
+    if (!status) return 'bg-gray-500';
     
-    switch (status.toLowerCase()) {
-      case 'active':
-        return 'bg-green-100 text-green-800';
-      case 'idle':
-        return 'bg-blue-100 text-blue-800';
-      case 'error':
-        return 'bg-red-100 text-red-800';
-      case 'busy':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'starting':
-        return 'bg-purple-100 text-purple-800';
-      case 'stopping':
-        return 'bg-orange-100 text-orange-800';
-      case 'completed':
-        return 'bg-emerald-100 text-emerald-800';
-      case 'waiting':
-        return 'bg-cyan-100 text-cyan-800';
-      case 'in_progress':
-        return 'bg-amber-100 text-amber-800';
-      case 'failed':
-        return 'bg-rose-100 text-rose-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
+    const statusLower = status.toLowerCase();
+    
+    if (statusLower === 'active' || statusLower === 'online' || statusLower === 'completed' || statusLower === 'success') {
+      return 'bg-green-500';
+    } else if (statusLower === 'idle' || statusLower === 'pending' || statusLower === 'waiting') {
+      return 'bg-blue-500';
+    } else if (statusLower === 'warning' || statusLower === 'busy') {
+      return 'bg-yellow-500';
+    } else if (statusLower === 'error' || statusLower === 'failed' || statusLower === 'offline') {
+      return 'bg-red-500';
     }
-  };
-  
-  /**
-   * Prepare agent status chart data
-   * Using useMemo to prevent unnecessary recalculations
-   */
-  const agentStatusChartData = useMemo(() => {
-    if (!agentStatus.data || agentStatus.data.length === 0) return null;
     
-    // Count agents by status
-    const statusCounts = {};
-    agentStatus.data.forEach(agent => {
-      const status = agent.status || 'unknown';
-      statusCounts[status] = (statusCounts[status] || 0) + 1;
+    return 'bg-gray-500';
+  };
+
+  // --- Initialize charts and load data on component mount ---
+  useEffect(() => {
+    // Set up intersection observer for animations
+    const observerOptions = {
+      root: null,
+      rootMargin: '0px',
+      threshold: 0.1,
+    };
+    
+    const handleIntersection = (entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          // Add animation class when element is visible
+          entry.target.classList.add('animate-fade-in-up');
+        }
+      });
+    };
+    
+    metricsObserverRef.current = new IntersectionObserver(handleIntersection, observerOptions);
+    
+    // Observe dashboard metric elements
+    document.querySelectorAll('.metric-card').forEach(card => {
+      metricsObserverRef.current.observe(card);
     });
     
-    // Prepare data for Pie chart
-    return {
-      labels: Object.keys(statusCounts).map(status => 
-        status.charAt(0).toUpperCase() + status.slice(1)
-      ),
-      datasets: [
-        {
-          data: Object.values(statusCounts),
-          backgroundColor: [
-            '#4ade80', // active - green
-            '#60a5fa', // idle - blue
-            '#facc15', // pending - yellow
-            '#ef4444', // error - red
-            '#a78bfa'  // other - purple
-          ],
-          borderWidth: 1,
-          borderColor: '#ffffff',
-        }
-      ]
+    // Initial data loading
+    refreshAllData();
+    
+    // Set up auto-refresh interval
+    if (refreshSettings.autoRefresh) {
+      refreshTimerRef.current = setInterval(() => {
+        refreshAllData();
+      }, refreshSettings.interval);
+    }
+    
+    // Cleanup function
+    return () => {
+      // Disconnect intersection observer
+      if (metricsObserverRef.current) {
+        metricsObserverRef.current.disconnect();
+      }
+      
+      // Clear refresh interval
+      if (refreshTimerRef.current) {
+        clearInterval(refreshTimerRef.current);
+      }
     };
-  }, [agentStatus.data]);
+  }, [refreshSettings.autoRefresh, refreshSettings.interval, refreshAllData]);
+
+  // Update refresh timer when settings change
+  useEffect(() => {
+    // Clear existing interval
+    if (refreshTimerRef.current) {
+      clearInterval(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
+    
+    // Set up new interval if auto-refresh is enabled
+    if (refreshSettings.autoRefresh) {
+      refreshTimerRef.current = setInterval(() => {
+        refreshAllData();
+      }, refreshSettings.interval);
+    }
+    
+    // Cleanup function
+    return () => {
+      if (refreshTimerRef.current) {
+        clearInterval(refreshTimerRef.current);
+      }
+    };
+  }, [refreshSettings.autoRefresh, refreshSettings.interval, refreshAllData]);
+  
+  // --- Filter properties client-side (as a backup to API filtering) ---
+  const filteredProperties = useMemo(() => {
+    return properties.filter(property => {
+      // Skip client-side filtering if the searchQuery is empty (API handles all filtering)
+      if (!filters.searchQuery) return true;
+      
+      // Apply search query filter on address, property_id, or neighborhood
+      const searchLower = filters.searchQuery.toLowerCase();
+      
+      return (
+        (property.address && property.address.toLowerCase().includes(searchLower)) ||
+        (property.property_id && property.property_id.toLowerCase().includes(searchLower)) ||
+        (property.neighborhood && property.neighborhood.toLowerCase().includes(searchLower))
+      );
+    });
+  }, [properties, filters.searchQuery]);
+  
+  // --- Prepare chart data ---
   
   /**
    * Calculate summary metrics for the dashboard based on filtered properties
    */
-  const dashboardMetrics = useMemo(() => {
-    if (filteredProperties.length === 0) {
+  const summaryMetrics = useMemo(() => {
+    if (!properties.length) {
       return {
         totalProperties: 0,
         averageValue: 0,
         minValue: 0,
         maxValue: 0,
-        medianValue: 0,
-        averageConfidence: 0
+        medianValue: 0
       };
     }
     
-    // Calculate metrics
-    const totalProperties = filteredProperties.length;
-    const values = filteredProperties.map(p => p.estimated_value);
-    const confidences = filteredProperties.map(p => p.confidence_score);
+    const propertyValues = properties
+      .map(p => p.estimated_value)
+      .filter(v => v !== undefined && v !== null)
+      .sort((a, b) => a - b);
     
-    // Sort values for median calculation
-    const sortedValues = [...values].sort((a, b) => a - b);
-    
-    const averageValue = values.reduce((sum, val) => sum + val, 0) / totalProperties;
-    const minValue = Math.min(...values);
-    const maxValue = Math.max(...values);
-    const medianValue = sortedValues[Math.floor(totalProperties / 2)];
-    const averageConfidence = confidences.reduce((sum, val) => sum + val, 0) / totalProperties;
+    const medianIndex = Math.floor(propertyValues.length / 2);
     
     return {
-      totalProperties,
-      averageValue,
-      minValue,
-      maxValue,
-      medianValue,
-      averageConfidence
+      totalProperties: properties.length,
+      averageValue: propertyValues.length ? 
+        propertyValues.reduce((sum, value) => sum + value, 0) / propertyValues.length : 
+        0,
+      minValue: propertyValues.length ? propertyValues[0] : 0,
+      maxValue: propertyValues.length ? propertyValues[propertyValues.length - 1] : 0,
+      medianValue: propertyValues.length ? 
+        (propertyValues.length % 2 === 0 ? 
+          (propertyValues[medianIndex - 1] + propertyValues[medianIndex]) / 2 : 
+          propertyValues[medianIndex]) : 
+        0
     };
-  }, [filteredProperties]);
+  }, [properties]);
   
   /**
-   * Function to prepare chart data based on filtered properties
-   * Using useMemo to prevent unnecessary recalculations
+   * Prepare value distribution chart data
    */
-  const preparedChartData = useMemo(() => {
-    if (filteredProperties.length === 0) {
-      return null;
-    }
+  const valueDistributionData = useMemo(() => {
+    if (!properties.length) return { labels: [], datasets: [] };
     
-    // Prepare chart data based on filtered properties
-    // Group properties by value ranges for distribution chart
-    const valueRanges = [
-      '< $200K', 
-      '$200K - $300K', 
-      '$300K - $400K', 
-      '$400K - $500K', 
-      '$500K - $750K', 
-      '$750K - $1M', 
-      '> $1M'
+    // Define value ranges
+    const ranges = [
+      { min: 0, max: 100000, label: 'Under $100K' },
+      { min: 100000, max: 200000, label: '$100K-$200K' },
+      { min: 200000, max: 300000, label: '$200K-$300K' },
+      { min: 300000, max: 400000, label: '$300K-$400K' },
+      { min: 400000, max: 500000, label: '$400K-$500K' },
+      { min: 500000, max: 750000, label: '$500K-$750K' },
+      { min: 750000, max: 1000000, label: '$750K-$1M' },
+      { min: 1000000, max: Infinity, label: 'Over $1M' }
     ];
     
-    const valueCounts = [0, 0, 0, 0, 0, 0, 0];
-    
-    filteredProperties.forEach(property => {
-      const value = property.estimated_value;
-      if (value < 200000) {
-        valueCounts[0]++;
-      } else if (value < 300000) {
-        valueCounts[1]++;
-      } else if (value < 400000) {
-        valueCounts[2]++;
-      } else if (value < 500000) {
-        valueCounts[3]++;
-      } else if (value < 750000) {
-        valueCounts[4]++;
-      } else if (value < 1000000) {
-        valueCounts[5]++;
-      } else {
-        valueCounts[6]++;
-      }
+    // Count properties in each range
+    const rangeCounts = ranges.map(range => {
+      return properties.filter(p => 
+        p.estimated_value >= range.min && p.estimated_value < range.max
+      ).length;
     });
     
-    // Group properties by neighborhood for neighborhood chart
-    const neighborhoods = {};
+    return {
+      labels: ranges.map(r => r.label),
+      datasets: [{
+        label: 'Properties',
+        data: rangeCounts,
+        backgroundColor: 'rgba(52, 152, 219, 0.8)',
+        borderColor: 'rgba(52, 152, 219, 1)',
+        borderWidth: 1
+      }]
+    };
+  }, [properties]);
+  
+  /**
+   * Prepare neighborhood comparison chart data
+   */
+  const neighborhoodComparisonData = useMemo(() => {
+    if (!properties.length) return { labels: [], datasets: [] };
     
-    filteredProperties.forEach(property => {
-      const neighborhood = extractNeighborhood(property.address);
-      if (!neighborhoods[neighborhood]) {
-        neighborhoods[neighborhood] = {
+    // Group properties by neighborhood and calculate average values
+    const neighborhoodGroups = {};
+    
+    properties.forEach(property => {
+      const neighborhood = property.neighborhood || 'Unknown';
+      
+      if (!neighborhoodGroups[neighborhood]) {
+        neighborhoodGroups[neighborhood] = {
           count: 0,
-          totalValue: 0,
-          maxValue: 0,
-          minValue: Number.MAX_SAFE_INTEGER,
-          confidenceSum: 0
+          totalValue: 0
         };
       }
-      neighborhoods[neighborhood].count++;
-      neighborhoods[neighborhood].totalValue += property.estimated_value;
-      neighborhoods[neighborhood].maxValue = Math.max(neighborhoods[neighborhood].maxValue, property.estimated_value);
-      neighborhoods[neighborhood].minValue = Math.min(neighborhoods[neighborhood].minValue, property.estimated_value);
-      neighborhoods[neighborhood].confidenceSum += property.confidence_score || 0;
+      
+      neighborhoodGroups[neighborhood].count++;
+      neighborhoodGroups[neighborhood].totalValue += property.estimated_value || 0;
     });
     
-    // Convert to arrays for chart data - top 8 neighborhoods by count
-    const neighborhoodNames = Object.keys(neighborhoods)
-      .sort((a, b) => neighborhoods[b].count - neighborhoods[a].count)
-      .slice(0, 8);
+    // Calculate averages and sort by value (descending)
+    const neighborhoods = Object.keys(neighborhoodGroups)
+      .map(name => ({
+        name,
+        avgValue: neighborhoodGroups[name].totalValue / neighborhoodGroups[name].count,
+        count: neighborhoodGroups[name].count
+      }))
+      .sort((a, b) => b.avgValue - a.avgValue)
+      .slice(0, 10); // Top 10 neighborhoods
     
-    const neighborhoodCounts = neighborhoodNames.map(name => neighborhoods[name].count);
-    const neighborhoodAvgValues = neighborhoodNames.map(name => 
-      Math.round(neighborhoods[name].totalValue / neighborhoods[name].count)
-    );
-    const neighborhoodValueRanges = neighborhoodNames.map(name => ({
-      min: neighborhoods[name].minValue,
-      max: neighborhoods[name].maxValue,
-      avg: Math.round(neighborhoods[name].totalValue / neighborhoods[name].count)
-    }));
-    const neighborhoodConfidences = neighborhoodNames.map(name => 
-      neighborhoods[name].confidenceSum / neighborhoods[name].count
-    );
-    
-    // Group data by date for trend analysis
-    // Create a map of date -> average value for the trend chart
-    const dateMap = {};
-    
-    filteredProperties.forEach(property => {
-      if (property.valuation_date) {
-        // Use just the date part, truncating time
-        const dateKey = property.valuation_date.split('T')[0];
-        if (!dateMap[dateKey]) {
-          dateMap[dateKey] = {
-            totalValue: 0,
-            count: 0,
-            confidenceSum: 0
-          };
-        }
-        dateMap[dateKey].totalValue += property.estimated_value;
-        dateMap[dateKey].count++;
-        dateMap[dateKey].confidenceSum += property.confidence_score || 0;
-      }
-    });
-    
-    // Convert to arrays sorted by date for the trend chart
-    const trendDates = Object.keys(dateMap).sort();
-    const trendValues = trendDates.map(date => 
-      Math.round(dateMap[date].totalValue / dateMap[date].count)
-    );
-    const trendConfidences = trendDates.map(date => 
-      dateMap[date].confidenceSum / dateMap[date].count
-    );
-    
-    // Create model distribution data
-    const modelCounts = {};
-    filteredProperties.forEach(property => {
-      const model = property.model_used || 'Unknown';
-      modelCounts[model] = (modelCounts[model] || 0) + 1;
-    });
-    
-    const modelLabels = Object.keys(modelCounts);
-    const modelData = modelLabels.map(model => modelCounts[model]);
-    const modelColors = [
-      'rgba(54, 162, 235, 0.7)',
-      'rgba(255, 99, 132, 0.7)',
-      'rgba(75, 192, 192, 0.7)',
-      'rgba(255, 206, 86, 0.7)',
-      'rgba(153, 102, 255, 0.7)',
-      'rgba(255, 159, 64, 0.7)'
-    ];
-    
-    // Return prepared chart data
     return {
-      valueDistribution: {
-        labels: valueRanges,
-        datasets: [
-          {
-            label: 'Property Count',
-            data: valueCounts,
-            backgroundColor: 'rgba(54, 162, 235, 0.6)',
-            borderColor: 'rgba(54, 162, 235, 1)',
-            borderWidth: 1
-          }
-        ]
-      },
-      neighborhoodComparison: {
-        labels: neighborhoodNames,
-        datasets: [
-          {
-            label: 'Property Count',
-            data: neighborhoodCounts,
-            backgroundColor: 'rgba(153, 102, 255, 0.6)',
-            borderColor: 'rgba(153, 102, 255, 1)',
-            borderWidth: 1,
-            yAxisID: 'y'
-          },
-          {
-            label: 'Average Value',
-            data: neighborhoodAvgValues,
-            type: 'line',
-            borderColor: 'rgba(255, 99, 132, 1)',
-            backgroundColor: 'rgba(255, 99, 132, 0.2)',
-            borderWidth: 2,
-            fill: false,
-            yAxisID: 'y1'
-          }
-        ]
-      },
-      valueTrend: {
-        labels: trendDates,
-        datasets: [
-          {
-            label: 'Average Value',
-            data: trendValues,
-            borderColor: 'rgba(75, 192, 192, 1)',
-            backgroundColor: 'rgba(75, 192, 192, 0.2)',
-            borderWidth: 2,
-            fill: true,
-            tension: 0.3
-          },
-          {
-            label: 'Confidence Score',
-            data: trendConfidences,
-            borderColor: 'rgba(255, 159, 64, 1)',
-            backgroundColor: 'rgba(255, 159, 64, 0.1)',
-            borderWidth: 2,
-            fill: false,
-            tension: 0.3,
-            yAxisID: 'y1'
-          }
-        ]
-      },
-      modelDistribution: {
-        labels: modelLabels,
-        datasets: [
-          {
-            data: modelData,
-            backgroundColor: modelColors.slice(0, modelLabels.length),
-            borderWidth: 1
-          }
-        ]
-      },
-      neighborhoodDetails: {
-        names: neighborhoodNames,
-        averageValues: neighborhoodAvgValues,
-        valueRanges: neighborhoodValueRanges,
-        confidences: neighborhoodConfidences
-      }
+      labels: neighborhoods.map(n => n.name),
+      datasets: [{
+        label: 'Average Value',
+        data: neighborhoods.map(n => n.avgValue),
+        backgroundColor: 'rgba(46, 204, 113, 0.8)',
+        borderColor: 'rgba(46, 204, 113, 1)',
+        borderWidth: 1
+      }]
     };
-  }, [filteredProperties]);
+  }, [properties]);
+  
+  /**
+   * Prepare value trend chart data (by valuation date)
+   */
+  const valueTrendData = useMemo(() => {
+    if (!properties.length) return { labels: [], datasets: [] };
+    
+    // Group properties by month
+    const monthlyData = {};
+    
+    properties.forEach(property => {
+      if (!property.valuation_date) return;
+      
+      const date = new Date(property.valuation_date);
+      const monthKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+      
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = {
+          count: 0,
+          totalValue: 0,
+          date: new Date(date.getFullYear(), date.getMonth(), 1)
+        };
+      }
+      
+      monthlyData[monthKey].count++;
+      monthlyData[monthKey].totalValue += property.estimated_value || 0;
+    });
+    
+    // Calculate averages and sort by date
+    const monthlyAverages = Object.values(monthlyData)
+      .map(month => ({
+        date: month.date,
+        avgValue: month.totalValue / month.count
+      }))
+      .sort((a, b) => a.date - b.date);
+    
+    return {
+      labels: monthlyAverages.map(m => m.date),
+      datasets: [{
+        label: 'Average Value',
+        data: monthlyAverages.map(m => ({ x: m.date, y: m.avgValue })),
+        backgroundColor: 'rgba(52, 152, 219, 0.2)',
+        borderColor: 'rgba(52, 152, 219, 1)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.4
+      }]
+    };
+  }, [properties]);
+  
+  /**
+   * Prepare model distribution pie chart data
+   */
+  const modelDistributionData = useMemo(() => {
+    if (!properties.length) return { labels: [], datasets: [] };
+    
+    // Count properties by valuation method
+    const methodCounts = {};
+    
+    properties.forEach(property => {
+      const method = property.valuation_method || 'unknown';
+      methodCounts[method] = (methodCounts[method] || 0) + 1;
+    });
+    
+    // Prepare chart data
+    return {
+      labels: Object.keys(methodCounts),
+      datasets: [{
+        label: 'Valuation Methods',
+        data: Object.values(methodCounts),
+        backgroundColor: [
+          'rgba(52, 152, 219, 0.8)', // Blue
+          'rgba(46, 204, 113, 0.8)', // Green
+          'rgba(155, 89, 182, 0.8)', // Purple
+          'rgba(52, 73, 94, 0.8)',   // Dark Blue
+          'rgba(22, 160, 133, 0.8)', // Teal
+          'rgba(39, 174, 96, 0.8)',  // Emerald
+          'rgba(41, 128, 185, 0.8)'  // Light Blue
+        ],
+        borderColor: [
+          'rgba(52, 152, 219, 1)',
+          'rgba(46, 204, 113, 1)',
+          'rgba(155, 89, 182, 1)',
+          'rgba(52, 73, 94, 1)',
+          'rgba(22, 160, 133, 1)',
+          'rgba(39, 174, 96, 1)',
+          'rgba(41, 128, 185, 1)'
+        ],
+        borderWidth: 1
+      }]
+    };
+  }, [properties]);
+  
+  /**
+   * Prepare agent status chart data
+   */
+  const agentStatusData = useMemo(() => {
+    if (!agentStatus.agents.length) return { labels: [], datasets: [] };
+    
+    // Count agents by status
+    const statusCounts = {};
+    
+    agentStatus.agents.forEach(agent => {
+      const status = agent.status || 'unknown';
+      statusCounts[status] = (statusCounts[status] || 0) + 1;
+    });
+    
+    // Prepare chart data
+    return {
+      labels: Object.keys(statusCounts),
+      datasets: [{
+        label: 'Agent Status',
+        data: Object.values(statusCounts),
+        backgroundColor: [
+          'rgba(46, 204, 113, 0.8)',  // Green (idle/active)
+          'rgba(52, 152, 219, 0.8)',  // Blue (waiting/busy)
+          'rgba(243, 156, 18, 0.8)',  // Yellow (warning)
+          'rgba(231, 76, 60, 0.8)',   // Red (error/offline)
+          'rgba(149, 165, 166, 0.8)'  // Gray (unknown)
+        ],
+        borderColor: [
+          'rgba(46, 204, 113, 1)',
+          'rgba(52, 152, 219, 1)',
+          'rgba(243, 156, 18, 1)',
+          'rgba(231, 76, 60, 1)',
+          'rgba(149, 165, 166, 1)'
+        ],
+        borderWidth: 1
+      }]
+    };
+  }, [agentStatus.agents]);
+  
+  // --- Chart Options ---
   
   /**
    * Options for Value Distribution chart
@@ -1294,22 +1115,20 @@ const Dashboard = () => {
     maintainAspectRatio: false,
     plugins: {
       legend: {
-        position: 'top',
+        display: false
+      },
+      tooltip: {
+        callbacks: {
+          label: (context) => {
+            return `${context.dataset.label}: ${context.raw} (${((context.raw / properties.length) * 100).toFixed(1)}%)`;
+          }
+        }
       },
       title: {
         display: true,
         text: 'Property Value Distribution',
         font: {
           size: 16
-        }
-      },
-      tooltip: {
-        callbacks: {
-          label: function(context) {
-            const label = context.dataset.label || '';
-            const value = context.parsed.y || 0;
-            return `${label}: ${value} properties`;
-          }
         }
       }
     },
@@ -1320,142 +1139,122 @@ const Dashboard = () => {
           display: true,
           text: 'Number of Properties'
         }
+      },
+      x: {
+        title: {
+          display: true,
+          text: 'Value Range'
+        }
       }
     }
   };
-
+  
   /**
    * Options for Neighborhood Comparison chart
    */
-  const neighborhoodComparisonOptions = {
+  const neighborhoodOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
       legend: {
-        position: 'top',
-      },
-      title: {
-        display: true,
-        text: 'Neighborhood Comparison',
-        font: {
-          size: 16
-        }
+        display: false
       },
       tooltip: {
         callbacks: {
-          label: function(context) {
-            if (context.dataset.label === 'Property Count') {
-              return `${context.dataset.label}: ${context.parsed.y} properties`;
-            } else {
-              return `${context.dataset.label}: ${formatCurrency(context.parsed.y)}`;
-            }
+          label: (context) => {
+            return `${context.dataset.label}: ${formatCurrency(context.raw)}`;
           }
+        }
+      },
+      title: {
+        display: true,
+        text: 'Average Value by Neighborhood',
+        font: {
+          size: 16
         }
       }
     },
     scales: {
       y: {
-        type: 'linear',
-        display: true,
-        position: 'left',
+        beginAtZero: true,
         title: {
           display: true,
-          text: 'Number of Properties'
-        }
-      },
-      y1: {
-        type: 'linear',
-        display: true,
-        position: 'right',
-        grid: {
-          drawOnChartArea: false,
-        },
-        title: {
-          display: true,
-          text: 'Average Value ($)'
+          text: 'Average Value'
         },
         ticks: {
-          callback: function(value) {
-            return '$' + value.toLocaleString();
+          callback: (value) => {
+            return formatCurrency(value);
           }
+        }
+      },
+      x: {
+        title: {
+          display: true,
+          text: 'Neighborhood'
         }
       }
     }
   };
-
+  
   /**
    * Options for Value Trend chart
    */
-  const valueTrendOptions = {
+  const trendOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
       legend: {
-        position: 'top',
-      },
-      title: {
-        display: true,
-        text: 'Property Value Trend Over Time',
-        font: {
-          size: 16
-        }
+        display: false
       },
       tooltip: {
         callbacks: {
-          label: function(context) {
-            if (context.dataset.label === 'Average Value') {
-              return `${context.dataset.label}: ${formatCurrency(context.parsed.y)}`;
-            } else {
-              return `${context.dataset.label}: ${formatPercentage(context.parsed.y)}`;
-            }
+          label: (context) => {
+            return `${context.dataset.label}: ${formatCurrency(context.raw.y)}`;
+          },
+          title: (tooltipItems) => {
+            const date = new Date(tooltipItems[0].raw.x);
+            return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
           }
+        }
+      },
+      title: {
+        display: true,
+        text: 'Value Trends Over Time',
+        font: {
+          size: 16
         }
       }
     },
     scales: {
-      x: {
-        type: 'category',
-        title: {
-          display: true,
-          text: 'Date'
-        }
-      },
       y: {
-        type: 'linear',
-        display: true,
-        position: 'left',
+        beginAtZero: true,
         title: {
           display: true,
-          text: 'Average Value ($)'
+          text: 'Average Value'
         },
         ticks: {
-          callback: function(value) {
-            return '$' + value.toLocaleString();
+          callback: (value) => {
+            return formatCurrency(value);
           }
         }
       },
-      y1: {
-        type: 'linear',
-        display: true,
-        position: 'right',
-        min: 0,
-        max: 1,
-        grid: {
-          drawOnChartArea: false,
+      x: {
+        type: 'time',
+        time: {
+          unit: 'month',
+          tooltipFormat: 'MMM yyyy',
+          displayFormats: {
+            month: 'MMM yyyy'
+          }
         },
         title: {
           display: true,
-          text: 'Confidence Score'
-        },
-        ticks: {
-          callback: function(value) {
-            return formatPercentage(value);
-          }
+          text: 'Month'
         }
       }
     }
   };
-
+  
   /**
    * Options for Model Distribution pie chart
    */
@@ -1465,1354 +1264,1276 @@ const Dashboard = () => {
     plugins: {
       legend: {
         position: 'right',
-      },
-      title: {
-        display: true,
-        text: 'Distribution by Valuation Model',
-        font: {
-          size: 16
+        labels: {
+          boxWidth: 15,
+          padding: 15
         }
       },
       tooltip: {
         callbacks: {
-          label: function(context) {
-            const label = context.label || '';
-            const value = context.parsed || 0;
-            const total = context.dataset.data.reduce((a, b) => a + b, 0);
-            const percentage = Math.round((value / total) * 100);
-            return `${label}: ${value} properties (${percentage}%)`;
+          label: (context) => {
+            const value = context.raw;
+            const percentage = ((value / properties.length) * 100).toFixed(1);
+            return `${context.label}: ${value} (${percentage}%)`;
           }
+        }
+      },
+      title: {
+        display: true,
+        text: 'Valuation Methods Used',
+        font: {
+          size: 16
         }
       }
     }
   };
-
-  // Handle API key input change
-  const handleApiKeyChange = (e) => {
-    setApiKey(e.target.value);
+  
+  /**
+   * Options for Agent Status doughnut chart
+   */
+  const agentStatusOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    cutout: '50%',
+    plugins: {
+      legend: {
+        position: 'right',
+        labels: {
+          boxWidth: 15,
+          padding: 15
+        }
+      },
+      tooltip: {
+        callbacks: {
+          label: (context) => {
+            const value = context.raw;
+            const percentage = ((value / agentStatus.agents.length) * 100).toFixed(1);
+            return `${context.label}: ${value} (${percentage}%)`;
+          }
+        }
+      },
+      title: {
+        display: true,
+        text: 'Agent Status Distribution',
+        font: {
+          size: 16
+        }
+      }
+    }
   };
-
-  return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold text-gray-800 mb-6">BCBS Values Dashboard</h1>
-      
-      {/* API Key Input and Refresh Controls */}
-      <div className="mb-6 bg-white rounded-lg shadow-md p-4">
-        <div className="flex flex-col md:flex-row items-start md:items-center">
-          <div className="mb-2 md:mb-0 md:mr-4 flex-grow">
-            <label htmlFor="apiKey" className="block text-sm font-medium text-gray-700 mb-1">
-              API Key
+  
+  /**
+   * Options for ETL Progress gauge chart
+   */
+  const etlProgressOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      tooltip: {
+        callbacks: {
+          label: (context) => {
+            return `Progress: ${(context.raw * 100).toFixed(1)}%`;
+          }
+        }
+      }
+    },
+    scales: {
+      r: {
+        angleLines: {
+          display: false
+        },
+        suggestedMin: 0,
+        suggestedMax: 1
+      }
+    }
+  };
+  
+  // --- Render UI Components ---
+  
+  /**
+   * Render the filter section
+   * @returns {JSX.Element} - The filter section component
+   */
+  const renderFilterSection = () => (
+    <div className="bg-white rounded-lg shadow-md p-4 mb-6">
+      <h2 className="text-xl font-semibold mb-4">Filters</h2>
+      <form onSubmit={applyFilters} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* Neighborhood filter */}
+        <div>
+          <label htmlFor="neighborhood" className="block text-sm font-medium text-gray-700 mb-1">
+            Neighborhood
+          </label>
+          <select
+            id="neighborhood"
+            name="neighborhood"
+            value={filters.neighborhood}
+            onChange={handleFilterChange}
+            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">All Neighborhoods</option>
+            {availableNeighborhoods.map((neighborhood, index) => (
+              <option key={index} value={neighborhood}>{neighborhood}</option>
+            ))}
+          </select>
+        </div>
+        
+        {/* Property Type filter */}
+        <div>
+          <label htmlFor="propertyType" className="block text-sm font-medium text-gray-700 mb-1">
+            Property Type
+          </label>
+          <select
+            id="propertyType"
+            name="propertyType"
+            value={filters.propertyType}
+            onChange={handleFilterChange}
+            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">All Property Types</option>
+            {availablePropertyTypes.map((type, index) => (
+              <option key={index} value={type}>
+                {type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+              </option>
+            ))}
+          </select>
+        </div>
+        
+        {/* Price Range filters */}
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label htmlFor="minValue" className="block text-sm font-medium text-gray-700 mb-1">
+              Min Value
             </label>
-            <input 
-              type="password" 
-              id="apiKey" 
-              className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md" 
-              placeholder="Enter your API key"
-              value={apiKey}
-              onChange={handleApiKeyChange}
+            <input
+              type="number"
+              id="minValue"
+              name="minValue"
+              value={filters.minValue}
+              onChange={handleFilterChange}
+              placeholder="Min $"
+              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-          
-          {/* Auto-refresh controls */}
-          <div className="mt-4 md:mt-0 md:ml-4 flex flex-col md:items-end">
-            <div className="flex items-center mb-2">
-              <label htmlFor="autoRefresh" className="block text-sm font-medium text-gray-700 mr-2">
-                Auto-refresh
-              </label>
-              <button 
-                type="button"
-                onClick={toggleAutoRefresh}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full ${refreshSettings.autoRefresh ? 'bg-blue-600' : 'bg-gray-200'}`}
-              >
-                <span 
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${refreshSettings.autoRefresh ? 'translate-x-6' : 'translate-x-1'}`} 
-                />
-              </button>
-            </div>
-            
-            <div className="flex items-center">
-              <label htmlFor="refreshInterval" className="block text-sm font-medium text-gray-700 mr-2">
-                Interval:
-              </label>
-              <select
-                id="refreshInterval"
-                className="py-1 px-2 text-sm border-gray-300 rounded-md"
-                value={refreshSettings.interval}
-                onChange={handleRefreshIntervalChange}
-                disabled={!refreshSettings.autoRefresh}
-              >
-                <option value="15000">15 seconds</option>
-                <option value="30000">30 seconds</option>
-                <option value="60000">1 minute</option>
-                <option value="300000">5 minutes</option>
-              </select>
+          <div>
+            <label htmlFor="maxValue" className="block text-sm font-medium text-gray-700 mb-1">
+              Max Value
+            </label>
+            <input
+              type="number"
+              id="maxValue"
+              name="maxValue"
+              value={filters.maxValue}
+              onChange={handleFilterChange}
+              placeholder="Max $"
+              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+        
+        {/* Date Range filters */}
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label htmlFor="fromDate" className="block text-sm font-medium text-gray-700 mb-1">
+              From Date
+            </label>
+            <input
+              type="date"
+              id="fromDate"
+              name="fromDate"
+              value={filters.fromDate}
+              onChange={handleFilterChange}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="toDate" className="block text-sm font-medium text-gray-700 mb-1">
+              To Date
+            </label>
+            <input
+              type="date"
+              id="toDate"
+              name="toDate"
+              value={filters.toDate}
+              onChange={handleFilterChange}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+        
+        {/* Search filter */}
+        <div className="md:col-span-2 lg:col-span-1">
+          <label htmlFor="searchQuery" className="block text-sm font-medium text-gray-700 mb-1">
+            Search
+          </label>
+          <div className="relative">
+            <input
+              type="text"
+              id="searchQuery"
+              name="searchQuery"
+              value={filters.searchQuery}
+              onChange={handleFilterChange}
+              placeholder="Search address, ID, etc."
+              className="w-full border border-gray-300 rounded-md pl-10 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <i className="fas fa-search text-gray-400"></i>
             </div>
           </div>
-          
+        </div>
+        
+        {/* Action buttons */}
+        <div className="md:col-span-2 lg:col-span-3 flex justify-end gap-2 mt-2">
           <button
-            className="mt-2 md:mt-6 ml-0 md:ml-4 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={refreshAllData}
-            disabled={loading || etlStatus.isLoading || agentStatus.isLoading}
+            type="button"
+            onClick={resetFilters}
+            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500"
           >
-            {loading || etlStatus.isLoading || agentStatus.isLoading ? (
-              <>
-                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Loading...
-              </>
-            ) : (
-              'Refresh All'
-            )}
+            Reset Filters
+          </button>
+          <button
+            type="submit"
+            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            Apply Filters
           </button>
         </div>
-        
-        {/* Last refresh time and API key note */}
-        <div className="flex flex-col md:flex-row justify-between mt-2 text-xs text-gray-500">
-          <p>
-            The API key is required to access data. If you don't have an API key, please contact the administrator.
-          </p>
-          {refreshSettings.lastRefreshTime && (
-            <p className="mt-1 md:mt-0">
-              Last refreshed: {formatDateTime(refreshSettings.lastRefreshTime)}
-            </p>
-          )}
-        </div>
-      </div>
-      
-      {/* Dashboard Tabs */}
-      <div className="mb-6">
-        <div className="border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-            <button
-              onClick={() => handleDashboardTabChange('properties')}
-              className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
-                activeDashboardTab === 'properties'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Property Valuations
-            </button>
-            <button
-              onClick={() => handleDashboardTabChange('etl')}
-              className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
-                activeDashboardTab === 'etl'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              ETL Pipeline Status
-              {etlStatus.isLoading && (
-                <span className="ml-2">
-                  <svg className="animate-spin h-3 w-3 text-blue-500 inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => handleDashboardTabChange('agents')}
-              className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
-                activeDashboardTab === 'agents'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Agent Status
-              {agentStatus.isLoading && (
-                <span className="ml-2">
-                  <svg className="animate-spin h-3 w-3 text-blue-500 inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                </span>
-              )}
-            </button>
-          </nav>
-        </div>
-      </div>
-        
-        {/* API Key Error Message */}
-        {error && error.includes('API') && (
-          <div className="mt-3 bg-red-50 border-l-4 border-red-400 p-4">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <p className="text-sm text-red-700">
-                  API key is invalid or missing. Please check your key and try again.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-      
-      {/* Dashboard Summary Metrics */}
-      <div id="dashboard-metrics" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
-        <div className="metric-card bg-white rounded-lg shadow-md p-4 border-l-4 border-blue-500 opacity-0 transition-opacity duration-500">
-          <p className="text-sm text-gray-500 mb-1">Total Properties</p>
-          <p className="text-2xl font-bold">{dashboardMetrics.totalProperties.toLocaleString()}</p>
-        </div>
-        <div className="metric-card bg-white rounded-lg shadow-md p-4 border-l-4 border-green-500 opacity-0 transition-opacity duration-500 delay-100">
-          <p className="text-sm text-gray-500 mb-1">Average Value</p>
-          <p className="text-2xl font-bold">{formatCurrency(dashboardMetrics.averageValue)}</p>
-        </div>
-        <div className="metric-card bg-white rounded-lg shadow-md p-4 border-l-4 border-red-500 opacity-0 transition-opacity duration-500 delay-200">
-          <p className="text-sm text-gray-500 mb-1">Median Value</p>
-          <p className="text-2xl font-bold">{formatCurrency(dashboardMetrics.medianValue)}</p>
-        </div>
-        <div className="metric-card bg-white rounded-lg shadow-md p-4 border-l-4 border-yellow-500 opacity-0 transition-opacity duration-500 delay-300">
-          <p className="text-sm text-gray-500 mb-1">Minimum Value</p>
-          <p className="text-2xl font-bold">{formatCurrency(dashboardMetrics.minValue)}</p>
-        </div>
-        <div className="metric-card bg-white rounded-lg shadow-md p-4 border-l-4 border-purple-500 opacity-0 transition-opacity duration-500 delay-400">
-          <p className="text-sm text-gray-500 mb-1">Maximum Value</p>
-          <p className="text-2xl font-bold">{formatCurrency(dashboardMetrics.maxValue)}</p>
-        </div>
-        <div className="metric-card bg-white rounded-lg shadow-md p-4 border-l-4 border-indigo-500 opacity-0 transition-opacity duration-500 delay-500">
-          <p className="text-sm text-gray-500 mb-1">Avg. Confidence</p>
-          <p className="text-2xl font-bold">{formatPercentage(dashboardMetrics.averageConfidence)}</p>
-        </div>
-      </div>
-      
-      {/* Search and Filter bar with improved styling */}
-      <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-        <div className="flex flex-col md:flex-row justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold mb-2 md:mb-0">Property Search & Filters</h2>
-          
-          {/* Search box */}
-          <div className="w-full md:w-1/3">
-            <div className="relative">
-              <input
-                type="text"
-                name="searchQuery"
-                value={filters.searchQuery}
-                onChange={handleFilterChange}
-                className="w-full p-2 pl-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Search by address or ID..."
-              />
-              <svg className="h-5 w-5 text-gray-400 absolute left-3 top-2.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
-              </svg>
-            </div>
-          </div>
-        </div>
-        
-        <form onSubmit={applyFilters}>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Neighborhood Filter with dropdown from available neighborhoods */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Neighborhood</label>
-              <select
-                name="neighborhood"
-                value={filters.neighborhood}
-                onChange={handleFilterChange}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+      </form>
+    </div>
+  );
+  
+  /**
+   * Render the property table
+   * @returns {JSX.Element} - The property table component
+   */
+  const renderPropertyTable = () => (
+    <div className="bg-white rounded-lg shadow-md overflow-hidden mb-6">
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th 
+                scope="col" 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                onClick={() => handleSortColumn('property_id')}
               >
-                <option value="">All Neighborhoods</option>
-                {availableNeighborhoods.map(neighborhood => (
-                  <option key={neighborhood} value={neighborhood}>{neighborhood}</option>
-                ))}
-              </select>
-            </div>
-            
-            {/* Min Value Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Min Value ($)</label>
-              <input
-                type="number"
-                name="minValue"
-                value={filters.minValue}
-                onChange={handleFilterChange}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Min value"
-              />
-            </div>
-            
-            {/* Max Value Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Max Value ($)</label>
-              <input
-                type="number"
-                name="maxValue"
-                value={filters.maxValue}
-                onChange={handleFilterChange}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Max value"
-              />
-            </div>
-            
-            {/* Property Type Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Property Type</label>
-              <select
-                name="propertyType"
-                value={filters.propertyType}
-                onChange={handleFilterChange}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                ID
+                {filters.sortBy === 'property_id' && (
+                  <span className="ml-1">
+                    {filters.sortDirection === 'asc' ? '↑' : '↓'}
+                  </span>
+                )}
+              </th>
+              <th 
+                scope="col" 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                onClick={() => handleSortColumn('address')}
               >
-                <option value="">All Types</option>
-                <option value="residential">Residential</option>
-                <option value="commercial">Commercial</option>
-                <option value="land">Land</option>
-                <option value="multifamily">Multi-Family</option>
-              </select>
-            </div>
-            
-            {/* From Date Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">From Date</label>
-              <input
-                type="date"
-                name="fromDate"
-                value={filters.fromDate}
-                onChange={handleFilterChange}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            
-            {/* To Date Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">To Date</label>
-              <input
-                type="date"
-                name="toDate"
-                value={filters.toDate}
-                onChange={handleFilterChange}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-          
-          {/* Filter Action Buttons */}
-          <div className="mt-4 flex justify-end space-x-2">
-            <button
-              type="button"
-              onClick={resetFilters}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 transition duration-150"
-            >
-              Reset Filters
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-150"
-            >
-              Apply Filters
-            </button>
-          </div>
-        </form>
-      </div>
-      
-      {/* Conditional display based on active dashboard tab */}
-      {activeDashboardTab === 'properties' && (
-        <>
-          {/* Chart Section with Tabs */}
-          <div className="bg-white rounded-lg shadow-md overflow-hidden mb-8">
-        <div className="border-b border-gray-200">
-          <nav className="flex -mb-px">
-            <button
-              className={`py-4 px-6 border-b-2 font-medium text-sm ${
-                activeTab === 'distribution' 
-                  ? 'border-blue-500 text-blue-600' 
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-              onClick={() => setActiveTab('distribution')}
-            >
-              Value Distribution
-            </button>
-            <button
-              className={`py-4 px-6 border-b-2 font-medium text-sm ${
-                activeTab === 'neighborhood' 
-                  ? 'border-blue-500 text-blue-600' 
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-              onClick={() => setActiveTab('neighborhood')}
-            >
-              Neighborhood Comparison
-            </button>
-            <button
-              className={`py-4 px-6 border-b-2 font-medium text-sm ${
-                activeTab === 'trend' 
-                  ? 'border-blue-500 text-blue-600' 
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-              onClick={() => setActiveTab('trend')}
-            >
-              Value Trend
-            </button>
-            <button
-              className={`py-4 px-6 border-b-2 font-medium text-sm ${
-                activeTab === 'model' 
-                  ? 'border-blue-500 text-blue-600' 
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-              onClick={() => setActiveTab('model')}
-            >
-              Model Distribution
-            </button>
-          </nav>
-        </div>
-        
-        {/* Chart Content */}
-        <div className="p-6">
-          {/* Loading State */}
-          {loading && (
-            <div className="flex justify-center items-center p-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-              <span className="ml-3 text-gray-600">Loading chart data...</span>
-            </div>
-          )}
-          
-          {/* Error State */}
-          {error && (
-            <div className="bg-red-50 p-4 border-l-4 border-red-500">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm text-red-700">{error}</p>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {/* No Data State */}
-          {!loading && !error && (!preparedChartData || filteredProperties.length === 0) && (
-            <div className="text-center py-12">
-              <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No data available</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                Try adjusting your filters or adding more properties to the database.
-              </p>
-            </div>
-          )}
-          
-          {/* Charts */}
-          {!loading && !error && preparedChartData && (
-            <div className="h-96">
-              {activeTab === 'distribution' && (
-                <Bar 
-                  ref={valueDistributionChartRef}
-                  data={preparedChartData.valueDistribution} 
-                  options={valueDistributionOptions} 
-                />
-              )}
-              {activeTab === 'neighborhood' && (
-                <Bar 
-                  ref={neighborhoodChartRef}
-                  data={preparedChartData.neighborhoodComparison} 
-                  options={neighborhoodComparisonOptions} 
-                />
-              )}
-              {activeTab === 'trend' && (
-                <Line 
-                  ref={trendChartRef}
-                  data={preparedChartData.valueTrend} 
-                  options={valueTrendOptions} 
-                />
-              )}
-              {activeTab === 'model' && (
-                <div className="flex justify-center h-full">
-                  <div style={{ width: '50%', height: '100%' }}>
-                    <Pie 
-                      data={preparedChartData.modelDistribution} 
-                      options={modelDistributionOptions} 
-                    />
+                Address
+                {filters.sortBy === 'address' && (
+                  <span className="ml-1">
+                    {filters.sortDirection === 'asc' ? '↑' : '↓'}
+                  </span>
+                )}
+              </th>
+              <th 
+                scope="col" 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                onClick={() => handleSortColumn('property_type')}
+              >
+                Type
+                {filters.sortBy === 'property_type' && (
+                  <span className="ml-1">
+                    {filters.sortDirection === 'asc' ? '↑' : '↓'}
+                  </span>
+                )}
+              </th>
+              <th 
+                scope="col" 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                onClick={() => handleSortColumn('estimated_value')}
+              >
+                Estimated Value
+                {filters.sortBy === 'estimated_value' && (
+                  <span className="ml-1">
+                    {filters.sortDirection === 'asc' ? '↑' : '↓'}
+                  </span>
+                )}
+              </th>
+              <th 
+                scope="col" 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                onClick={() => handleSortColumn('valuation_date')}
+              >
+                Valuation Date
+                {filters.sortBy === 'valuation_date' && (
+                  <span className="ml-1">
+                    {filters.sortDirection === 'asc' ? '↑' : '↓'}
+                  </span>
+                )}
+              </th>
+              <th 
+                scope="col" 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                onClick={() => handleSortColumn('valuation_method')}
+              >
+                Method
+                {filters.sortBy === 'valuation_method' && (
+                  <span className="ml-1">
+                    {filters.sortDirection === 'asc' ? '↑' : '↓'}
+                  </span>
+                )}
+              </th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {loading ? (
+              <tr>
+                <td colSpan="6" className="px-6 py-4 text-center">
+                  <div className="flex justify-center items-center">
+                    <svg className="animate-spin h-5 w-5 mr-3 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Loading properties...
                   </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+                </td>
+              </tr>
+            ) : error ? (
+              <tr>
+                <td colSpan="6" className="px-6 py-4 text-center text-red-500">
+                  {error}
+                </td>
+              </tr>
+            ) : filteredProperties.length === 0 ? (
+              <tr>
+                <td colSpan="6" className="px-6 py-4 text-center">
+                  No properties found with the current filters. Try adjusting your criteria.
+                </td>
+              </tr>
+            ) : (
+              filteredProperties.map((property, index) => (
+                <tr 
+                  key={property.property_id || index} 
+                  className="hover:bg-gray-50 cursor-pointer transition-colors"
+                  onClick={() => handlePropertyClick(property)}
+                >
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">{property.property_id}</div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="text-sm text-gray-900">{property.address}</div>
+                    <div className="text-xs text-gray-500">
+                      {property.neighborhood && `${property.neighborhood}, `}
+                      {property.city && `${property.city}, `}
+                      {property.state} {property.zip_code}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">
+                      {property.property_type?.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-gray-900">
+                      {formatCurrency(property.estimated_value)}
+                    </div>
+                    {property.confidence_score !== undefined && (
+                      <div className="text-xs text-gray-500">
+                        {formatPercentage(property.confidence_score)} confidence
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">
+                      {formatDate(property.valuation_date)}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                      {property.valuation_method?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
       
-      {/* Neighborhood Insights */}
-      {!loading && !error && preparedChartData && preparedChartData.neighborhoodDetails.names.length > 0 && (
-        <div className="bg-white rounded-lg shadow-md overflow-hidden mb-8">
-          <h2 className="text-xl font-semibold p-6 border-b">Neighborhood Insights</h2>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Neighborhood
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Avg. Value
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Min Value
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Max Value
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Value Range
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Confidence
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {preparedChartData.neighborhoodDetails.names.map((name, index) => (
-                  <tr key={name} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {name}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatCurrency(preparedChartData.neighborhoodDetails.averageValues[index])}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatCurrency(preparedChartData.neighborhoodDetails.valueRanges[index].min)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatCurrency(preparedChartData.neighborhoodDetails.valueRanges[index].max)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <div className="w-full bg-gray-200 rounded-full h-2.5">
-                        <div 
-                          className="bg-blue-600 h-2.5 rounded-full" 
-                          style={{ 
-                            width: '100%',
-                            background: `linear-gradient(to right, #4ade80, #60a5fa, #ef4444)`,
-                          }}
-                        ></div>
-                      </div>
-                      <div className="flex justify-between text-xs mt-1">
-                        <span>{formatCurrency(preparedChartData.neighborhoodDetails.valueRanges[index].min)}</span>
-                        <span>{formatCurrency(preparedChartData.neighborhoodDetails.valueRanges[index].max)}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <div className="flex items-center">
-                        <div className="mr-2">
-                          {formatPercentage(preparedChartData.neighborhoodDetails.confidences[index])}
-                        </div>
-                        <div className="w-24 bg-gray-200 rounded-full h-2.5">
-                          <div 
-                            className="bg-green-600 h-2.5 rounded-full" 
-                            style={{ 
-                              width: `${preparedChartData.neighborhoodDetails.confidences[index] * 100}%`,
-                              backgroundColor: `${
-                                preparedChartData.neighborhoodDetails.confidences[index] > 0.8 ? '#4ade80' : 
-                                preparedChartData.neighborhoodDetails.confidences[index] > 0.6 ? '#facc15' : 
-                                '#ef4444'
-                              }`
-                            }}
-                          ></div>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* Pagination */}
+      <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+        <div className="flex-1 flex justify-between items-center">
+          <div>
+            <p className="text-sm text-gray-700">
+              Showing <span className="font-medium">{filteredProperties.length > 0 ? ((pagination.currentPage - 1) * pagination.itemsPerPage) + 1 : 0}</span> to <span className="font-medium">{Math.min(pagination.currentPage * pagination.itemsPerPage, pagination.totalItems)}</span> of <span className="font-medium">{pagination.totalItems}</span> properties
+            </p>
           </div>
-        </div>
-      )}
-      
-      {/* Results Section */}
-      <div className="bg-white rounded-lg shadow-md overflow-hidden">
-        <div className="flex flex-col md:flex-row justify-between items-center p-6 border-b">
-          <h2 className="text-xl font-semibold mb-2 md:mb-0">
-            Properties ({filteredProperties.length})
-          </h2>
-          
-          {/* Pagination Controls */}
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center">
-              <span className="text-sm text-gray-700 mr-2">Show:</span>
-              <select
-                value={pagination.itemsPerPage}
-                onChange={handleItemsPerPageChange}
-                className="p-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="10">10</option>
-                <option value="25">25</option>
-                <option value="50">50</option>
-                <option value="100">100</option>
-              </select>
-            </div>
+          <div className="flex items-center">
+            <label htmlFor="itemsPerPage" className="mr-2 text-sm text-gray-700">Items per page:</label>
+            <select
+              id="itemsPerPage"
+              value={pagination.itemsPerPage}
+              onChange={handleItemsPerPageChange}
+              className="border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="10">10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
             
-            <nav className="flex items-center">
+            <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px ml-4" aria-label="Pagination">
               <button
                 onClick={() => handlePageChange(pagination.currentPage - 1)}
                 disabled={pagination.currentPage === 1}
-                className={`p-1 rounded-md ${
-                  pagination.currentPage === 1 
-                    ? 'text-gray-400 cursor-not-allowed' 
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}
+                className={`relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium ${pagination.currentPage === 1 ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:bg-gray-50'}`}
               >
-                <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
+                <span className="sr-only">Previous</span>
+                <i className="fas fa-chevron-left"></i>
               </button>
-              <span className="mx-2 text-sm text-gray-700">
-                Page {pagination.currentPage} of {Math.max(1, Math.ceil(pagination.totalItems / pagination.itemsPerPage))}
-              </span>
+              
+              {/* Page buttons */}
+              {[...Array(Math.min(pagination.totalPages, 5))].map((_, i) => {
+                let pageNumber;
+                
+                // For small page counts or first pages
+                if (pagination.totalPages <= 5 || pagination.currentPage <= 3) {
+                  pageNumber = i + 1;
+                } else if (pagination.currentPage >= pagination.totalPages - 2) {
+                  // For last pages
+                  pageNumber = pagination.totalPages - 4 + i;
+                } else {
+                  // For middle pages
+                  pageNumber = pagination.currentPage - 2 + i;
+                }
+                
+                return (
+                  <button
+                    key={pageNumber}
+                    onClick={() => handlePageChange(pageNumber)}
+                    className={`relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium ${pagination.currentPage === pageNumber ? 'bg-blue-50 text-blue-600 z-10' : 'text-gray-500 hover:bg-gray-50'}`}
+                  >
+                    {pageNumber}
+                  </button>
+                );
+              })}
+              
               <button
                 onClick={() => handlePageChange(pagination.currentPage + 1)}
-                disabled={pagination.currentPage >= Math.ceil(pagination.totalItems / pagination.itemsPerPage)}
-                className={`p-1 rounded-md ${
-                  pagination.currentPage >= Math.ceil(pagination.totalItems / pagination.itemsPerPage) 
-                    ? 'text-gray-400 cursor-not-allowed' 
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}
+                disabled={pagination.currentPage === pagination.totalPages || pagination.totalPages === 0}
+                className={`relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium ${pagination.currentPage === pagination.totalPages || pagination.totalPages === 0 ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:bg-gray-50'}`}
               >
-                <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                </svg>
+                <span className="sr-only">Next</span>
+                <i className="fas fa-chevron-right"></i>
               </button>
             </nav>
           </div>
         </div>
-        
-        {/* Loading State */}
-        {loading && (
-          <div className="flex justify-center items-center p-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-            <span className="ml-3 text-gray-600">Loading property data...</span>
+      </div>
+    </div>
+  );
+  
+  /**
+   * Render dashboard summary metrics
+   * @returns {JSX.Element} - The dashboard summary component
+   */
+  const renderSummaryMetrics = () => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+      <div className="metric-card bg-white rounded-lg shadow-md p-4">
+        <div className="flex items-center">
+          <div className="p-3 rounded-full bg-blue-100 text-blue-500 mr-4">
+            <i className="fas fa-home text-xl"></i>
           </div>
-        )}
-        
-        {/* Error State */}
-        {error && (
-          <div className="bg-red-50 p-4 border-l-4 border-red-500">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <p className="text-sm text-red-700">{error}</p>
-              </div>
-            </div>
+          <div>
+            <p className="text-sm text-gray-500">Total Properties</p>
+            <p className="text-2xl font-semibold">{summaryMetrics.totalProperties.toLocaleString()}</p>
           </div>
-        )}
-        
-        {/* Empty State */}
-        {!loading && !error && filteredProperties.length === 0 && (
-          <div className="text-center py-12">
-            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-            </svg>
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No properties found</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              Try adjusting your filters to see more results.
-            </p>
-            <div className="mt-6">
-              <button
-                type="button"
-                onClick={resetFilters}
-                className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                <svg className="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
-                </svg>
-                Reset Filters
-              </button>
-            </div>
-          </div>
-        )}
-        
-        {/* Results Table */}
-        {!loading && !error && filteredProperties.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th 
-                    scope="col" 
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSortColumn('property_id')}
-                  >
-                    <div className="flex items-center">
-                      Property ID
-                      {filters.sortBy === 'property_id' && (
-                        <svg className="ml-1 h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                          {filters.sortDirection === 'asc' ? (
-                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                          ) : (
-                            <path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" />
-                          )}
-                        </svg>
-                      )}
-                    </div>
-                  </th>
-                  <th 
-                    scope="col" 
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSortColumn('address')}
-                  >
-                    <div className="flex items-center">
-                      Address
-                      {filters.sortBy === 'address' && (
-                        <svg className="ml-1 h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                          {filters.sortDirection === 'asc' ? (
-                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                          ) : (
-                            <path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" />
-                          )}
-                        </svg>
-                      )}
-                    </div>
-                  </th>
-                  <th 
-                    scope="col" 
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSortColumn('estimated_value')}
-                  >
-                    <div className="flex items-center">
-                      Estimated Value
-                      {filters.sortBy === 'estimated_value' && (
-                        <svg className="ml-1 h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                          {filters.sortDirection === 'asc' ? (
-                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                          ) : (
-                            <path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" />
-                          )}
-                        </svg>
-                      )}
-                    </div>
-                  </th>
-                  <th 
-                    scope="col" 
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSortColumn('confidence_score')}
-                  >
-                    <div className="flex items-center">
-                      Confidence
-                      {filters.sortBy === 'confidence_score' && (
-                        <svg className="ml-1 h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                          {filters.sortDirection === 'asc' ? (
-                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                          ) : (
-                            <path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" />
-                          )}
-                        </svg>
-                      )}
-                    </div>
-                  </th>
-                  <th 
-                    scope="col" 
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSortColumn('model_used')}
-                  >
-                    <div className="flex items-center">
-                      Model
-                      {filters.sortBy === 'model_used' && (
-                        <svg className="ml-1 h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                          {filters.sortDirection === 'asc' ? (
-                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                          ) : (
-                            <path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" />
-                          )}
-                        </svg>
-                      )}
-                    </div>
-                  </th>
-                  <th 
-                    scope="col" 
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    onClick={() => handleSortColumn('valuation_date')}
-                  >
-                    <div className="flex items-center">
-                      Date
-                      {filters.sortBy === 'valuation_date' && (
-                        <svg className="ml-1 h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                          {filters.sortDirection === 'asc' ? (
-                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                          ) : (
-                            <path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" />
-                          )}
-                        </svg>
-                      )}
-                    </div>
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredProperties.map((property, index) => (
-                  <tr 
-                    key={property.property_id} 
-                    className={`
-                      ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} 
-                      hover:bg-blue-50 cursor-pointer transition duration-150
-                    `}
-                    onClick={() => handlePropertyClick(property)}
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {property.property_id}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {property.address}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">
-                      {formatCurrency(property.estimated_value)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="mr-2">
-                          {formatPercentage(property.confidence_score)}
-                        </div>
-                        <div className="w-16 bg-gray-200 rounded-full h-1.5">
-                          <div 
-                            className="h-1.5 rounded-full" 
-                            style={{ 
-                              width: `${property.confidence_score * 100}%`,
-                              backgroundColor: `${
-                                property.confidence_score > 0.8 ? '#4ade80' : 
-                                property.confidence_score > 0.6 ? '#facc15' : 
-                                '#ef4444'
-                              }`
-                            }}
-                          ></div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                        {property.model_used || 'basic'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {property.valuation_date ? formatDate(property.valuation_date) : '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <button
-                        className="text-blue-600 hover:text-blue-900"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handlePropertyClick(property);
-                        }}
-                      >
-                        Details
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        </div>
       </div>
       
-      {/* Property Detail Modal */}
-      {selectedProperty && (
-        <div className="fixed inset-0 z-10 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-          <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onClick={closePropertyDetail}></div>
+      <div className="metric-card bg-white rounded-lg shadow-md p-4">
+        <div className="flex items-center">
+          <div className="p-3 rounded-full bg-green-100 text-green-500 mr-4">
+            <i className="fas fa-dollar-sign text-xl"></i>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Average Value</p>
+            <p className="text-2xl font-semibold">{formatCurrency(summaryMetrics.averageValue)}</p>
+          </div>
+        </div>
+      </div>
+      
+      <div className="metric-card bg-white rounded-lg shadow-md p-4">
+        <div className="flex items-center">
+          <div className="p-3 rounded-full bg-purple-100 text-purple-500 mr-4">
+            <i className="fas fa-chart-pie text-xl"></i>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Median Value</p>
+            <p className="text-2xl font-semibold">{formatCurrency(summaryMetrics.medianValue)}</p>
+          </div>
+        </div>
+      </div>
+      
+      <div className="metric-card bg-white rounded-lg shadow-md p-4">
+        <div className="flex items-center">
+          <div className="p-3 rounded-full bg-yellow-100 text-yellow-500 mr-4">
+            <i className="fas fa-history text-xl"></i>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Last Refresh</p>
+            <p className="text-2xl font-semibold">
+              {refreshSettings.lastRefreshTime ? 
+                new Date(refreshSettings.lastRefreshTime).toLocaleTimeString() : 
+                'Never'}
+            </p>
+          </div>
+        </div>
+        <div className="mt-1 text-xs text-gray-500 flex items-center">
+          <span className={`mr-1 h-2 w-2 rounded-full ${refreshSettings.autoRefresh ? 'bg-green-500' : 'bg-gray-400'}`}></span>
+          <span>Auto-refresh: {refreshSettings.autoRefresh ? 'On' : 'Off'}</span>
+        </div>
+      </div>
+    </div>
+  );
+  
+  /**
+   * Render property data visualization charts
+   * @returns {JSX.Element} - The charts component
+   */
+  const renderPropertyCharts = () => (
+    <div className="bg-white rounded-lg shadow-md p-4 mb-6">
+      <div className="flex border-b mb-4">
+        <button
+          className={`px-4 py-2 font-medium ${activeTab === 'distribution' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-700'}`}
+          onClick={() => setActiveTab('distribution')}
+        >
+          Value Distribution
+        </button>
+        <button
+          className={`px-4 py-2 font-medium ${activeTab === 'neighborhood' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-700'}`}
+          onClick={() => setActiveTab('neighborhood')}
+        >
+          Neighborhood Comparison
+        </button>
+        <button
+          className={`px-4 py-2 font-medium ${activeTab === 'trend' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-700'}`}
+          onClick={() => setActiveTab('trend')}
+        >
+          Value Trends
+        </button>
+        <button
+          className={`px-4 py-2 font-medium ${activeTab === 'models' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-700'}`}
+          onClick={() => setActiveTab('models')}
+        >
+          Valuation Models
+        </button>
+      </div>
+      
+      <div className="h-80">
+        {loading ? (
+          <div className="h-full flex justify-center items-center">
+            <svg className="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          </div>
+        ) : error ? (
+          <div className="h-full flex justify-center items-center text-red-500">
+            {error}
+          </div>
+        ) : properties.length === 0 ? (
+          <div className="h-full flex justify-center items-center text-gray-500">
+            No data available for visualization.
+          </div>
+        ) : (
+          <>
+            {/* Value Distribution Chart */}
+            {activeTab === 'distribution' && (
+              <div className="h-full" ref={valueDistributionChartRef}>
+                <Bar data={valueDistributionData} options={valueDistributionOptions} />
+              </div>
+            )}
             
-            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            {/* Neighborhood Comparison Chart */}
+            {activeTab === 'neighborhood' && (
+              <div className="h-full" ref={neighborhoodChartRef}>
+                <Bar data={neighborhoodComparisonData} options={neighborhoodOptions} />
+              </div>
+            )}
             
-            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full md:max-w-2xl">
-              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                <div className="sm:flex sm:items-start">
-                  <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 sm:mx-0 sm:h-10 sm:w-10">
-                    <svg className="h-6 w-6 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                    </svg>
+            {/* Value Trend Chart */}
+            {activeTab === 'trend' && (
+              <div className="h-full" ref={trendChartRef}>
+                <Line data={valueTrendData} options={trendOptions} />
+              </div>
+            )}
+            
+            {/* Model Distribution Chart */}
+            {activeTab === 'models' && (
+              <div className="h-full flex justify-center">
+                <div className="w-3/4 h-full">
+                  <Pie data={modelDistributionData} options={modelDistributionOptions} />
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+  
+  /**
+   * Render ETL status section
+   * @returns {JSX.Element} - The ETL status component
+   */
+  const renderEtlStatus = () => (
+    <div className="bg-white rounded-lg shadow-md p-4 mb-6">
+      <h2 className="text-xl font-semibold mb-4">ETL Pipeline Status</h2>
+      
+      {etlStatus.isLoading ? (
+        <div className="flex justify-center items-center h-40">
+          <svg className="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+        </div>
+      ) : etlStatus.error ? (
+        <div className="bg-red-50 text-red-500 p-4 rounded-md">
+          {etlStatus.error}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <div className="mb-4">
+              <div className="flex justify-between mb-1">
+                <span className="text-sm font-medium">Status: </span>
+                <span className={`text-sm font-semibold ${
+                  etlStatus.status === 'running' ? 'text-green-500' :
+                  etlStatus.status === 'pending' ? 'text-blue-500' :
+                  etlStatus.status === 'failed' ? 'text-red-500' :
+                  etlStatus.status === 'completed' ? 'text-green-700' :
+                  'text-gray-500'
+                }`}>
+                  {etlStatus.status?.charAt(0).toUpperCase() + etlStatus.status?.slice(1) || 'Unknown'}
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className={`h-2 rounded-full ${
+                    etlStatus.status === 'failed' ? 'bg-red-500' :
+                    etlStatus.status === 'completed' ? 'bg-green-500' :
+                    'bg-blue-500'
+                  }`}
+                  style={{ width: `${Math.round(etlStatus.progress * 100)}%` }}
+                ></div>
+              </div>
+              <div className="text-right text-xs text-gray-500 mt-1">
+                {Math.round(etlStatus.progress * 100)}% complete
+              </div>
+            </div>
+            
+            <div className="text-sm text-gray-600 mb-4">
+              <div><span className="font-medium">Last Updated:</span> {formatDateTime(etlStatus.lastUpdate)}</div>
+              <div><span className="font-medium">Records Processed:</span> {etlStatus.metrics.recordsProcessed.toLocaleString()}</div>
+              <div><span className="font-medium">Success Rate:</span> {formatPercentage(etlStatus.metrics.successRate)}</div>
+              <div><span className="font-medium">Avg. Processing Time:</span> {etlStatus.metrics.averageProcessingTime.toFixed(2)}ms</div>
+            </div>
+            
+            <div className="mb-2">
+              <h3 className="text-sm font-semibold mb-2">Data Quality Metrics</h3>
+              <div className="space-y-2">
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span>Completeness</span>
+                    <span>{formatPercentage(etlStatus.dataQuality.completeness)}</span>
                   </div>
-                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left flex-grow">
-                    <h3 className="text-lg leading-6 font-medium text-gray-900" id="modal-title">
-                      Property Details
-                    </h3>
-                    <div className="mt-4 border-t border-gray-200 pt-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-500">Property ID</h4>
-                          <p className="mt-1 text-sm text-gray-900">{selectedProperty.property_id}</p>
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-500">Address</h4>
-                          <p className="mt-1 text-sm text-gray-900">{selectedProperty.address}</p>
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-500">Estimated Value</h4>
-                          <p className="mt-1 text-sm text-gray-900 font-semibold">{formatCurrency(selectedProperty.estimated_value)}</p>
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-500">Confidence Score</h4>
-                          <div className="mt-1 flex items-center">
-                            <span className="text-sm text-gray-900 font-semibold mr-2">{formatPercentage(selectedProperty.confidence_score)}</span>
-                            <div className="w-full bg-gray-200 rounded-full h-2">
-                              <div 
-                                className="h-2 rounded-full" 
-                                style={{ 
-                                  width: `${selectedProperty.confidence_score * 100}%`,
-                                  backgroundColor: `${
-                                    selectedProperty.confidence_score > 0.8 ? '#4ade80' : 
-                                    selectedProperty.confidence_score > 0.6 ? '#facc15' : 
-                                    '#ef4444'
-                                  }`
-                                }}
-                              ></div>
-                            </div>
-                          </div>
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-500">Valuation Model</h4>
-                          <p className="mt-1 text-sm text-gray-900">{selectedProperty.model_used || 'basic'}</p>
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-500">Valuation Date</h4>
-                          <p className="mt-1 text-sm text-gray-900">{selectedProperty.valuation_date ? formatDate(selectedProperty.valuation_date) : '-'}</p>
-                        </div>
-                      </div>
-                      
-                      {/* Property Features */}
-                      {selectedProperty.features_used && (
-                        <div className="mt-6 border-t border-gray-200 pt-4">
-                          <h4 className="text-sm font-medium text-gray-900 mb-3">Property Features</h4>
-                          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                            {Object.entries(selectedProperty.features_used).map(([key, value]) => (
-                              <div key={key}>
-                                <h5 className="text-xs font-medium text-gray-500 capitalize">{key.replace(/_/g, ' ')}</h5>
-                                <p className="mt-1 text-sm text-gray-900">
-                                  {typeof value === 'number' && key.includes('square_feet') ? `${value.toLocaleString()} sq ft` : value.toString()}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Advanced Metrics (if available) */}
-                      {selectedProperty.advanced_metrics && (
-                        <div className="mt-6 border-t border-gray-200 pt-4">
-                          <h4 className="text-sm font-medium text-gray-900 mb-3">Advanced Metrics</h4>
-                          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                            {Object.entries(selectedProperty.advanced_metrics).map(([key, value]) => (
-                              <div key={key}>
-                                <h5 className="text-xs font-medium text-gray-500 capitalize">{key.replace(/_/g, ' ')}</h5>
-                                <p className="mt-1 text-sm text-gray-900">
-                                  {typeof value === 'number' ? 
-                                    (key.includes('score') || key.includes('index') ? formatPercentage(value) : value.toLocaleString()) : 
-                                    value.toString()}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Comparable Properties */}
-                      {selectedProperty.comparables && selectedProperty.comparables.length > 0 && (
-                        <div className="mt-6 border-t border-gray-200 pt-4">
-                          <h4 className="text-sm font-medium text-gray-900 mb-3">Comparable Properties</h4>
-                          <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200">
-                              <thead className="bg-gray-50">
-                                <tr>
-                                  <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Address</th>
-                                  <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Value</th>
-                                  <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Similarity</th>
-                                </tr>
-                              </thead>
-                              <tbody className="bg-white divide-y divide-gray-200">
-                                {selectedProperty.comparables.map((comp, i) => (
-                                  <tr key={i}>
-                                    <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">{comp.address}</td>
-                                    <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-900">{formatCurrency(comp.value)}</td>
-                                    <td className="px-3 py-2 whitespace-nowrap text-xs">
-                                      <div className="flex items-center">
-                                        <span className="mr-2">{formatPercentage(comp.similarity)}</span>
-                                        <div className="w-12 bg-gray-200 rounded-full h-1.5">
-                                          <div 
-                                            className="bg-blue-600 h-1.5 rounded-full" 
-                                            style={{ width: `${comp.similarity * 100}%` }}
-                                          ></div>
-                                        </div>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                  <div className="w-full bg-gray-200 rounded-full h-1.5">
+                    <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${etlStatus.dataQuality.completeness * 100}%` }}></div>
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span>Accuracy</span>
+                    <span>{formatPercentage(etlStatus.dataQuality.accuracy)}</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-1.5">
+                    <div className="bg-green-500 h-1.5 rounded-full" style={{ width: `${etlStatus.dataQuality.accuracy * 100}%` }}></div>
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span>Timeliness</span>
+                    <span>{formatPercentage(etlStatus.dataQuality.timeliness)}</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-1.5">
+                    <div className="bg-purple-500 h-1.5 rounded-full" style={{ width: `${etlStatus.dataQuality.timeliness * 100}%` }}></div>
                   </div>
                 </div>
               </div>
-              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                <button 
-                  type="button" 
-                  className="mt-3 w-full inline-flex justify-center rounded-lg border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
-                  onClick={closePropertyDetail}
-                >
-                  Close
-                </button>
-              </div>
             </div>
+          </div>
+          
+          <div>
+            <h3 className="text-sm font-semibold mb-2">Data Sources</h3>
+            {etlStatus.sources && etlStatus.sources.length > 0 ? (
+              <div className="overflow-y-auto max-h-60">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Records</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {etlStatus.sources.map((source, index) => (
+                      <tr key={index}>
+                        <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">{source.name}</td>
+                        <td className="px-3 py-2 whitespace-nowrap text-sm">
+                          <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            source.status === 'completed' ? 'bg-green-100 text-green-800' :
+                            source.status === 'running' ? 'bg-blue-100 text-blue-800' :
+                            source.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                            source.status === 'failed' ? 'bg-red-100 text-red-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {source.status}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{source.records?.toLocaleString() || 0}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">No data sources available.</p>
+            )}
           </div>
         </div>
       )}
-        </>
-      )}
+    </div>
+  );
+  
+  /**
+   * Render agent status section
+   * @returns {JSX.Element} - The agent status component
+   */
+  const renderAgentStatus = () => (
+    <div className="bg-white rounded-lg shadow-md p-4 mb-6">
+      <h2 className="text-xl font-semibold mb-4">Agent Status</h2>
       
-      {/* ETL Pipeline Status Tab */}
-      {activeDashboardTab === 'etl' && (
-        <div className="bg-white rounded-lg shadow-md overflow-hidden mb-8">
-          <h2 className="text-xl font-semibold p-6 border-b">ETL Pipeline Status</h2>
-          
-          {/* Loading State */}
-          {etlStatus.isLoading && (
-            <div className="flex justify-center items-center p-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-              <span className="ml-3 text-gray-600">Loading ETL status data...</span>
-            </div>
-          )}
-          
-          {/* Error State */}
-          {etlStatus.error && (
-            <div className="bg-red-50 p-4 border-l-4 border-red-500">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm text-red-700">{etlStatus.error}</p>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {/* ETL Status Table */}
-          {!etlStatus.isLoading && !etlStatus.error && etlStatus.data && etlStatus.data.length > 0 && (
+      {agentStatus.isLoading ? (
+        <div className="flex justify-center items-center h-40">
+          <svg className="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+        </div>
+      ) : agentStatus.error ? (
+        <div className="bg-red-50 text-red-500 p-4 rounded-md">
+          {agentStatus.error}
+        </div>
+      ) : agentStatus.agents.length === 0 ? (
+        <p className="text-center text-gray-500 py-8">No agent data available.</p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="md:col-span-2">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Pipeline Name
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Last Run
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Records Processed
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Success Rate
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Duration
-                    </th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Agent</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Queue</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Success Rate</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Update</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {etlStatus.data.map((pipeline) => (
-                    <tr key={pipeline.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {pipeline.name}
+                  {agentStatus.agents.map((agent, index) => (
+                    <tr 
+                      key={agent.agent_id || index}
+                      onClick={() => handleAgentSelect(agent)}
+                      className="hover:bg-gray-50 cursor-pointer transition-colors"
+                    >
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">{agent.agent_name}</div>
+                        <div className="text-xs text-gray-500">{agent.agent_id}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          pipeline.status === 'completed' ? 'bg-green-100 text-green-800' : 
-                          pipeline.status === 'running' ? 'bg-blue-100 text-blue-800' : 
-                          pipeline.status === 'failed' ? 'bg-red-100 text-red-800' : 
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{agent.agent_type}</div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                          agent.status === 'idle' ? 'bg-green-100 text-green-800' :
+                          agent.status === 'busy' ? 'bg-blue-100 text-blue-800' :
+                          agent.status === 'error' ? 'bg-red-100 text-red-800' :
+                          agent.status === 'offline' ? 'bg-gray-100 text-gray-800' :
                           'bg-yellow-100 text-yellow-800'
                         }`}>
-                          {pipeline.status.charAt(0).toUpperCase() + pipeline.status.slice(1)}
+                          {agent.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {pipeline.last_run ? formatDateTime(pipeline.last_run) : 'Never'}
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                        {agent.queue_size || 0}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {pipeline.records_processed.toLocaleString()}
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                        {formatPercentage(agent.success_rate || 0)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <div className="flex items-center">
-                          <span className="mr-2">{formatPercentage(pipeline.success_rate)}</span>
-                          <div className="w-24 bg-gray-200 rounded-full h-2.5">
-                            <div 
-                              className="h-2.5 rounded-full" 
-                              style={{ 
-                                width: `${pipeline.success_rate * 100}%`,
-                                backgroundColor: `${
-                                  pipeline.success_rate > 0.9 ? '#4ade80' : 
-                                  pipeline.success_rate > 0.75 ? '#facc15' : 
-                                  '#ef4444'
-                                }`
-                              }}
-                            ></div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {pipeline.duration ? `${pipeline.duration.toFixed(2)}s` : '-'}
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                        {formatDateTime(agent.last_heartbeat)}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          )}
+          </div>
           
-          {/* Empty State */}
-          {!etlStatus.isLoading && !etlStatus.error && (!etlStatus.data || etlStatus.data.length === 0) && (
-            <div className="text-center py-12">
-              <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-              </svg>
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No ETL pipelines found</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                ETL pipeline data is not available at this time.
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-      
-      {/* Agent Status Tab */}
-      {activeDashboardTab === 'agents' && (
-        <div className="bg-white rounded-lg shadow-md overflow-hidden mb-8">
-          <h2 className="text-xl font-semibold p-6 border-b">BS Army of Agents Status</h2>
-          
-          {/* Loading State */}
-          {agentStatus.isLoading && (
-            <div className="flex justify-center items-center p-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-              <span className="ml-3 text-gray-600">Loading agent status data...</span>
-            </div>
-          )}
-          
-          {/* Error State */}
-          {agentStatus.error && (
-            <div className="bg-red-50 p-4 border-l-4 border-red-500">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm text-red-700">{agentStatus.error}</p>
-                </div>
+          <div>
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-sm font-semibold mb-3">Agent Status Distribution</h3>
+              <div className="h-48">
+                <Doughnut data={agentStatusData} options={agentStatusOptions} />
               </div>
             </div>
-          )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+  
+  /**
+   * Render property detail modal
+   * @returns {JSX.Element|null} - The property detail modal or null if no property is selected
+   */
+  const renderPropertyDetailModal = () => {
+    if (!selectedProperty) return null;
+    
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+        <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-full overflow-hidden">
+          <div className="flex justify-between items-center p-4 border-b">
+            <h2 className="text-xl font-semibold">Property Details</h2>
+            <button 
+              onClick={closePropertyDetail}
+              className="text-gray-500 hover:text-gray-700 focus:outline-none"
+            >
+              <i className="fas fa-times text-xl"></i>
+            </button>
+          </div>
           
-          {/* Agent Status Overview */}
-          {!agentStatus.isLoading && !agentStatus.error && agentStatus.data && (
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                  <h3 className="text-sm font-medium text-gray-500">Total Agents</h3>
-                  <p className="mt-1 text-2xl font-semibold text-gray-900">{agentStatus.data.length}</p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                  <h3 className="text-sm font-medium text-gray-500">Active Agents</h3>
-                  <p className="mt-1 text-2xl font-semibold text-green-600">
-                    {agentStatus.data.filter(agent => agent.status === 'active').length}
-                  </p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                  <h3 className="text-sm font-medium text-gray-500">Tasks Processed</h3>
-                  <p className="mt-1 text-2xl font-semibold text-gray-900">
-                    {agentStatus.data.reduce((sum, agent) => sum + (agent.tasks_processed || 0), 0).toLocaleString()}
-                  </p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                  <h3 className="text-sm font-medium text-gray-500">Average Success Rate</h3>
-                  <p className="mt-1 text-2xl font-semibold text-blue-600">
-                    {formatPercentage(
-                      agentStatus.data.reduce((sum, agent) => sum + (agent.success_rate || 0), 0) / 
-                      agentStatus.data.length
-                    )}
-                  </p>
+          <div className="p-4 overflow-y-auto max-h-[calc(100vh-10rem)]">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <div>
+                <h3 className="text-lg font-semibold mb-2">Property Information</h3>
+                <div className="space-y-2">
+                  <p><span className="font-medium">ID:</span> {selectedProperty.property_id}</p>
+                  <p><span className="font-medium">Address:</span> {selectedProperty.address}</p>
+                  <p><span className="font-medium">Location:</span> {selectedProperty.city}, {selectedProperty.state} {selectedProperty.zip_code}</p>
+                  <p><span className="font-medium">Neighborhood:</span> {selectedProperty.neighborhood || 'Not specified'}</p>
+                  <p><span className="font-medium">Property Type:</span> {selectedProperty.property_type?.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</p>
+                  <p><span className="font-medium">Bedrooms:</span> {selectedProperty.bedrooms || 'N/A'}</p>
+                  <p><span className="font-medium">Bathrooms:</span> {selectedProperty.bathrooms || 'N/A'}</p>
+                  <p><span className="font-medium">Square Feet:</span> {selectedProperty.square_feet ? `${selectedProperty.square_feet.toLocaleString()} sq ft` : 'N/A'}</p>
+                  <p><span className="font-medium">Year Built:</span> {selectedProperty.year_built || 'N/A'}</p>
+                  <p><span className="font-medium">Lot Size:</span> {selectedProperty.lot_size ? `${selectedProperty.lot_size.toLocaleString()} acres` : 'N/A'}</p>
+                  {selectedProperty.latitude && selectedProperty.longitude && (
+                    <p><span className="font-medium">Coordinates:</span> {selectedProperty.latitude.toFixed(6)}, {selectedProperty.longitude.toFixed(6)}</p>
+                  )}
                 </div>
               </div>
               
-              {/* Agent Status Chart */}
-              {agentStatusChartData && (
-                <div className="mb-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-3">Agent Status Distribution</h3>
-                  <div className="h-64">
-                    <Pie 
-                      data={agentStatusChartData}
-                      options={{
-                        plugins: {
-                          legend: {
-                            position: 'right',
-                          },
-                          tooltip: {
-                            callbacks: {
-                              label: function(context) {
-                                const label = context.label || '';
-                                const value = context.raw || 0;
-                                const total = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
-                                const percentage = Math.round((value / total) * 100);
-                                return `${label}: ${value} (${percentage}%)`;
-                              }
-                            }
-                          }
-                        },
-                        maintainAspectRatio: false,
-                      }}
-                    />
+              <div>
+                <h3 className="text-lg font-semibold mb-2">Valuation Details</h3>
+                <div className="mb-3">
+                  <span className="text-sm text-gray-600">Estimated Value</span>
+                  <div className="text-3xl font-bold text-blue-600">
+                    {formatCurrency(selectedProperty.estimated_value)}
+                  </div>
+                  <span className="text-sm text-gray-500">
+                    as of {formatDate(selectedProperty.valuation_date)}
+                  </span>
+                </div>
+                
+                <div className="space-y-2">
+                  <p><span className="font-medium">Valuation Method:</span> {selectedProperty.valuation_method?.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</p>
+                  <p><span className="font-medium">Confidence Score:</span> {formatPercentage(selectedProperty.confidence_score)}</p>
+                  
+                  {selectedProperty.adj_r2_score !== undefined && (
+                    <p><span className="font-medium">Adjusted R² Score:</span> {selectedProperty.adj_r2_score.toFixed(4)}</p>
+                  )}
+                  
+                  {selectedProperty.rmse !== undefined && (
+                    <p><span className="font-medium">RMSE:</span> {selectedProperty.rmse.toLocaleString()}</p>
+                  )}
+                  
+                  {selectedProperty.mae !== undefined && (
+                    <p><span className="font-medium">MAE:</span> {selectedProperty.mae.toLocaleString()}</p>
+                  )}
+                  
+                  {selectedProperty.last_sale_price && (
+                    <p>
+                      <span className="font-medium">Last Sale Price:</span> {formatCurrency(selectedProperty.last_sale_price)}
+                      {selectedProperty.last_sale_date && ` (${formatDate(selectedProperty.last_sale_date)})`}
+                    </p>
+                  )}
+                </div>
+                
+                {selectedProperty.gis_adjustments && (
+                  <div className="mt-4">
+                    <h4 className="text-md font-semibold mb-2">GIS Adjustments</h4>
+                    <div className="space-y-2">
+                      <p><span className="font-medium">Base Value:</span> {formatCurrency(selectedProperty.gis_adjustments.base_value)}</p>
+                      <p><span className="font-medium">Neighborhood Quality:</span> {formatPercentage(selectedProperty.gis_adjustments.quality_adjustment)}</p>
+                      <p><span className="font-medium">Proximity Factors:</span> {formatPercentage(selectedProperty.gis_adjustments.proximity_adjustment)}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {selectedProperty.feature_importance && (
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold mb-2">Feature Importance</h3>
+                <div className="space-y-2">
+                  {Object.entries(selectedProperty.feature_importance)
+                    .sort(([, a], [, b]) => b - a)
+                    .map(([feature, importance], index) => (
+                      <div key={index}>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-sm">{feature.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
+                          <span className="text-sm font-medium">{formatPercentage(importance)}</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${importance * 100}%` }}></div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+            
+            {selectedProperty.comparable_properties && selectedProperty.comparable_properties.length > 0 && (
+              <div>
+                <h3 className="text-lg font-semibold mb-2">Comparable Properties</h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Address</th>
+                        <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Value</th>
+                        <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Distance</th>
+                        <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Similarity</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {selectedProperty.comparable_properties.map((comp, index) => (
+                        <tr key={index}>
+                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">{comp.address}</td>
+                          <td className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{formatCurrency(comp.value)}</td>
+                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{comp.distance ? `${comp.distance.toFixed(2)} miles` : 'N/A'}</td>
+                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{formatPercentage(comp.similarity)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse border-t">
+            <button
+              type="button"
+              className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+              onClick={closePropertyDetail}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+  
+  /**
+   * Render agent detail modal
+   * @returns {JSX.Element|null} - The agent detail modal or null if no agent is selected
+   */
+  const renderAgentDetailModal = () => {
+    if (!selectedAgent) return null;
+    
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+        <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-full overflow-hidden">
+          <div className="flex justify-between items-center p-4 border-b">
+            <h2 className="text-xl font-semibold">Agent Details: {selectedAgent.agent_name}</h2>
+            <button 
+              onClick={closeAgentDetail}
+              className="text-gray-500 hover:text-gray-700 focus:outline-none"
+            >
+              <i className="fas fa-times text-xl"></i>
+            </button>
+          </div>
+          
+          <div className="p-4 overflow-y-auto max-h-[calc(100vh-10rem)]">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <div>
+                <h3 className="text-lg font-semibold mb-2">Agent Information</h3>
+                <div className="space-y-2">
+                  <p><span className="font-medium">ID:</span> {selectedAgent.agent_id}</p>
+                  <p><span className="font-medium">Type:</span> {selectedAgent.agent_type}</p>
+                  <p>
+                    <span className="font-medium">Status:</span> 
+                    <span className={`ml-2 px-2 py-0.5 text-xs font-medium rounded-full ${
+                      selectedAgent.status === 'idle' ? 'bg-green-100 text-green-800' :
+                      selectedAgent.status === 'busy' ? 'bg-blue-100 text-blue-800' :
+                      selectedAgent.status === 'error' ? 'bg-red-100 text-red-800' :
+                      selectedAgent.status === 'offline' ? 'bg-gray-100 text-gray-800' :
+                      'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {selectedAgent.status}
+                    </span>
+                  </p>
+                  <p><span className="font-medium">Last Heartbeat:</span> {formatDateTime(selectedAgent.last_heartbeat)}</p>
+                  <p><span className="font-medium">Current Task:</span> {selectedAgent.current_task || 'None'}</p>
+                  <p><span className="font-medium">Queue Size:</span> {selectedAgent.queue_size || 0}</p>
+                  <p><span className="font-medium">Success Rate:</span> {formatPercentage(selectedAgent.success_rate)}</p>
+                  <p><span className="font-medium">Error Count:</span> {selectedAgent.error_count || 0}</p>
+                </div>
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-semibold mb-2">Performance Metrics</h3>
+                
+                {/* Agent Success Rate Visual */}
+                <div className="mb-4">
+                  <div className="flex justify-between mb-1">
+                    <span className="text-sm font-medium">Success Rate</span>
+                    <span className="text-sm font-medium">{formatPercentage(selectedAgent.success_rate)}</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div 
+                      className={`h-2.5 rounded-full ${
+                        selectedAgent.success_rate >= 0.9 ? 'bg-green-500' :
+                        selectedAgent.success_rate >= 0.7 ? 'bg-yellow-500' :
+                        'bg-red-500'
+                      }`}
+                      style={{ width: `${(selectedAgent.success_rate || 0) * 100}%` }}
+                    ></div>
                   </div>
                 </div>
-              )}
+                
+                {/* Agent Queue Size Visual */}
+                <div className="mb-4">
+                  <div className="flex justify-between mb-1">
+                    <span className="text-sm font-medium">Queue Utilization</span>
+                    <span className="text-sm font-medium">{selectedAgent.queue_size || 0} tasks</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div 
+                      className={`h-2.5 rounded-full ${
+                        (selectedAgent.queue_size || 0) >= 10 ? 'bg-red-500' :
+                        (selectedAgent.queue_size || 0) >= 5 ? 'bg-yellow-500' :
+                        'bg-blue-500'
+                      }`}
+                      style={{ width: `${Math.min((selectedAgent.queue_size || 0) * 10, 100)}%` }}
+                    ></div>
+                  </div>
+                </div>
+                
+                {selectedAgent.metrics && (
+                  <div className="grid grid-cols-2 gap-4 mt-4">
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-sm text-gray-500">Avg. Response Time</div>
+                      <div className="text-xl font-semibold">{selectedAgent.metrics.avg_response_time?.toFixed(2) || 'N/A'} ms</div>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-sm text-gray-500">Tasks Completed</div>
+                      <div className="text-xl font-semibold">{selectedAgent.metrics.tasks_completed?.toLocaleString() || 'N/A'}</div>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-sm text-gray-500">Memory Usage</div>
+                      <div className="text-xl font-semibold">{selectedAgent.metrics.memory_usage ? `${(selectedAgent.metrics.memory_usage / (1024 * 1024)).toFixed(1)} MB` : 'N/A'}</div>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="text-sm text-gray-500">CPU Usage</div>
+                      <div className="text-xl font-semibold">{selectedAgent.metrics.cpu_usage ? `${(selectedAgent.metrics.cpu_usage * 100).toFixed(1)}%` : 'N/A'}</div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          )}
+            
+            <h3 className="text-lg font-semibold mb-2">Agent Logs</h3>
+            {selectedAgent.logsError ? (
+              <div className="bg-red-50 text-red-500 p-4 rounded-md">
+                {selectedAgent.logsError}
+              </div>
+            ) : selectedAgent.logs && selectedAgent.logs.length > 0 ? (
+              <div className="bg-gray-50 rounded-lg overflow-hidden border border-gray-200">
+                <div className="max-h-80 overflow-y-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-100 sticky top-0">
+                      <tr>
+                        <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                        <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level</th>
+                        <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Message</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {selectedAgent.logs.map((log, index) => (
+                        <tr key={index}>
+                          <td className="px-4 py-2 whitespace-nowrap text-xs text-gray-500">
+                            {formatDateTime(log.timestamp)}
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap">
+                            <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                              log.level === 'error' ? 'bg-red-100 text-red-800' :
+                              log.level === 'warning' ? 'bg-yellow-100 text-yellow-800' :
+                              log.level === 'info' ? 'bg-blue-100 text-blue-800' :
+                              log.level === 'debug' ? 'bg-gray-100 text-gray-800' :
+                              'bg-purple-100 text-purple-800'
+                            }`}>
+                              {log.level}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2 text-xs text-gray-900">
+                            {log.message}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <p className="text-gray-500 text-center py-4">No logs available for this agent.</p>
+            )}
+          </div>
           
-          {/* Agent Status Table */}
-          {!agentStatus.isLoading && !agentStatus.error && agentStatus.data && agentStatus.data.length > 0 && (
-            <div className="overflow-x-auto border-t border-gray-200">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Agent
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Last Active
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Tasks
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Success Rate
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Queue Size
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {agentStatus.data.map((agent) => (
-                    <tr key={agent.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="flex-shrink-0 h-10 w-10 bg-gray-200 rounded-full flex items-center justify-center">
-                            {/* Agent icon based on role */}
-                            <svg className={`h-6 w-6 ${getStatusColorClass(agent.status)}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                            </svg>
-                          </div>
-                          <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900">{agent.name}</div>
-                            <div className="text-sm text-gray-500">{agent.role || 'Agent'}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          agent.status === 'active' ? 'bg-green-100 text-green-800' : 
-                          agent.status === 'idle' ? 'bg-blue-100 text-blue-800' : 
-                          agent.status === 'error' ? 'bg-red-100 text-red-800' : 
-                          'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {agent.status.charAt(0).toUpperCase() + agent.status.slice(1)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {agent.last_active ? formatDateTime(agent.last_active) : 'Never'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {agent.tasks_processed ? agent.tasks_processed.toLocaleString() : 0}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <div className="flex items-center">
-                          <span className="mr-2">{formatPercentage(agent.success_rate || 0)}</span>
-                          <div className="w-24 bg-gray-200 rounded-full h-2.5">
-                            <div 
-                              className="h-2.5 rounded-full" 
-                              style={{ 
-                                width: `${(agent.success_rate || 0) * 100}%`,
-                                backgroundColor: `${
-                                  (agent.success_rate || 0) > 0.9 ? '#4ade80' : 
-                                  (agent.success_rate || 0) > 0.75 ? '#facc15' : 
-                                  '#ef4444'
-                                }`
-                              }}
-                            ></div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {typeof agent.queue_size === 'number' ? (
-                          <div className="flex items-center">
-                            <span className="mr-2">{agent.queue_size}</span>
-                            <div className="w-16 bg-gray-200 rounded-full h-2">
-                              <div 
-                                className="h-2 rounded-full bg-blue-600" 
-                                style={{ 
-                                  width: `${Math.min(100, (agent.queue_size / (agent.max_queue_size || 10)) * 100)}%` 
-                                }}
-                              ></div>
-                            </div>
-                          </div>
-                        ) : 'N/A'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <button
-                          onClick={() => handleSelectAgent(agent)}
-                          className="text-blue-600 hover:text-blue-900 mr-3"
-                        >
-                          Details
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          
-          {/* Empty State */}
-          {!agentStatus.isLoading && !agentStatus.error && (!agentStatus.data || agentStatus.data.length === 0) && (
-            <div className="text-center py-12">
-              <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No agents found</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                Agent status data is not available at this time.
-              </p>
-            </div>
-          )}
+          <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse border-t">
+            <button
+              type="button"
+              className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+              onClick={closeAgentDetail}
+            >
+              Close
+            </button>
+          </div>
         </div>
+      </div>
+    );
+  };
+  
+  /**
+   * Render dashboard tabs navigation
+   * @returns {JSX.Element} - The dashboard tabs component
+   */
+  const renderDashboardTabs = () => (
+    <div className="bg-white rounded-lg shadow-md p-4 mb-6">
+      <div className="flex flex-wrap border-b mb-4">
+        <button
+          className={`px-4 py-2 font-medium ${activeDashboardTab === 'properties' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-700'}`}
+          onClick={() => handleDashboardTabChange('properties')}
+        >
+          <i className="fas fa-home mr-2"></i>
+          Properties
+        </button>
+        <button
+          className={`px-4 py-2 font-medium ${activeDashboardTab === 'etl' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-700'}`}
+          onClick={() => handleDashboardTabChange('etl')}
+        >
+          <i className="fas fa-database mr-2"></i>
+          ETL Status
+        </button>
+        <button
+          className={`px-4 py-2 font-medium ${activeDashboardTab === 'agents' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-700'}`}
+          onClick={() => handleDashboardTabChange('agents')}
+        >
+          <i className="fas fa-robot mr-2"></i>
+          Agents
+        </button>
+        
+        {/* Push to right */}
+        <div className="flex-grow"></div>
+        
+        {/* Refresh controls */}
+        <div className="flex items-center">
+          <div className="mr-2">
+            <select
+              value={refreshSettings.interval}
+              onChange={handleRefreshIntervalChange}
+              className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="30000">Refresh: 30s</option>
+              <option value="60000">Refresh: 1m</option>
+              <option value="300000">Refresh: 5m</option>
+              <option value="600000">Refresh: 10m</option>
+            </select>
+          </div>
+          
+          <button
+            onClick={toggleAutoRefresh}
+            className={`mr-2 px-2 py-1 text-sm rounded-md ${refreshSettings.autoRefresh ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}
+            title={refreshSettings.autoRefresh ? 'Auto-refresh is on' : 'Auto-refresh is off'}
+          >
+            <i className={`fas fa-${refreshSettings.autoRefresh ? 'sync' : 'sync-alt'} mr-1`}></i>
+            {refreshSettings.autoRefresh ? 'Auto' : 'Manual'}
+          </button>
+          
+          <button
+            onClick={refreshAllData}
+            className="px-2 py-1 text-sm bg-blue-100 text-blue-700 rounded-md"
+            title="Refresh all data now"
+          >
+            <i className="fas fa-redo-alt"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+  
+  // --- Main Render ---
+  return (
+    <div className="bg-gray-100 min-h-screen p-4">
+      <h1 className="text-2xl font-bold mb-6">Property Valuation Dashboard</h1>
+      
+      {/* Dashboard tabs */}
+      {renderDashboardTabs()}
+      
+      {/* Summary metrics */}
+      {renderSummaryMetrics()}
+      
+      {/* Properties view */}
+      {activeDashboardTab === 'properties' && (
+        <>
+          {/* Filters */}
+          {renderFilterSection()}
+          
+          {/* Charts */}
+          {renderPropertyCharts()}
+          
+          {/* Property Table */}
+          {renderPropertyTable()}
+        </>
       )}
       
-      {/* Footer */}
-      <footer className="mt-8 text-center text-sm text-gray-500">
-        <p>BCBS Advanced Valuation System &copy; {new Date().getFullYear()}</p>
-        <p className="mt-1">Developed for Benton County Washington property valuations</p>
-      </footer>
+      {/* ETL Status view */}
+      {activeDashboardTab === 'etl' && renderEtlStatus()}
+      
+      {/* Agent Status view */}
+      {activeDashboardTab === 'agents' && renderAgentStatus()}
+      
+      {/* Property Detail Modal */}
+      {renderPropertyDetailModal()}
+      
+      {/* Agent Detail Modal */}
+      {renderAgentDetailModal()}
     </div>
   );
 };
