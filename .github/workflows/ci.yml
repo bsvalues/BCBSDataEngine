@@ -1,22 +1,86 @@
-name: BCBS Values CI
+name: BCBS Values CI/CD Pipeline
 
 # Defines when this workflow will run
 on:
   push:
-    branches: [ main ]  # Run on pushes to main branch
+    branches: 
+      - main     # Run on pushes to main branch
+      - develop  # Also run on pushes to develop branch
+    paths-ignore:
+      - '**.md'  # Ignore changes to markdown files
+      - 'docs/**' # Ignore changes to documentation
   pull_request:
     branches: [ main ]  # Run on PRs targeting main branch
-  workflow_dispatch:    # Allow manual triggering of the workflow
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly run on Sunday at midnight UTC to ensure continuous validation
+  workflow_dispatch:    # Allow manual triggering of the workflow with optional inputs
+    inputs:
+      environment:
+        description: 'Environment to run tests against'
+        required: false
+        default: 'test'
+        type: choice
+        options:
+          - test
+          - staging
+
+# Define reusable environment variables for all jobs
+env:
+  PYTHON_VERSION: '3.11'    # Latest stable Python version
+  POSTGRES_VERSION: '14'    # PostgreSQL version
+  NODE_VERSION: '18'        # Node.js version for frontend tests
 
 jobs:
+  # Job for code quality checks (linting, formatting)
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+      # Check out the repository code with full history for tools that need it
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Fetch all history for proper linting
+      
+      # Set up Python environment for linting tools
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'  # Cache pip dependencies
+      
+      # Install linting dependencies
+      - name: Install linting tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black isort mypy
+      
+      # Run code quality checks
+      - name: Run linting
+        run: |
+          echo "Running flake8 to check for code quality issues..."
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          
+          echo "Running black to check code formatting..."
+          black --check .
+          
+          echo "Running isort to check import sorting..."
+          isort --check-only --profile black .
+          
+          echo "Running mypy for type checking..."
+          mypy --ignore-missing-imports .
+
+  # Main testing job
   test:
     name: Run Tests
     runs-on: ubuntu-latest  # Use the latest Ubuntu runner
+    needs: code-quality     # Only run if code quality checks pass
 
     services:
-      # Set up PostgreSQL service container
+      # Set up PostgreSQL service container for database tests
       postgres:
-        image: postgres:14
+        image: postgres:${{ env.POSTGRES_VERSION }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -29,92 +93,286 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+          --name bcbs-postgres
+      
+      # Optional: Redis service for caching if needed
+      redis:
+        image: redis:latest
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       # Check out the repository code
       - name: Checkout code
         uses: actions/checkout@v3
-
-      # Set up Python environment
-      - name: Set up Python
+        with:
+          fetch-depth: 1  # Shallow clone for faster checkout
+      
+      # Set up Python environment with caching
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'  # Use the latest stable Python version
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'  # Cache pip dependencies
-
-      # Install dependencies
+      
+      # Cache Python dependencies to speed up workflow runs
+      - name: Cache Python dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      
+      # Install Python dependencies
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          python -m pip install --upgrade pip wheel setuptools
+          
+          # Install project requirements
+          if [ -f requirements.txt ]; then 
+            echo "Installing dependencies from requirements.txt..."
+            pip install -r requirements.txt
+          fi
+          
           # Install development dependencies for testing
-          pip install pytest pytest-cov
+          echo "Installing testing dependencies..."
+          pip install pytest pytest-cov pytest-xdist pytest-sugar pytest-mock pytest-postgresql
+          
+          # List all installed packages for debugging purposes
+          echo "Installed Python packages:"
+          pip list
 
-      # Set up environment variables
+      # Set up Node.js for frontend tests (if needed)
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      # Install frontend dependencies (if needed)
+      - name: Install Node.js dependencies
+        run: |
+          if [ -f package.json ]; then
+            echo "Installing Node.js dependencies..."
+            npm ci
+          else
+            echo "No package.json found, skipping Node.js dependencies."
+          fi
+
+      # Set up environment variables securely
       - name: Set up environment variables
         # Use GitHub Secrets to set environment variables securely
+        # The || syntax provides fallback values for testing when secrets aren't available
         env:
+          # Database connection strings
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_bcbs
           TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_bcbs
-          SESSION_SECRET: ${{ secrets.SESSION_SECRET || 'test-session-secret' }}
+          
+          # Application secrets
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET || 'test-session-secret-for-ci-only' }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET || 'test-jwt-secret-for-ci-only' }}
+          
+          # External API credentials
           NARRPR_USERNAME: ${{ secrets.NARRPR_USERNAME || 'test-username' }}
           NARRPR_PASSWORD: ${{ secrets.NARRPR_PASSWORD || 'test-password' }}
           PACS_API_KEY: ${{ secrets.PACS_API_KEY || 'test-api-key' }}
           BCBS_VALUES_API_KEY: ${{ secrets.BCBS_VALUES_API_KEY || 'test-api-key' }}
-        run: |
-          echo "Environment variables set for testing"
-          # Create database tables if needed
-          python -c "from models import Base; from sqlalchemy import create_engine; engine = create_engine('$DATABASE_URL'); Base.metadata.create_all(engine)"
-
-      # Run unit and integration tests with pytest
-      - name: Run tests
-        run: |
-          # Run all tests with coverage report
-          python -m pytest tests/ -v --cov=. --cov-report=xml
-
-      # Upload test coverage report as artifact
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v3
-        with:
-          name: coverage-report
-          path: coverage.xml
           
-      # Run integration tests specifically (including test_integration_advanced.py)
+          # External service URLs
+          MLS_API_URL: ${{ secrets.MLS_API_URL || 'https://test-mls-api.example.com' }}
+          GIS_SERVICE_URL: ${{ secrets.GIS_SERVICE_URL || 'https://test-gis-service.example.com' }}
+          
+          # Feature flags for testing
+          ENABLE_ADVANCED_FEATURES: 'true'
+          USE_MOCK_SERVICES: 'true'  # Use mock services in CI environment
+          
+          # Test configuration
+          LOG_LEVEL: 'DEBUG'
+          TESTING: 'true'
+        run: |
+          echo "Environment variables set for CI/CD pipeline"
+          
+          # Create a .env file for applications that use dotenv
+          echo "DATABASE_URL=$DATABASE_URL" > .env
+          echo "TEST_DATABASE_URL=$TEST_DATABASE_URL" >> .env
+          echo "SESSION_SECRET=$SESSION_SECRET" >> .env
+          echo "JWT_SECRET=$JWT_SECRET" >> .env
+          echo "TESTING=true" >> .env
+          
+          # Initialize database schema
+          echo "Setting up database schema..."
+          python -c "from models import Base; from sqlalchemy import create_engine; engine = create_engine('$DATABASE_URL'); Base.metadata.create_all(engine)"
+          
+          # Seed database with test data if needed
+          if [ -f db/seed_test_data.py ]; then
+            echo "Seeding database with test data..."
+            python db/seed_test_data.py
+          fi
+
+      # Run unit tests with pytest
+      - name: Run unit tests
+        run: |
+          echo "Running unit tests with pytest..."
+          # Run unit tests with parallel processing (-n auto) for faster execution
+          # Exclude integration tests for this step
+          python -m pytest tests/ \
+            -v \
+            --cov=. \
+            -n auto \
+            --cov-report=xml \
+            --cov-report=term \
+            --ignore=tests/test_integration*.py
+
+      # Run integration tests specifically
       - name: Run integration tests
         run: |
-          python -m pytest tests/test_integration_advanced.py -v
-        # This step will ensure the integration tests are run separately and visibly in CI logs
+          echo "Running integration tests..."
+          # Run integration tests with more verbosity and detailed output
+          python -m pytest tests/test_integration.py tests/test_integration_advanced.py \
+            -v \
+            --cov=. \
+            --cov-append \
+            --cov-report=xml:integration_coverage.xml \
+            --cov-report=term
+          
+          echo "Integration tests completed"
 
+      # Upload test coverage report as artifact
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-reports
+          path: |
+            coverage.xml
+            integration_coverage.xml
+          if-no-files-found: warn
+      
+      # Generate coverage badge (optional)
+      - name: Generate coverage badge
+        if: success() && github.ref == 'refs/heads/main'
+        run: |
+          pip install coverage-badge
+          coverage-badge -o coverage-badge.svg
+      
+      # Upload coverage badge (optional)
+      - name: Upload coverage badge
+        if: success() && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-badge
+          path: coverage-badge.svg
+
+      # Run frontend tests (if any)
+      - name: Run frontend tests
+        if: hashFiles('package.json') != ''
+        run: |
+          echo "Running frontend tests..."
+          npm test -- --coverage
+        continue-on-error: true  # Optionally continue even if frontend tests fail
+      
       # If tests pass, collect and upload key configuration files as artifacts
-      - name: Collect configuration artifacts
+      - name: Collect artifacts
         if: success()
         run: |
           # Create a directory for artifacts
-          mkdir -p artifacts
-          # Copy key configuration files
-          cp configs/module_config.json artifacts/ || echo "module_config.json not found"
-          cp configs/database_config.json artifacts/ || echo "database_config.json not found"
-          cp configs/etl_config.json artifacts/ || echo "etl_config.json not found"
+          mkdir -p artifacts/configs
+          mkdir -p artifacts/reports
           
-          # Create a summary file with build information
-          echo "Build completed successfully at $(date)" > artifacts/build_info.txt
-          echo "Commit: ${{ github.sha }}" >> artifacts/build_info.txt
-          echo "Branch: ${{ github.ref }}" >> artifacts/build_info.txt
+          # Copy key configuration files
+          echo "Collecting configuration files..."
+          cp configs/module_config.json artifacts/configs/ || echo "module_config.json not found"
+          cp configs/database_config.json artifacts/configs/ || echo "database_config.json not found"
+          cp configs/etl_config.json artifacts/configs/ || echo "etl_config.json not found"
+          cp configs/api_config.json artifacts/configs/ || echo "api_config.json not found"
+          
+          # Copy test reports
+          cp -r coverage.xml artifacts/reports/ || echo "coverage.xml not found"
+          cp -r integration_coverage.xml artifacts/reports/ || echo "integration_coverage.xml not found"
+          
+          # Copy key application files
+          cp -r agents/ artifacts/ || echo "agents directory not found"
+          
+          # Create a build information file
+          echo "Creating build information file..."
+          cat > artifacts/build_info.txt << EOF
+          Build Information
+          -----------------
+          Build Date: $(date)
+          Commit: ${{ github.sha }}
+          Branch: ${{ github.ref }}
+          Workflow: ${{ github.workflow }}
+          Run ID: ${{ github.run_id }}
+          Actor: ${{ github.actor }}
+          Repository: ${{ github.repository }}
+          Python Version: ${{ env.PYTHON_VERSION }}
+          PostgreSQL Version: ${{ env.POSTGRES_VERSION }}
+          EOF
+          
+          # Generate checksums for verification
+          echo "Generating checksums for artifacts..."
+          find artifacts -type f -not -path "*/\.*" | sort | xargs md5sum > artifacts/checksums.md5
 
       # Upload configuration artifacts
-      - name: Upload configuration artifacts
+      - name: Upload artifacts
         if: success()
         uses: actions/upload-artifact@v3
         with:
-          name: config-artifacts
+          name: bcbs-values-artifacts
           path: artifacts/
+          retention-days: 14  # Keep artifacts for up to 14 days
+
+  # Security scanning job
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: code-quality
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      # Install security scanning tools
+      - name: Install security tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit safety
+      
+      # Run security scans
+      - name: Run security scans
+        run: |
+          echo "Running Bandit for security vulnerabilities..."
+          bandit -r . -x tests/,venv/ -f json -o bandit-results.json
+          
+          echo "Checking dependencies for known vulnerabilities..."
+          safety check -r requirements.txt --json > safety-results.json || true
+      
+      # Upload security scan results
+      - name: Upload security scan results
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-scan-results
+          path: |
+            bandit-results.json
+            safety-results.json
 
   # Optional job to deploy if tests pass (only on main branch)
   deploy:
     name: Deploy
-    needs: test  # This job depends on the test job passing
+    needs: [test, security-scan]  # This job depends on both test and security-scan jobs passing
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'  # Only run on push to main
     runs-on: ubuntu-latest
+    environment: production  # Use GitHub environments for deployment
     
     steps:
       - name: Checkout code
@@ -124,19 +382,130 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
-          name: config-artifacts
+          name: bcbs-values-artifacts
           path: artifacts
       
-      # Set up deployment (this is a placeholder - customize for your deployment process)
-      - name: Deploy to production
+      # Verify artifact checksums
+      - name: Verify artifact checksums
         run: |
-          echo "Deploying to production environment"
-          # Add your deployment commands here
-          # For example, deploying to a hosting service or container registry
+          echo "Verifying artifact checksums..."
+          cd artifacts
+          md5sum -c checksums.md5
+      
+      # Set up deployment credentials
+      - name: Configure deployment credentials
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USERNAME: ${{ secrets.DEPLOY_USERNAME }}
+        run: |
+          if [ -n "$DEPLOY_SSH_KEY" ]; then
+            # Set up SSH
+            mkdir -p ~/.ssh
+            echo "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+            chmod 600 ~/.ssh/deploy_key
+            echo "Host $DEPLOY_HOST" >> ~/.ssh/config
+            echo "  User $DEPLOY_USERNAME" >> ~/.ssh/config
+            echo "  IdentityFile ~/.ssh/deploy_key" >> ~/.ssh/config
+            echo "  StrictHostKeyChecking no" >> ~/.ssh/config
+          else
+            echo "No deployment SSH key found, using alternative deployment method."
+          fi
+      
+      # Deploy application (example for various deployment methods)
+      - name: Deploy to production
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          echo "Starting deployment process..."
           
-      # Notify of successful deployment
-      - name: Notify deployment status
+          # Example for container-based deployment
+          if [ -n "$DOCKER_USERNAME" ] && [ -n "$DOCKER_PASSWORD" ]; then
+            echo "Using container-based deployment"
+            
+            # Login to container registry
+            echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+            
+            # Build and push Docker image
+            docker build -t bcbs-values:${{ github.sha }} .
+            docker tag bcbs-values:${{ github.sha }} $DOCKER_USERNAME/bcbs-values:latest
+            docker push $DOCKER_USERNAME/bcbs-values:latest
+            
+            echo "Docker image pushed successfully."
+          fi
+          
+          # Example for direct server deployment
+          if [ -n "$DEPLOY_HOST" ]; then
+            echo "Using direct server deployment"
+            
+            # Create deployment package
+            tar -czf deploy.tar.gz \
+              --exclude="*.git*" \
+              --exclude="__pycache__" \
+              --exclude="*.pyc" \
+              --exclude="node_modules" \
+              --exclude="venv" \
+              .
+              
+            # Copy to server
+            scp deploy.tar.gz $DEPLOY_HOST:/tmp/
+            
+            # Execute deployment commands
+            ssh $DEPLOY_HOST << 'ENDSSH'
+              cd /var/www/bcbs-values
+              mv /tmp/deploy.tar.gz .
+              tar -xzf deploy.tar.gz
+              rm deploy.tar.gz
+              
+              # Update dependencies
+              pip install -r requirements.txt
+              
+              # Run migrations
+              python manage.py migrate
+              
+              # Restart services
+              sudo systemctl restart bcbs-values
+              
+              echo "Deployment completed on server"
+            ENDSSH
+          fi
+          
+          echo "Deployment process completed"
+          
+      # Run post-deployment health check
+      - name: Run health check
         if: success()
         run: |
-          echo "Deployment completed successfully"
-          # Add notification commands (e.g., Slack webhook, email notification)
+          echo "Running post-deployment health check..."
+          # Allow application to start up
+          sleep 30
+          
+          # Basic HTTP check (customize for your application)
+          curl -f -s -o /dev/null https://${{ secrets.DEPLOY_HOST }}/api/health || \
+            (echo "Health check failed" && exit 1)
+          
+          echo "Deployment health check passed"
+          
+      # Notify of deployment status
+      - name: Notify deployment status
+        if: always()  # Run even if previous steps failed
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          STATUS: ${{ job.status }}
+        run: |
+          if [ "$STATUS" = "success" ]; then
+            MESSAGE="🎉 Deployment to production completed successfully!"
+          else
+            MESSAGE="❌ Deployment to production failed. Check logs for details."
+          fi
+          
+          # Send Slack notification if webhook is configured
+          if [ -n "$SLACK_WEBHOOK" ]; then
+            curl -X POST -H 'Content-type: application/json' \
+              --data "{\"text\":\"$MESSAGE\nRepository: ${{ github.repository }}\nCommit: ${{ github.sha }}\nAuthor: ${{ github.actor }}\"}" \
+              $SLACK_WEBHOOK
+          fi
+          
+          echo "$MESSAGE"
