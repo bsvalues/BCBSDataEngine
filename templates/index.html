@@ -1,219 +1,203 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 
-{% block title %}BCBS Values - Home{% endblock %}
+{% block title %}BCBS Values - Property Valuation Platform{% endblock %}
 
 {% block content %}
-<!-- Hero Section -->
-<section class="hero py-5">
-    <div class="container py-5">
-        <div class="row align-items-center">
-            <div class="col-lg-6">
-                <h1 class="display-4 fw-bold mb-4">BCBS Values</h1>
-                <h2 class="h3 mb-4">Real Estate Valuation for Benton County</h2>
-                <p class="lead mb-4">
-                    A powerful platform combining machine learning, real estate data, and spatial analysis
-                    to provide accurate property valuations for Benton County, Washington.
-                </p>
-                <div class="d-grid gap-2 d-md-flex justify-content-md-start">
-                    <a href="/dashboard" class="btn btn-primary btn-lg px-4 me-md-2">
-                        <i class="bi bi-graph-up me-2"></i>Explore Dashboard
-                    </a>
-                    <a href="#features" class="btn btn-outline-secondary btn-lg px-4">
-                        <i class="bi bi-info-circle me-2"></i>Learn More
-                    </a>
-                </div>
+<div class="container py-5">
+    <!-- Hero Section -->
+    <div class="row mb-5">
+        <div class="col-lg-6 d-flex flex-column justify-content-center">
+            <h1 class="display-4 fw-bold mb-3">Advanced Property Valuation for Benton County</h1>
+            <p class="lead mb-4">
+                Leverage AI-powered property valuation with advanced regression techniques and GIS data integration for accurate real estate estimates.
+            </p>
+            <div class="d-flex gap-3">
+                <a href="{{ url_for('valuation') }}" class="btn btn-primary btn-lg px-4 py-2">
+                    <i class="fas fa-calculator me-2"></i> Value a Property
+                </a>
+                <a href="{{ url_for('properties') }}" class="btn btn-outline-secondary btn-lg px-4 py-2">
+                    <i class="fas fa-search me-2"></i> View Properties
+                </a>
             </div>
-            <div class="col-lg-6 d-none d-lg-block">
-                <img src="/static/img/hero-image.svg" alt="Real Estate Valuation Illustration" class="img-fluid" width="600">
+        </div>
+        <div class="col-lg-6 mt-4 mt-lg-0">
+            <div class="card border-0 shadow-lg">
+                <div class="card-body p-4">
+                    <h5 class="card-title mb-3">
+                        <i class="fas fa-chart-line text-primary me-2"></i> Property Value Insights
+                    </h5>
+                    <canvas id="neighborhoodValuesChart" height="250"></canvas>
+                </div>
             </div>
         </div>
     </div>
-</section>
 
-<!-- Features Section -->
-<section class="features py-5 bg-dark" id="features">
-    <div class="container py-5">
-        <div class="text-center mb-5">
-            <h2 class="display-5 fw-bold">Powerful Features</h2>
-            <p class="lead">Everything you need for accurate real estate valuation</p>
+    <!-- Features Section -->
+    <div class="row mb-5">
+        <div class="col-12 text-center mb-4">
+            <h2 class="fw-bold">Powerful Valuation Tools</h2>
+            <p class="lead text-muted">Discover the power of machine learning for property valuation</p>
         </div>
         
-        <div class="row g-5">
-            <div class="col-md-4">
-                <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-body">
-                        <div class="feature-icon bg-primary bg-gradient text-white rounded-3 mb-3">
-                            <i class="bi bi-robot"></i>
-                        </div>
-                        <h3 class="card-title h5">AI-Powered Valuation</h3>
-                        <p class="card-text">
-                            Advanced machine learning models analyze thousands of properties to 
-                            provide accurate valuations based on multiple factors and market trends.
-                        </p>
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-body p-4">
+                    <div class="feature-icon bg-primary bg-gradient text-white rounded-3 mb-3" style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center;">
+                        <i class="fas fa-brain"></i>
                     </div>
+                    <h4>AI-Powered Models</h4>
+                    <p>
+                        Utilize advanced regression techniques including Linear Regression, Ridge, Lasso, ElasticNet, LightGBM, and XGBoost to generate accurate property valuations.
+                    </p>
                 </div>
             </div>
-            
-            <div class="col-md-4">
-                <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-body">
-                        <div class="feature-icon bg-success bg-gradient text-white rounded-3 mb-3">
-                            <i class="bi bi-geo-alt"></i>
-                        </div>
-                        <h3 class="card-title h5">GIS Integration</h3>
-                        <p class="card-text">
-                            Geographic Information System (GIS) data integration for location-based
-                            analysis and spatial adjustments to valuation models.
-                        </p>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="col-md-4">
-                <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-body">
-                        <div class="feature-icon bg-info bg-gradient text-white rounded-3 mb-3">
-                            <i class="bi bi-graph-up"></i>
-                        </div>
-                        <h3 class="card-title h5">Interactive Dashboard</h3>
-                        <p class="card-text">
-                            Explore property data with an intuitive dashboard featuring
-                            powerful filters, visualizations, and detailed property information.
-                        </p>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="col-md-4">
-                <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-body">
-                        <div class="feature-icon bg-warning bg-gradient text-white rounded-3 mb-3">
-                            <i class="bi bi-database"></i>
-                        </div>
-                        <h3 class="card-title h5">Multi-Source Data</h3>
-                        <p class="card-text">
-                            Combines data from multiple real estate sources including MLS,
-                            NARRPR, and PACS for comprehensive property analysis.
-                        </p>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="col-md-4">
-                <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-body">
-                        <div class="feature-icon bg-danger bg-gradient text-white rounded-3 mb-3">
-                            <i class="bi bi-shield-check"></i>
-                        </div>
-                        <h3 class="card-title h5">Secure Authentication</h3>
-                        <p class="card-text">
-                            Secure access with Replit's authentication system ensures
-                            that your data is protected and accessible only to authorized users.
-                        </p>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="col-md-4">
-                <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-body">
-                        <div class="feature-icon bg-secondary bg-gradient text-white rounded-3 mb-3">
-                            <i class="bi bi-sliders"></i>
-                        </div>
-                        <h3 class="card-title h5">What-If Analysis</h3>
-                        <p class="card-text">
-                            Explore how different factors affect property values with
-                            interactive what-if analysis tools for better decision making.
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- Data Sources Section -->
-<section class="data-sources py-5">
-    <div class="container py-5">
-        <div class="text-center mb-5">
-            <h2 class="display-5 fw-bold">Comprehensive Data Sources</h2>
-            <p class="lead">Accurate valuations require quality data</p>
         </div>
         
-        <div class="row g-4">
-            <div class="col-md-4">
-                <div class="data-source-card p-4 rounded-3 border text-center h-100">
-                    <h3 class="h5">Multiple Listing Service (MLS)</h3>
-                    <div class="data-icon my-3">
-                        <i class="bi bi-house-door-fill fs-1 text-primary"></i>
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-body p-4">
+                    <div class="feature-icon bg-success bg-gradient text-white rounded-3 mb-3" style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center;">
+                        <i class="fas fa-map-marked-alt"></i>
                     </div>
-                    <p class="mb-0">
-                        Real-time property listings with detailed information on recent sales,
-                        property features, and market trends.
+                    <h4>GIS Integration</h4>
+                    <p>
+                        Enhance valuation accuracy with Geographic Information System (GIS) data, including proximity to amenities, school districts, and neighborhood quality metrics.
                     </p>
                 </div>
             </div>
-            
-            <div class="col-md-4">
-                <div class="data-source-card p-4 rounded-3 border text-center h-100">
-                    <h3 class="h5">NARRPR (Realtors Property Resource)</h3>
-                    <div class="data-icon my-3">
-                        <i class="bi bi-file-earmark-text-fill fs-1 text-success"></i>
+        </div>
+        
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-body p-4">
+                    <div class="feature-icon bg-info bg-gradient text-white rounded-3 mb-3" style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center;">
+                        <i class="fas fa-chart-bar"></i>
                     </div>
-                    <p class="mb-0">
-                        Comprehensive property and market data including valuation tools,
-                        neighborhood insights, and economic indicators.
-                    </p>
-                </div>
-            </div>
-            
-            <div class="col-md-4">
-                <div class="data-source-card p-4 rounded-3 border text-center h-100">
-                    <h3 class="h5">PACS (Property Assessment)</h3>
-                    <div class="data-icon my-3">
-                        <i class="bi bi-building-fill fs-1 text-info"></i>
-                    </div>
-                    <p class="mb-0">
-                        Official property assessment data including tax records,
-                        property characteristics, and historical valuations.
+                    <h4>What-If Analysis</h4>
+                    <p>
+                        Explore how different factors affect property values with interactive what-if analysis tools. Adjust parameters and see real-time value changes.
                     </p>
                 </div>
             </div>
         </div>
     </div>
-</section>
 
-<!-- CTA Section -->
-<section class="cta py-5 bg-primary text-white">
-    <div class="container py-5 text-center">
-        <h2 class="display-5 fw-bold mb-4">Ready to explore property valuations?</h2>
-        <p class="lead mb-4">
-            Get access to powerful property valuation tools, insights, and analytics for Benton County.
-        </p>
-        <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
-            {% if user %}
-            <a href="/dashboard" class="btn btn-light btn-lg px-4 gap-3">
-                <i class="bi bi-graph-up me-2"></i>Go to Dashboard
-            </a>
-            {% else %}
-            <a href="/auth/login" class="btn btn-light btn-lg px-4 gap-3">
-                <i class="bi bi-key me-2"></i>Log in with Replit
-            </a>
-            {% endif %}
+    <!-- Stats Section -->
+    <div class="row mb-5">
+        <div class="col-md-6 col-lg-3 mb-4">
+            <div class="stat-card bg-primary">
+                <div>
+                    <i class="fas fa-home"></i>
+                    <div class="stat-value">{{ property_count }}</div>
+                </div>
+                <div class="stat-label">Properties</div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-3 mb-4">
+            <div class="stat-card bg-success">
+                <div>
+                    <i class="fas fa-calculator"></i>
+                    <div class="stat-value">{{ valuation_count }}</div>
+                </div>
+                <div class="stat-label">Valuations</div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-3 mb-4">
+            <div class="stat-card bg-info">
+                <div>
+                    <i class="fas fa-map-marker-alt"></i>
+                    <div class="stat-value">3</div>
+                </div>
+                <div class="stat-label">Neighborhoods</div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-3 mb-4">
+            <div class="stat-card bg-warning">
+                <div>
+                    <i class="fas fa-chart-line"></i>
+                    <div class="stat-value">7</div>
+                </div>
+                <div class="stat-label">Valuation Models</div>
+            </div>
         </div>
     </div>
-</section>
+
+    <!-- Call to Action -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card border-0 bg-light">
+                <div class="card-body p-5 text-center">
+                    <h2 class="mb-3">Ready to value your property?</h2>
+                    <p class="lead mb-4">Get started with our advanced valuation tools and receive accurate estimates in seconds.</p>
+                    <a href="{{ url_for('valuation') }}" class="btn btn-primary btn-lg px-5 py-3">
+                        <i class="fas fa-calculator me-2"></i> Start Valuation
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    // Smooth scroll for anchor links
-    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-        anchor.addEventListener('click', function (e) {
-            e.preventDefault();
-            document.querySelector(this.getAttribute('href')).scrollIntoView({
-                behavior: 'smooth'
+    document.addEventListener('DOMContentLoaded', function() {
+        // Neighborhood values chart
+        var neighborhoodLabels = {{ neighborhood_labels|safe }};
+        var neighborhoodValues = {{ neighborhood_values|safe }};
+        
+        // Format values as currency
+        var formattedValues = neighborhoodValues.map(function(value) {
+            return value.toLocaleString('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                maximumFractionDigits: 0
             });
+        });
+        
+        var ctx = document.getElementById('neighborhoodValuesChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: neighborhoodLabels,
+                datasets: [{
+                    label: 'Average Property Value',
+                    data: neighborhoodValues,
+                    backgroundColor: 'rgba(52, 152, 219, 0.8)',
+                    borderColor: 'rgba(52, 152, 219, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.raw.toLocaleString('en-US', {
+                                    style: 'currency',
+                                    currency: 'USD',
+                                    maximumFractionDigits: 0
+                                });
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + value.toLocaleString('en-US');
+                            }
+                        }
+                    }
+                }
+            }
         });
     });
 </script>

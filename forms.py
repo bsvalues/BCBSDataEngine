@@ -1,75 +1,62 @@
+"""
+Forms for the BCBS Values application.
+"""
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, BooleanField, SubmitField, IntegerField, FloatField, SelectField, TextAreaField
-from wtforms.validators import DataRequired, Email, EqualTo, Length, Optional, ValidationError
-from models import User
+from wtforms import StringField, FloatField, IntegerField, SelectField, SubmitField, TextAreaField
+from wtforms.validators import DataRequired, Optional, NumberRange
 
 
-class LoginForm(FlaskForm):
-    username = StringField('Username', validators=[DataRequired()])
-    password = PasswordField('Password', validators=[DataRequired()])
-    remember_me = BooleanField('Remember Me')
-    submit = SubmitField('Log In')
-
-
-class RegistrationForm(FlaskForm):
-    username = StringField('Username', validators=[DataRequired(), Length(min=3, max=64)])
-    email = StringField('Email', validators=[DataRequired(), Email(), Length(max=120)])
-    password = PasswordField('Password', validators=[DataRequired(), Length(min=8)])
-    password2 = PasswordField('Confirm Password', validators=[DataRequired(), EqualTo('password')])
-    submit = SubmitField('Register')
-    
-    def validate_username(self, username):
-        user = User.query.filter_by(username=username.data).first()
-        if user is not None:
-            raise ValidationError('Please use a different username.')
-    
-    def validate_email(self, email):
-        user = User.query.filter_by(email=email.data).first()
-        if user is not None:
-            raise ValidationError('Please use a different email address.')
-
-
-class ProfileForm(FlaskForm):
-    username = StringField('Username', render_kw={'readonly': True})
-    first_name = StringField('First Name', validators=[Length(max=50)])
-    last_name = StringField('Last Name', validators=[Length(max=50)])
-    email = StringField('Email', validators=[DataRequired(), Email(), Length(max=120)])
-    submit = SubmitField('Update Profile')
-    
-    def validate_email(self, email):
-        user = User.query.filter_by(email=email.data).first()
-        if user is not None and user.username != self.username.data:
-            raise ValidationError('Please use a different email address.')
-
-
-class PropertyForm(FlaskForm):
-    address = StringField('Street Address', validators=[DataRequired(), Length(max=200)])
-    city = StringField('City', validators=[DataRequired(), Length(max=100)])
-    state = StringField('State', validators=[DataRequired(), Length(min=2, max=2)])
-    zip_code = StringField('ZIP Code', validators=[DataRequired(), Length(min=5, max=10)])
-    bedrooms = IntegerField('Bedrooms', validators=[Optional()])
-    bathrooms = FloatField('Bathrooms', validators=[Optional()])
-    square_feet = IntegerField('Square Feet', validators=[Optional()])
-    lot_size = FloatField('Lot Size (acres)', validators=[Optional()])
-    year_built = IntegerField('Year Built', validators=[Optional()])
+class PropertyValuationForm(FlaskForm):
+    """Form for property valuation."""
+    address = StringField('Address', validators=[DataRequired()])
+    city = StringField('City', validators=[DataRequired()])
+    state = StringField('State', validators=[DataRequired()])
+    zip_code = StringField('Zip Code', validators=[DataRequired()])
+    neighborhood = StringField('Neighborhood', validators=[Optional()])
     property_type = SelectField('Property Type', choices=[
-        ('single_family', 'Single Family'),
+        ('single_family', 'Single Family Home'),
         ('condo', 'Condominium'),
         ('townhouse', 'Townhouse'),
-        ('multi_family', 'Multi-Family'),
-        ('land', 'Land/Lot'),
-        ('commercial', 'Commercial')
-    ])
+        ('multi_family', 'Multi-Family Home'),
+        ('land', 'Vacant Land'),
+    ], validators=[DataRequired()])
+    bedrooms = IntegerField('Bedrooms', validators=[NumberRange(min=0), Optional()])
+    bathrooms = FloatField('Bathrooms', validators=[NumberRange(min=0), Optional()])
+    square_feet = FloatField('Square Feet', validators=[NumberRange(min=0), Optional()])
+    year_built = IntegerField('Year Built', validators=[NumberRange(min=1800), Optional()])
+    lot_size = FloatField('Lot Size (acres)', validators=[NumberRange(min=0), Optional()])
     latitude = FloatField('Latitude', validators=[Optional()])
     longitude = FloatField('Longitude', validators=[Optional()])
-    submit = SubmitField('Add Property')
-
-
-class ValuationRequestForm(FlaskForm):
     valuation_method = SelectField('Valuation Method', choices=[
-        ('basic', 'Basic Valuation'),
-        ('enhanced', 'Enhanced ML Valuation'),
-        ('advanced_gis', 'Advanced GIS Valuation')
-    ])
-    notes = TextAreaField('Notes', validators=[Optional(), Length(max=500)])
-    submit = SubmitField('Request Valuation')
+        ('enhanced_regression', 'Enhanced Regression (Recommended)'),
+        ('lightgbm', 'LightGBM Gradient Boosting'),
+        ('xgboost', 'XGBoost'),
+        ('linear_regression', 'Linear Regression'),
+        ('ridge_regression', 'Ridge Regression'),
+        ('lasso_regression', 'Lasso Regression'),
+        ('elastic_net', 'Elastic Net'),
+    ], validators=[DataRequired()])
+    submit = SubmitField('Calculate Valuation')
+
+
+class PropertySearchForm(FlaskForm):
+    """Form for property search."""
+    search_query = StringField('Search', validators=[Optional()])
+    neighborhood = SelectField('Neighborhood', validators=[Optional()])
+    property_type = SelectField('Property Type', validators=[Optional()])
+    min_price = FloatField('Min Price', validators=[NumberRange(min=0), Optional()])
+    max_price = FloatField('Max Price', validators=[NumberRange(min=0), Optional()])
+    min_bedrooms = IntegerField('Min Bedrooms', validators=[NumberRange(min=0), Optional()])
+    submit = SubmitField('Search')
+    
+    def __init__(self, *args, **kwargs):
+        neighborhoods = kwargs.pop('neighborhoods', [])
+        property_types = kwargs.pop('property_types', [])
+        super(PropertySearchForm, self).__init__(*args, **kwargs)
+        
+        # Add empty option at the beginning
+        neighborhood_choices = [('', 'All Neighborhoods')] + [(n, n) for n in neighborhoods]
+        property_type_choices = [('', 'All Property Types')] + [(pt, pt) for pt in property_types]
+        
+        self.neighborhood.choices = neighborhood_choices
+        self.property_type.choices = property_type_choices

@@ -1,159 +1,153 @@
 """
 Database models for the BCBS Values application.
-
-This module defines the database schema for the application.
 """
+import json
 from datetime import datetime
+from typing import Dict, List, Optional, Union
+
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text, ForeignKey, JSON
+from sqlalchemy.orm import relationship
+
 from app import db
 
 
 class Property(db.Model):
-    """
-    Property model representing real estate properties.
-    """
-    id = db.Column(db.Integer, primary_key=True)
-    property_id = db.Column(db.String(32), unique=True, nullable=False)
-    address = db.Column(db.String(128), nullable=False)
-    city = db.Column(db.String(64), nullable=False)
-    state = db.Column(db.String(2), nullable=False)
-    zip_code = db.Column(db.String(10), nullable=False)
-    neighborhood = db.Column(db.String(64))
-    property_type = db.Column(db.String(32))
-    year_built = db.Column(db.Integer)
-    bedrooms = db.Column(db.Integer)
-    bathrooms = db.Column(db.Float)
-    square_feet = db.Column(db.Integer)
-    lot_size = db.Column(db.Integer)
-    last_sale_date = db.Column(db.Date)
-    last_sale_price = db.Column(db.Float)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    """Model representing a real estate property."""
+    __tablename__ = 'properties'
+    
+    id = Column(Integer, primary_key=True)
+    property_id = Column(String(20), unique=True, nullable=False, index=True)
+    address = Column(String(255), nullable=False)
+    city = Column(String(100), nullable=False)
+    state = Column(String(50), nullable=False)
+    zip_code = Column(String(20), nullable=False)
+    neighborhood = Column(String(100), index=True)
+    property_type = Column(String(50), index=True)
+    bedrooms = Column(Integer)
+    bathrooms = Column(Float)
+    square_feet = Column(Float)
+    year_built = Column(Integer)
+    lot_size = Column(Float)
+    latitude = Column(Float)
+    longitude = Column(Float)
+    last_sale_date = Column(DateTime)
+    last_sale_price = Column(Float)
+    estimated_value = Column(Float)
+    valuation_date = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
-    valuations = db.relationship('PropertyValuation', back_populates='property', order_by='desc(PropertyValuation.valuation_date)', cascade='all, delete-orphan')
-    features = db.relationship('PropertyFeature', back_populates='property', cascade='all, delete-orphan')
-    
-    @property
-    def estimated_value(self):
-        """Return the latest estimated value for the property."""
-        if self.valuations:
-            return self.valuations[0].estimated_value
-        return None
-    
-    @property
-    def valuation_date(self):
-        """Return the date of the latest valuation."""
-        if self.valuations:
-            return self.valuations[0].valuation_date
-        return None
+    valuations = relationship("PropertyValuation", back_populates="property", cascade="all, delete-orphan")
+    features = relationship("PropertyFeature", back_populates="property", cascade="all, delete-orphan")
     
     @property
     def latest_valuation(self):
-        """Return the latest valuation object."""
+        """Get the most recent valuation for this property."""
         if self.valuations:
-            return self.valuations[0]
+            return sorted(self.valuations, key=lambda v: v.valuation_date, reverse=True)[0]
         return None
-    
-    def __repr__(self):
-        return f"<Property {self.property_id} - {self.address}>"
 
 
 class PropertyValuation(db.Model):
-    """
-    Property valuation model representing the estimated value of a property.
-    """
-    id = db.Column(db.Integer, primary_key=True)
-    property_id = db.Column(db.Integer, db.ForeignKey('property.id'), nullable=False)
-    estimated_value = db.Column(db.Float, nullable=False)
-    valuation_date = db.Column(db.DateTime, default=datetime.utcnow)
-    valuation_method = db.Column(db.String(32))
-    confidence_score = db.Column(db.Float)
-    inputs = db.Column(db.JSON)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    """Model representing a property valuation."""
+    __tablename__ = 'property_valuations'
+    
+    id = Column(Integer, primary_key=True)
+    property_id = Column(Integer, ForeignKey('properties.id'), nullable=False, index=True)
+    estimated_value = Column(Float, nullable=False)
+    valuation_date = Column(DateTime, default=datetime.utcnow, nullable=False)
+    valuation_method = Column(String(50), nullable=False)
+    confidence_score = Column(Float)
+    adj_r2_score = Column(Float)
+    rmse = Column(Float)
+    mae = Column(Float)
+    inputs = Column(JSON)
+    gis_adjustments = Column(JSON)
+    created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships
-    property = db.relationship('Property', back_populates='valuations')
-    
-    def __repr__(self):
-        return f"<PropertyValuation {self.id} - {self.estimated_value}>"
+    property = relationship("Property", back_populates="valuations")
 
 
 class PropertyFeature(db.Model):
-    """
-    Property feature model representing additional features of a property.
-    """
-    id = db.Column(db.Integer, primary_key=True)
-    property_id = db.Column(db.Integer, db.ForeignKey('property.id'), nullable=False)
-    feature_name = db.Column(db.String(64), nullable=False)
-    feature_value = db.Column(db.String(128))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    """Model representing additional property features."""
+    __tablename__ = 'property_features'
+    
+    id = Column(Integer, primary_key=True)
+    property_id = Column(Integer, ForeignKey('properties.id'), nullable=False, index=True)
+    feature_name = Column(String(100), nullable=False)
+    feature_value = Column(Float)
+    feature_text = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
-    property = db.relationship('Property', back_populates='features')
+    property = relationship("Property", back_populates="features")
+
+
+class User(db.Model):
+    """Model representing a user of the application."""
+    __tablename__ = 'users'
     
-    def __repr__(self):
-        return f"<PropertyFeature {self.id} - {self.feature_name}: {self.feature_value}>"
+    id = Column(Integer, primary_key=True)
+    username = Column(String(64), unique=True, nullable=False)
+    email = Column(String(120), unique=True, nullable=False)
+    password_hash = Column(String(256))
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_login = Column(DateTime)
 
 
 class ETLJob(db.Model):
-    """
-    ETL job model representing a data extraction, transformation, and loading job.
-    """
-    id = db.Column(db.Integer, primary_key=True)
-    job_name = db.Column(db.String(64), nullable=False)
-    job_type = db.Column(db.String(32), nullable=False)
-    source = db.Column(db.String(64))
-    start_time = db.Column(db.DateTime, default=datetime.utcnow)
-    end_time = db.Column(db.DateTime)
-    status = db.Column(db.String(16), default='running')
-    records_processed = db.Column(db.Integer, default=0)
-    records_failed = db.Column(db.Integer, default=0)
-    error_message = db.Column(db.Text)
+    """Model representing an ETL job for data ingestion."""
+    __tablename__ = 'etl_jobs'
     
-    def __repr__(self):
-        return f"<ETLJob {self.id} - {self.job_name}>"
+    id = Column(Integer, primary_key=True)
+    job_id = Column(String(36), unique=True, nullable=False)
+    job_type = Column(String(50), nullable=False)
+    status = Column(String(20), nullable=False, default='pending')  # pending, running, completed, failed
+    started_at = Column(DateTime)
+    completed_at = Column(DateTime)
+    records_processed = Column(Integer, default=0)
+    records_created = Column(Integer, default=0)
+    records_updated = Column(Integer, default=0)
+    records_failed = Column(Integer, default=0)
+    error_message = Column(Text)
+    source_info = Column(JSON)
 
 
 class Agent(db.Model):
-    """
-    Agent model representing an autonomous agent in the system.
-    """
-    id = db.Column(db.Integer, primary_key=True)
-    agent_id = db.Column(db.String(36), unique=True, nullable=False)
-    agent_name = db.Column(db.String(64), nullable=False)
-    agent_type = db.Column(db.String(32), nullable=False)
-    status = db.Column(db.String(16), default='idle')
-    last_heartbeat = db.Column(db.DateTime, default=datetime.utcnow)
-    current_task = db.Column(db.String(128))
-    queue_size = db.Column(db.Integer, default=0)
-    success_rate = db.Column(db.Float, default=100.0)
-    error_count = db.Column(db.Integer, default=0)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    """Model representing a valuation agent (service)."""
+    __tablename__ = 'agents'
+    
+    id = Column(Integer, primary_key=True)
+    agent_id = Column(String(36), unique=True, nullable=False)
+    agent_name = Column(String(100), nullable=False)
+    agent_type = Column(String(50), nullable=False)  # valuation, gis, etc.
+    status = Column(String(20), nullable=False, default='idle')  # idle, busy, error, offline
+    last_heartbeat = Column(DateTime)
+    current_task = Column(String(255))
+    queue_size = Column(Integer, default=0)
+    success_rate = Column(Float, default=1.0)
+    error_count = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships
-    logs = db.relationship('AgentLog', back_populates='agent', order_by='desc(AgentLog.timestamp)', cascade='all, delete-orphan')
-    
-    def __repr__(self):
-        return f"<Agent {self.agent_id} - {self.agent_name}>"
+    logs = relationship("AgentLog", back_populates="agent", cascade="all, delete-orphan",
+                        order_by="desc(AgentLog.timestamp)")
 
 
 class AgentLog(db.Model):
-    """
-    Agent log model representing a log entry from an agent.
-    """
-    id = db.Column(db.Integer, primary_key=True)
-    agent_id = db.Column(db.Integer, db.ForeignKey('agent.id'), nullable=False)
-    level = db.Column(db.String(16), default='info')
-    message = db.Column(db.Text, nullable=False)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    """Model representing logs from a valuation agent."""
+    __tablename__ = 'agent_logs'
+    
+    id = Column(Integer, primary_key=True)
+    agent_id = Column(Integer, ForeignKey('agents.id'), nullable=False, index=True)
+    level = Column(String(10), nullable=False, default='info')  # info, warning, error, debug
+    message = Column(Text, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    details = Column(JSON)
     
     # Relationships
-    agent = db.relationship('Agent', back_populates='logs')
-    
-    def __repr__(self):
-        return f"<AgentLog {self.id} - {self.level}: {self.message[:30]}>"
-
-
-# User model if using traditional authentication
-# For now, we're using Replit's built-in authentication
+    agent = relationship("Agent", back_populates="logs")

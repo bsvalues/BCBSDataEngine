@@ -13,6 +13,12 @@ python-dotenv = "^1.0.0"
 flask-migrate = "^4.0.5"
 flask-dance = "^7.0.0"
 werkzeug = "^2.3.7"
+pandas = "^2.1.4"
+numpy = "^1.26.4"
+scikit-learn = "^1.4.0"
+lightgbm = "^4.1.0"
+xgboost = "^2.0.3"
+statsmodels = "^0.14.1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
