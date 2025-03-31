@@ -1,6 +1,6 @@
 {
   "name": "BCBS Cascade Operator",
-  "description": "Advanced orchestration agent for multi-agent workflows in the BCBS_Values system with enhanced MPC protocol",
+  "description": "Advanced orchestration agent for multi-agent workflows in the BCBS_Values system with enhanced messaging protocol",
   "version": "6.0.0",
   
   "_comment_trigger": "Phrase or command that activates this orchestration agent",
@@ -10,7 +10,7 @@
   "versioning": {
     "schema_version": "6.0.0",
     "compatibility": {
-      "min_api_version": "2.0.0",
+      "min_api_version": "3.0.0",
       "max_api_version": "6.x.x"
     },
     "change_history": [
@@ -42,16 +42,16 @@
       {
         "version": "6.0.0",
         "date": "2025-03-31",
-        "changes": "Implemented comprehensive JSON-based protocol for inter-agent communication with standardized sample messages, expanded workflow orchestration, and improved error handling"
+        "changes": "Advanced inter-agent communication protocol with structured JSON messaging, comprehensive error handling, integrated workflow orchestration, and improved calibration metrics"
       }
     ],
     "version_control": {
       "repository": "bcbs-values-agents",
       "branch": "main",
-      "commit_hash": "e8g0i2k4m6o8q0s2u4w6y8",
-      "commit_date": "2025-03-31T10:15:00Z",
+      "commit_hash": "f9c24e7d38a5b67890c12d4e6f8a0b2c4d",
+      "commit_date": "2025-03-31T09:45:23Z",
       "author": "BCBS Cascade Operator",
-      "ci_build_number": "CI-20250331-087",
+      "ci_build_number": "CI-20250331-092",
       "artifact_location": "registry.bcbs-values.local/agents/cascade-operator:6.0.0"
     }
   },
@@ -269,1218 +269,1126 @@
     }
   },
   
-  "_comment_communication": "Protocol for standardized agent communication",
+  "_comment_protocol": "JSON-based protocol for inter-agent communication with enhanced versioning, calibration, and error logging",
   "inter_agent_communication_protocol": {
-    "name": "BCBS-MPC-Protocol",
+    "name": "BCBS-JSON-Protocol",
     "version": "6.0.0",
-    "description": "Enhanced Multi-Protocol Calibration (MPC) system for standardized agent communication with advanced security, versioning, and precise timestamp handling",
+    "description": "Standardized JSON-based protocol for inter-agent communication with comprehensive metadata, calibration metrics, and error handling",
+    
+    "_comment_message_schema": "Defines the structure of messages exchanged between agents",
     "message_schema": {
       "header": {
-        "message_id": "string (UUID)",
-        "timestamp": "ISO-8601 datetime with microsecond precision",
-        "sender_id": "string (agent identifier)",
-        "receiver_id": "string or array (target agent(s))",
-        "message_type": "enum (command, event, data, status, parameter, calibration, error, heartbeat)",
-        "priority": "enum (critical, high, normal, low)",
-        "correlation_id": "string (UUID for related messages)",
-        "reply_to": "string (channel for responses)",
-        "expires_at": "ISO-8601 datetime or null",
-        "sequence_num": "integer (for message ordering)",
-        "protocol_version": "string (semantic version of protocol in use)",
-        "causation_id": "string (UUID of the message that caused this one)",
-        "flow_id": "string (identifier for the business process flow)",
-        "retry_count": "integer (number of retry attempts)",
-        "ttl": "integer (time-to-live in seconds)"
-      },
-      "body": {
-        "content_type": "string (json, binary, text, protobuf)",
-        "content": "object (actual message payload)",
-        "schema_version": "string (semantic version)",
-        "is_encrypted": "boolean",
-        "compression": "enum (none, gzip, zstd, lz4)",
-        "digital_signature": "string (hash for verification)",
-        "checksum": "string (data integrity verification)",
-        "encoding": "string (utf-8, base64, etc.)",
-        "size": "integer (size in bytes)",
-        "chunk_info": {
-          "is_chunked": "boolean",
-          "chunk_size": "integer",
-          "chunk_index": "integer",
-          "total_chunks": "integer"
-        }
-      },
-      "metadata": {
-        "task_id": "string (UUID of related task)",
-        "workflow_id": "string (UUID of workflow)",
-        "tags": "array of strings",
-        "context": "object (additional context data)",
-        "security_level": "enum (public, restricted, confidential, secret)",
-        "trace_id": "string (for distributed tracing)",
-        "span_id": "string (for trace segmentation)",
-        "execution_environment": "string (development, testing, production)",
-        "source_location": "string (code location where message originated)",
-        "sensitivity": "enum (public, internal, confidential, restricted)",
-        "geo_location": "object (latitude, longitude)",
-        "retention_policy": "string (how long to keep this message)"
-      }
-    },
-    "parameter_exchange": {
-      "model_parameters": {
-        "format": "named_parameter_set",
-        "schema_validation": true,
-        "versioning": true,
-        "diff_based_updates": true,
-        "parameter_types": ["numeric", "categorical", "vector", "matrix", "hyperparameter", "feature_metadata", "tensor", "graph", "probability_distribution"],
-        "supported_serializations": ["json", "protobuf", "avro", "binary", "messagepack", "parquet"],
-        "validation_rules": {
-          "range_checks": true,
-          "type_validation": true,
-          "dependency_validation": true,
-          "consistency_checks": true,
-          "constraint_validation": true
+        "message_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier for this message"
         },
-        "exchange_security": {
-          "encryption": "end-to-end",
-          "access_control": "role-based",
-          "audit_logging": true,
-          "integrity_verification": "signed-hash",
-          "non_repudiation": true
-        }
-      },
-      "calibration_parameters": {
-        "format": "calibration_set",
-        "schema_validation": true,
-        "versioning": true,
-        "calibration_types": ["model_weights", "thresholds", "feature_importance", "uncertainty_bounds", "scoring_functions", "confidence_intervals", "prior_distributions"],
-        "validation_rules": {
-          "consistency_check": true,
-          "performance_impact_assessment": true,
-          "statistical_validation": true,
-          "cross-referencing": true
-        }
-      }
-    },
-    "security": {
-      "authentication": {
-        "mechanism": "mutual_tls",
-        "token_based": true,
-        "token_lifetime": "24h",
-        "renewal_strategy": "sliding_window",
-        "multi_factor": true,
-        "certificate_pinning": true,
-        "revocation_checking": "ocsp"
-      },
-      "authorization": {
-        "mechanism": "role_based",
-        "permission_levels": ["read", "write", "execute", "admin"],
-        "scope_restriction": true,
-        "attribute_based_controls": true,
-        "delegation_capabilities": true,
-        "time_bound_access": true
-      },
-      "encryption": {
-        "transport_layer": "TLS 1.3",
-        "payload_encryption": "AES-256-GCM",
-        "key_rotation": "automatic",
-        "key_rotation_period": "30d",
-        "perfect_forward_secrecy": true,
-        "quantum_resistant_options": true
-      },
-      "integrity": {
-        "message_signing": true,
-        "replay_protection": true,
-        "tamper_detection": true,
-        "non_repudiation": true,
-        "data_provenance": true
-      },
-      "audit": {
-        "message_logging": true,
-        "access_logging": true,
-        "anomaly_detection": true,
-        "forensic_capabilities": true,
-        "real_time_monitoring": true
-      }
-    },
-    "transport": {
-      "protocols": ["http/2", "grpc", "websocket", "amqp", "mqtt", "quic"],
-      "serialization": ["json", "protobuf", "avro", "msgpack", "flatbuffers", "thrift"],
-      "compression": ["gzip", "zstd", "lz4", "brotli", "deflate"],
-      "quality_of_service": {
-        "delivery_guarantee": "at_least_once",
-        "ordering_guarantee": "per_sender_ordered",
-        "priority_levels": 4,
-        "rate_limiting": true,
-        "bandwidth_management": true
-      },
-      "retry_strategy": {
-        "max_retries": 5,
-        "backoff_algorithm": "exponential",
-        "jitter": true,
-        "timeout": "30s",
-        "retry_conditions": ["connection_error", "server_error", "timeout", "rate_limited"]
-      }
-    },
-    "message_patterns": {
-      "request_response": {
-        "timeout": "10s",
-        "retry_policy": "default",
-        "circuit_breaking": true,
-        "idempotency_support": true
-      },
-      "publish_subscribe": {
-        "topic_based": true,
-        "content_based": true,
-        "persistence": "durable",
-        "subscription_types": ["exclusive", "shared", "failover"],
-        "message_filtering": true
-      },
-      "stream_processing": {
-        "backpressure_handling": true,
-        "windowing": true,
-        "checkpoint_interval": "1000 messages",
-        "time_based_processing": true,
-        "parallel_processing": true
-      }
-    },
-    "error_handling": {
-      "error_codes": {
-        "1xx": "Communication errors",
-        "2xx": "Protocol errors",
-        "3xx": "Data errors",
-        "4xx": "Agent errors",
-        "5xx": "System errors"
-      },
-      "error_detail_levels": [
-        "summary",      // Basic error description
-        "detailed",     // Includes error context and specific fields
-        "diagnostic",   // Contains troubleshooting information
-        "stacktrace",   // Technical details for debugging
-        "verbose"       // Complete error information with contextual data
-      ],
-      "retry_categories": ["transient", "connection", "timeout", "resource_limitation", "rate_limiting"],
-      "circuit_breaking": {
-        "enabled": true,
-        "threshold": "5 failures",
-        "reset_timeout": "30s",
-        "half_open_state": true,
-        "monitoring_period": "5m"
-      },
-      "fallback_strategy": {
-        "degraded_mode_operation": true,
-        "cached_responses": true,
-        "static_fallbacks": true,
-        "alternative_service_paths": true
-      }
-    },
-    "interoperability": {
-      "protocol_negotiation": true,
-      "backward_compatibility": {
-        "supported_versions": ["3.x", "4.x", "5.x", "6.x"],
-        "feature_detection": true,
-        "graceful_degradation": true,
-        "compatibility_layer": true
-      },
-      "schema_registry": {
-        "enabled": true,
-        "evolution_rules": "strict",
-        "version_management": true,
-        "compatibility_verification": true
-      },
-      "discovery": {
-        "mechanism": "service_registry",
-        "heartbeat_interval": "30s",
-        "health_check_endpoint": "/health",
-        "automatic_registration": true,
-        "capability_advertisement": true
-      }
-    }
-  },
-  
-  "calibration_data": {
-    "description": "Enhanced configuration for model calibration data and parameter management",
-    "storage": {
-      "location": "database",
-      "backup_strategy": "daily",
-      "versioning": true,
-      "access_control": "agent_role_based",
-      "encryption": "at-rest",
-      "partitioning": "by-date-and-type",
-      "retention_policy": "1-year-rolling",
-      "storage_format": "columnar",
-      "compression": "high",
-      "replication": {
-        "enabled": true,
-        "factor": 3,
-        "strategy": "multi-region"
-      }
-    },
-    "data_sets": [
-      {
-        "id": "base_calibration_set",
-        "description": "Baseline calibration dataset for model validation",
-        "properties": {
-          "size": 500,
-          "source": "verified_sales",
-          "date_range": "2024-01-01 to 2024-12-31",
-          "region_coverage": "all_active_markets",
-          "property_type_distribution": "representative",
-          "outlier_filtered": true,
-          "stratification": "price_tier_balanced",
-          "data_quality_score": 0.98
+        "timestamp": {
+          "type": "string",
+          "format": "iso8601",
+          "description": "ISO-8601 datetime with microsecond precision"
         },
-        "schema_version": "6.0.0",
-        "last_updated": "2025-03-31T08:30:00Z",
-        "validation_status": "approved",
-        "access_level": "all_agents"
-      },
-      {
-        "id": "enhanced_gis_calibration",
-        "description": "GIS-specific calibration data for spatial models",
-        "properties": {
-          "size": 350,
-          "source": "verified_sales_with_gis",
-          "date_range": "2024-01-01 to 2024-12-31",
-          "spatial_resolution": "tract_level",
-          "gis_layers": ["school_districts", "flood_zones", "transit_access", "amenities", "land_use", "zoning"],
-          "completeness_score": 0.96,
-          "spatial_accuracy": "high",
-          "correlation_verified": true
-        },
-        "schema_version": "6.0.0",
-        "last_updated": "2025-03-31T09:15:00Z",
-        "validation_status": "approved",
-        "access_level": "gis_enabled_agents"
-      },
-      {
-        "id": "validation_holdout_set",
-        "description": "Holdout dataset for final validation of models",
-        "properties": {
-          "size": 200,
-          "source": "verified_sales_holdout",
-          "date_range": "2024-01-01 to 2024-12-31",
-          "isolation_method": "stratified_random",
-          "overlap_verification": "confirmed_independent",
-          "property_type_distribution": "representative",
-          "price_tier_distribution": "balanced",
-          "geographic_distribution": "market_representative"
-        },
-        "schema_version": "6.0.0",
-        "last_updated": "2025-03-31T07:45:00Z",
-        "validation_status": "approved",
-        "access_level": "validation_agents"
-      }
-    ],
-    "calibration_management": {
-      "versioning": {
-        "enabled": true,
-        "major_version_triggers": ["schema_change", "significant_performance_improvement", "algorithm_change"],
-        "minor_version_triggers": ["parameter_adjustments", "additional_features", "optimization"],
-        "patch_version_triggers": ["bug_fixes", "minor_adjustments"]
-      },
-      "approval_workflow": "multi-stage",
-      "validation_requirements": "cross-validation",
-      "documentation_required": true,
-      "review_process": {
-        "technical_review": true,
-        "business_review": true,
-        "statistical_validation": true
-      },
-      "recalibration_triggers": {
-        "performance_degradation": "> 5%",
-        "new_data_threshold": "> 10%",
-        "feature_drift": "> 7.5%",
-        "time_based": "quarterly",
-        "market_condition_changes": true,
-        "significant_outliers": "> 3 sigma for key metrics"
-      }
-    },
-    "parameter_storage": {
-      "versioning": true,
-      "format": "structured_json",
-      "metadata_tracking": true,
-      "access_control": "role_based",
-      "audit_trail": true,
-      "bi_temporal_tracking": true,
-      "change_impact_analysis": true,
-      "rollback_capabilities": true
-    },
-    "metadata_schema": {
-      "version": "string (semantic version)",
-      "creation_date": "ISO-8601 datetime",
-      "created_by": "string (agent or user)",
-      "validation_status": "enum (pending, validated, rejected)",
-      "performance_metrics": "object (key performance indicators)",
-      "source_data_versions": "array of strings (dataset versions)",
-      "notes": "string (human-readable description)",
-      "tags": "array of strings",
-      "lineage": "object (data provenance information)",
-      "quality_metrics": "object (data quality statistics)",
-      "usage_restrictions": "array of strings",
-      "expiration_date": "ISO-8601 datetime or null"
-    }
-  },
-  
-  "error_reporting": {
-    "description": "Comprehensive structured error reporting system for agent operations",
-    "error_levels": ["fatal", "critical", "error", "warning", "info", "debug", "trace"],
-    "error_categories": [
-      "model_failure",
-      "data_quality",
-      "validation_failure",
-      "communication_error",
-      "resource_limitation",
-      "security_violation",
-      "protocol_violation",
-      "calibration_error",
-      "workflow_error",
-      "system_error",
-      "configuration_error",
-      "agent_coordination_error",
-      "orchestration_error",
-      "parameter_error",
-      "concurrency_error",
-      "timeout_error",
-      "data_consistency_error",
-      "authorization_error"
-    ],
-    "reporting_format": {
-      "error_id": "string (UUID)",
-      "timestamp": "ISO-8601 datetime with microsecond precision",
-      "level": "enum (from error_levels)",
-      "category": "enum (from error_categories)",
-      "source": {
-        "agent_id": "string",
-        "agent_type": "string",
-        "component": "string",
-        "function": "string",
-        "line_number": "integer (optional)",
-        "version": "string"
-      },
-      "message": "string (human-readable error description)",
-      "code": "string (error code, e.g., ERR-4001)",
-      "details": "object (specific error details)",
-      "context": {
-        "workflow_id": "string (UUID)",
-        "task_id": "string (UUID)",
-        "input_parameters": "object (parameters that caused the error)",
-        "system_state": "object (relevant state information)",
-        "related_transactions": "array of strings"
-      },
-      "impact": {
-        "severity": "enum (low, medium, high, critical)",
-        "scope": "enum (isolated, component, service, system)",
-        "affected_operations": "array of strings",
-        "data_integrity": "enum (none, possible, confirmed)"
-      },
-      "resolution": {
-        "status": "enum (unresolved, in_progress, resolved, needs_investigation)",
-        "action_taken": "string",
-        "recommended_action": "string",
-        "retry_strategy": "string"
-      },
-      "stacktrace": "string (optional technical stack trace)",
-      "related_errors": "array of strings (error_ids)",
-      "correlation_id": "string (for grouping related errors)",
-      "metadata": {
-        "tags": "array of strings",
-        "notification_sent": "boolean",
-        "requires_human_intervention": "boolean",
-        "documentation_link": "string (URL)",
-        "repeat_count": "integer"
-      }
-    },
-    "aggregation_rules": {
-      "enabled": true,
-      "similar_error_window": "5m",
-      "batch_report_threshold": 10,
-      "pattern_recognition": true,
-      "summary_generation": true,
-      "trend_analysis": true
-    },
-    "notification_rules": {
-      "channels": ["log", "dashboard", "email", "webhook", "messaging"],
-      "throttling": {
-        "enabled": true,
-        "max_frequency": "5m",
-        "suppress_similar": true,
-        "escalation_override": true
-      },
-      "escalation_levels": {
-        "warning": {
-          "threshold": 10,
-          "window": "15m",
-          "notify": ["monitoring_dashboard"]
-        },
-        "error": {
-          "threshold": 5,
-          "window": "15m",
-          "notify": ["monitoring_dashboard", "engineering_team"]
-        },
-        "critical": {
-          "threshold": 1,
-          "window": "5m",
-          "notify": ["monitoring_dashboard", "engineering_team", "operations_team", "incident_response"]
-        }
-      }
-    },
-    "storage": {
-      "retention_period": "90d",
-      "storage_strategy": "time_series_database",
-      "compression": true,
-      "indexing": true,
-      "search_capabilities": true,
-      "archival_policy": "compress_after_30d"
-    }
-  },
-  
-  "timestamp_handling": {
-    "format": "ISO-8601 with microsecond precision",
-    "timezone": "UTC",
-    "synchronization": {
-      "mechanism": "ntp",
-      "tolerance": "±50ms",
-      "drift_detection": true,
-      "correction_strategy": "progressive_adjustment"
-    },
-    "precision_requirements": {
-      "messaging": "millisecond",
-      "logging": "millisecond",
-      "transaction_records": "microsecond",
-      "model_timestamps": "second",
-      "coordination_events": "millisecond"
-    },
-    "sequence_tracking": {
-      "enabled": true,
-      "algorithm": "hybrid_logical_clocks",
-      "vector_clocks": true,
-      "causality_tracking": true
-    }
-  },
-  
-  "workflow_orchestration": {
-    "description": "Configuration for workflow orchestration across agents",
-    "execution_engine": {
-      "scheduler_type": "priority_based",
-      "concurrency_limit": 8,
-      "task_timeout": "30m",
-      "retry_policy": {
-        "max_retries": 3,
-        "backoff_factor": 2.0,
-        "retry_delay_base": "5s",
-        "max_retry_delay": "2m",
-        "retry_jitter": true
-      },
-      "scheduling_algorithms": {
-        "default": "priority_weighted",
-        "alternatives": ["round_robin", "fair_share", "deadline_based"]
-      },
-      "execution_modes": {
-        "synchronous": true,
-        "asynchronous": true,
-        "batch": true,
-        "stream": true
-      }
-    },
-    "state_management": {
-      "persistence": true,
-      "storage_type": "distributed",
-      "checkpoint_frequency": "after_each_step",
-      "transaction_support": true,
-      "history_tracking": true,
-      "state_versioning": true,
-      "rollback_capability": true,
-      "state_compression": true,
-      "state_encryption": true
-    },
-    "monitoring": {
-      "metrics_collection": true,
-      "event_logging": true,
-      "performance_tracking": true,
-      "visualization": {
-        "real_time_dashboard": true,
-        "workflow_graph": true,
-        "historical_performance": true,
-        "trend_analysis": true,
-        "comparison_views": true,
-        "anomaly_highlighting": true
-      },
-      "alerting": {
-        "enabled": true,
-        "channels": ["email", "dashboard", "webhook", "messaging"],
-        "thresholds": {
-          "performance": {
-            "latency": "> 2s",
-            "error_rate": "> 1%",
-            "throughput": "< 10 tasks/s"
-          },
-          "resources": {
-            "cpu": "> 80%",
-            "memory": "> 85%",
-            "disk": "> 90%"
-          }
-        }
-      }
-    },
-    "workflow_templates": {
-      "etl_workflow": {
-        "description": "Standard ETL process workflow",
-        "steps": [
-          {
-            "id": "data_extraction",
-            "agent": "etl",
-            "operation": "extract",
-            "retry_strategy": "standard",
-            "timeout": "10m",
-            "dependencies": []
-          },
-          {
-            "id": "data_validation",
-            "agent": "validation",
-            "operation": "validate_data",
-            "retry_strategy": "standard",
-            "timeout": "5m",
-            "dependencies": ["data_extraction"]
-          },
-          {
-            "id": "data_transformation",
-            "agent": "etl",
-            "operation": "transform",
-            "retry_strategy": "standard",
-            "timeout": "15m",
-            "dependencies": ["data_validation"]
-          },
-          {
-            "id": "data_loading",
-            "agent": "etl",
-            "operation": "load",
-            "retry_strategy": "standard",
-            "timeout": "10m",
-            "dependencies": ["data_transformation"]
-          },
-          {
-            "id": "post_etl_validation",
-            "agent": "validation",
-            "operation": "validate_loaded_data",
-            "retry_strategy": "standard",
-            "timeout": "5m",
-            "dependencies": ["data_loading"]
-          }
-        ],
-        "error_handling": {
-          "recovery_points": ["data_extraction", "data_transformation", "data_loading"],
-          "critical_errors": ["validation_failure", "data_corruption", "schema_mismatch"],
-          "notification_threshold": "error"
-        },
-        "success_criteria": {
-          "data_quality_score": "> 0.95",
-          "record_count_delta": "< 5%",
-          "all_validations_passed": true
-        }
-      },
-      "model_building_workflow": {
-        "description": "Model building and validation workflow",
-        "steps": [
-          {
-            "id": "feature_engineering",
-            "agent": "valuation",
-            "operation": "engineer_features",
-            "retry_strategy": "standard",
-            "timeout": "15m",
-            "dependencies": []
-          },
-          {
-            "id": "feature_validation",
-            "agent": "validation",
-            "operation": "validate_features",
-            "retry_strategy": "standard",
-            "timeout": "5m",
-            "dependencies": ["feature_engineering"]
-          },
-          {
-            "id": "model_training",
-            "agent": "valuation",
-            "operation": "train_model",
-            "retry_strategy": "extended",
-            "timeout": "30m",
-            "dependencies": ["feature_validation"]
-          },
-          {
-            "id": "model_validation",
-            "agent": "validation",
-            "operation": "validate_model",
-            "retry_strategy": "standard",
-            "timeout": "10m",
-            "dependencies": ["model_training"]
-          },
-          {
-            "id": "model_calibration",
-            "agent": "valuation",
-            "operation": "calibrate_model",
-            "retry_strategy": "standard",
-            "timeout": "15m",
-            "dependencies": ["model_validation"]
-          },
-          {
-            "id": "final_validation",
-            "agent": "validation",
-            "operation": "validate_calibrated_model",
-            "retry_strategy": "standard",
-            "timeout": "10m",
-            "dependencies": ["model_calibration"]
-          },
-          {
-            "id": "model_deployment",
-            "agent": "bootstrap",
-            "operation": "deploy_model",
-            "retry_strategy": "careful",
-            "timeout": "5m",
-            "dependencies": ["final_validation"]
-          }
-        ],
-        "error_handling": {
-          "recovery_points": ["feature_engineering", "model_training", "model_calibration"],
-          "critical_errors": ["validation_failure", "performance_below_threshold", "calibration_failure"],
-          "notification_threshold": "error"
-        },
-        "success_criteria": {
-          "r2_score": "> 0.85",
-          "rmse": "< previous_model * 0.95",
-          "all_validations_passed": true
-        }
-      },
-      "end_to_end_valuation_workflow": {
-        "description": "Complete workflow from data acquisition to valuation model deployment",
-        "steps": [
-          {
-            "id": "initialize_environment",
-            "agent": "bootstrap",
-            "operation": "prepare_environment",
-            "retry_strategy": "standard",
-            "timeout": "5m",
-            "dependencies": []
-          },
-          {
-            "id": "data_acquisition",
-            "agent": "etl",
-            "operation": "acquire_data",
-            "retry_strategy": "extended",
-            "timeout": "20m",
-            "dependencies": ["initialize_environment"]
-          },
-          {
-            "id": "data_validation",
-            "agent": "validation",
-            "operation": "validate_raw_data",
-            "retry_strategy": "standard",
-            "timeout": "10m",
-            "dependencies": ["data_acquisition"]
-          },
-          {
-            "id": "data_preprocessing",
-            "agent": "etl",
-            "operation": "preprocess_data",
-            "retry_strategy": "standard",
-            "timeout": "15m",
-            "dependencies": ["data_validation"]
-          },
-          {
-            "id": "feature_engineering",
-            "agent": "valuation",
-            "operation": "engineer_features",
-            "retry_strategy": "standard",
-            "timeout": "20m",
-            "dependencies": ["data_preprocessing"]
-          },
-          {
-            "id": "feature_validation",
-            "agent": "validation",
-            "operation": "validate_features",
-            "retry_strategy": "standard",
-            "timeout": "10m",
-            "dependencies": ["feature_engineering"]
-          },
-          {
-            "id": "model_selection",
-            "agent": "valuation",
-            "operation": "select_models",
-            "retry_strategy": "standard",
-            "timeout": "15m",
-            "dependencies": ["feature_validation"]
-          },
-          {
-            "id": "model_training",
-            "agent": "valuation",
-            "operation": "train_models",
-            "retry_strategy": "extended",
-            "timeout": "45m",
-            "dependencies": ["model_selection"]
-          },
-          {
-            "id": "model_validation",
-            "agent": "validation",
-            "operation": "validate_models",
-            "retry_strategy": "standard",
-            "timeout": "20m",
-            "dependencies": ["model_training"]
-          },
-          {
-            "id": "ensemble_creation",
-            "agent": "valuation",
-            "operation": "create_ensemble",
-            "retry_strategy": "standard",
-            "timeout": "15m",
-            "dependencies": ["model_validation"]
-          },
-          {
-            "id": "ensemble_validation",
-            "agent": "validation",
-            "operation": "validate_ensemble",
-            "retry_strategy": "standard",
-            "timeout": "15m",
-            "dependencies": ["ensemble_creation"]
-          },
-          {
-            "id": "model_calibration",
-            "agent": "valuation",
-            "operation": "calibrate_ensemble",
-            "retry_strategy": "standard",
-            "timeout": "20m",
-            "dependencies": ["ensemble_validation"]
-          },
-          {
-            "id": "acceptance_testing",
-            "agent": "validation",
-            "operation": "run_acceptance_tests",
-            "retry_strategy": "standard",
-            "timeout": "30m",
-            "dependencies": ["model_calibration"]
-          },
-          {
-            "id": "model_deployment",
-            "agent": "bootstrap",
-            "operation": "deploy_model",
-            "retry_strategy": "careful",
-            "timeout": "10m",
-            "dependencies": ["acceptance_testing"]
-          },
-          {
-            "id": "post_deployment_validation",
-            "agent": "validation",
-            "operation": "validate_deployment",
-            "retry_strategy": "standard",
-            "timeout": "10m",
-            "dependencies": ["model_deployment"]
-          }
-        ],
-        "error_handling": {
-          "recovery_points": [
-            "initialize_environment", 
-            "data_acquisition", 
-            "data_preprocessing", 
-            "feature_engineering",
-            "model_training", 
-            "ensemble_creation",
-            "model_calibration"
-          ],
-          "critical_errors": [
-            "validation_failure", 
-            "performance_below_threshold", 
-            "data_corruption", 
-            "system_resource_exhaustion"
-          ],
-          "notification_threshold": "warning"
-        },
-        "success_criteria": {
-          "data_quality_score": "> 0.95",
-          "model_performance_r2": "> 0.85",
-          "improvement_over_previous": "> 2.5%",
-          "all_validations_passed": true,
-          "deployment_health_check": "passed"
-        }
-      }
-    }
-  },
-  
-  "sample_messages": {
-    "description": "Sample message formats for inter-agent communication",
-    "command_message": {
-      "header": {
-        "message_id": "cmd-8f9d2c7a-3b4e-45f6-a9c1-5d8e7b6f3c2a",
-        "timestamp": "2025-03-31T09:45:23.831542Z",
-        "sender_id": "bootstrap-commander",
-        "receiver_id": "god-tier-builder",
-        "message_type": "command",
-        "priority": "high",
-        "correlation_id": "flow-a1b2c3d4-e5f6-7890-a1b2-c3d4e5f67890",
-        "reply_to": "response-channel-bootstrap",
-        "expires_at": "2025-03-31T10:15:23.831542Z",
-        "sequence_num": 1,
-        "protocol_version": "6.0.0",
-        "causation_id": null,
-        "flow_id": "model-build-20250331",
-        "retry_count": 0,
-        "ttl": 1800
-      },
-      "body": {
-        "content_type": "json",
-        "content": {
-          "command": "TRAIN_MODEL",
-          "parameters": {
-            "model_type": "enhanced_regression",
-            "feature_set": "standard_with_gis",
-            "training_dataset": "training_20250331",
-            "hyperparameters": {
-              "learning_rate": 0.01,
-              "max_depth": 6,
-              "num_leaves": 31,
-              "regularization_alpha": 0.01,
-              "regularization_lambda": 0.1
+        "sender": {
+          "type": "object",
+          "description": "Information about the sending agent",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "Unique identifier of the sending agent"
             },
-            "validation_split": 0.2,
-            "random_seed": 42,
-            "target_metric": "adj_r2",
-            "time_limit": 1200
-          },
-          "options": {
-            "save_checkpoints": true,
-            "return_feature_importance": true,
-            "early_stopping": true,
-            "enable_parallel": true,
-            "log_level": "info"
+            "name": {
+              "type": "string",
+              "description": "Name of the sending agent"
+            },
+            "type": {
+              "type": "string",
+              "description": "Type of the sending agent (e.g., bootstrap, etl, valuation, validation)"
+            },
+            "version": {
+              "type": "string",
+              "description": "Version of the sending agent"
+            }
           }
         },
-        "schema_version": "6.0.0",
-        "is_encrypted": false,
-        "compression": "none",
-        "digital_signature": "ed25519:a1b2c3d4e5f6...",
-        "checksum": "sha256:8f9d2c7a3b4e...",
-        "encoding": "utf-8",
-        "size": 1024
-      },
-      "metadata": {
-        "task_id": "train-model-task-20250331-01",
-        "workflow_id": "model-building-workflow-20250331",
-        "tags": ["training", "regression", "production"],
-        "context": {
-          "initiated_by": "quarterly_model_update",
-          "expected_completion_time": "2025-03-31T10:30:00Z",
-          "priority_reason": "production_model_refresh"
-        },
-        "security_level": "restricted",
-        "trace_id": "trace-8f9d2c7a-3b4e-45f6-a9c1-5d8e7b6f3c2a",
-        "span_id": "span-0001",
-        "execution_environment": "production",
-        "source_location": "bootstrap-commander/workflows/model_building.js:245",
-        "sensitivity": "internal",
-        "retention_policy": "90d"
-      }
-    },
-    "status_update_message": {
-      "header": {
-        "message_id": "sts-7e8f9d0a-1b2c-34d5-e6f7-8a9b0c1d2e3f",
-        "timestamp": "2025-03-31T09:48:15.427913Z",
-        "sender_id": "god-tier-builder",
-        "receiver_id": "bootstrap-commander",
-        "message_type": "status",
-        "priority": "normal",
-        "correlation_id": "flow-a1b2c3d4-e5f6-7890-a1b2-c3d4e5f67890",
-        "reply_to": null,
-        "expires_at": null,
-        "sequence_num": 5,
-        "protocol_version": "6.0.0",
-        "causation_id": "cmd-8f9d2c7a-3b4e-45f6-a9c1-5d8e7b6f3c2a",
-        "flow_id": "model-build-20250331",
-        "retry_count": 0,
-        "ttl": 3600
-      },
-      "body": {
-        "content_type": "json",
-        "content": {
-          "status": "IN_PROGRESS",
-          "progress": 0.45,
-          "stage": "feature_engineering",
-          "step": "spatial_feature_calculation",
-          "message": "Computing spatial features from GIS data layers",
-          "estimated_completion": "2025-03-31T10:05:00Z",
-          "metrics": {
-            "processed_records": 15420,
-            "total_records": 32500,
-            "processing_speed": "2500 records/minute",
-            "memory_usage": "4.2 GB",
-            "cpu_usage": "65%"
-          },
-          "current_operations": [
-            "calculating distance to amenities",
-            "processing school district boundaries",
-            "integrating flood zone data"
-          ],
-          "warnings": [
-            {
-              "code": "WARN-0125",
-              "message": "Missing GIS data for 23 properties (0.15%)",
-              "timestamp": "2025-03-31T09:47:32.123456Z"
+        "receiver": {
+          "type": "object",
+          "description": "Information about the receiving agent(s)",
+          "properties": {
+            "id": {
+              "type": ["string", "array"],
+              "description": "Unique identifier(s) of receiving agent(s)"
+            },
+            "broadcast": {
+              "type": "boolean",
+              "description": "If true, message is broadcast to all agents"
             }
-          ]
+          }
         },
-        "schema_version": "6.0.0",
-        "is_encrypted": false,
-        "compression": "none",
-        "digital_signature": "ed25519:7e8f9d0a1b2c...",
-        "checksum": "sha256:7e8f9d0a1b2c...",
-        "encoding": "utf-8",
-        "size": 768
+        "message_type": {
+          "type": "string",
+          "enum": ["command", "event", "data", "status", "parameter", "calibration", "error", "heartbeat", "workflow"],
+          "description": "Type of message being sent"
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["critical", "high", "normal", "low"],
+          "description": "Priority level of the message"
+        },
+        "correlation_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "UUID for correlating related messages"
+        },
+        "reply_to": {
+          "type": "string",
+          "description": "Channel for responses to this message"
+        },
+        "protocol_version": {
+          "type": "string",
+          "description": "Semantic version of the protocol being used"
+        },
+        "workflow_id": {
+          "type": "string",
+          "description": "Identifier for the workflow this message is part of"
+        },
+        "flow_id": {
+          "type": "string",
+          "description": "Identifier for the business process flow"
+        },
+        "sequence_num": {
+          "type": "integer",
+          "description": "Sequence number for ordering messages"
+        },
+        "ttl": {
+          "type": "integer",
+          "description": "Time-to-live in seconds"
+        },
+        "trace_id": {
+          "type": "string",
+          "description": "For distributed tracing across agents"
+        }
       },
-      "metadata": {
-        "task_id": "train-model-task-20250331-01",
-        "workflow_id": "model-building-workflow-20250331",
-        "tags": ["training", "regression", "status", "in_progress"],
-        "context": {
-          "status_update_frequency": "180s",
-          "status_sequence": 3,
-          "parent_operation": "TRAIN_MODEL"
+      
+      "body": {
+        "content_type": {
+          "type": "string",
+          "enum": ["json", "binary", "text", "protobuf"],
+          "description": "Content type of the message payload"
         },
-        "security_level": "restricted",
-        "trace_id": "trace-8f9d2c7a-3b4e-45f6-a9c1-5d8e7b6f3c2a",
-        "span_id": "span-0005",
-        "execution_environment": "production",
-        "source_location": "god-tier-builder/services/model_training.py:528",
-        "sensitivity": "internal",
-        "retention_policy": "30d"
+        "content": {
+          "type": "object",
+          "description": "The actual message payload"
+        },
+        "schema_version": {
+          "type": "string",
+          "description": "Semantic version of the schema for the content"
+        },
+        "is_encrypted": {
+          "type": "boolean",
+          "description": "Whether the content is encrypted"
+        },
+        "compression": {
+          "type": "string",
+          "enum": ["none", "gzip", "zstd", "lz4"],
+          "description": "Compression algorithm used"
+        },
+        "checksum": {
+          "type": "string",
+          "description": "Hash for data integrity verification"
+        }
+      },
+      
+      "metadata": {
+        "task_id": {
+          "type": "string",
+          "description": "UUID of related task"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tags for message categorization"
+        },
+        "context": {
+          "type": "object",
+          "description": "Additional context data"
+        },
+        "security_level": {
+          "type": "string",
+          "enum": ["public", "restricted", "confidential", "secret"],
+          "description": "Security classification of the message"
+        },
+        "execution_environment": {
+          "type": "string",
+          "enum": ["development", "testing", "production"],
+          "description": "Environment where the message was generated"
+        },
+        "retention_policy": {
+          "type": "string",
+          "description": "How long to keep this message"
+        }
       }
     },
-    "error_message": {
-      "header": {
-        "message_id": "err-6d7e8f9a-0b1c-23d4-e5f6-7a8b9c0d1e2f",
-        "timestamp": "2025-03-31T09:52:18.913724Z",
-        "sender_id": "god-tier-builder",
-        "receiver_id": ["bootstrap-commander", "cascade-operator"],
-        "message_type": "error",
-        "priority": "high",
-        "correlation_id": "flow-a1b2c3d4-e5f6-7890-a1b2-c3d4e5f67890",
-        "reply_to": "response-channel-errors",
-        "expires_at": null,
-        "sequence_num": 8,
-        "protocol_version": "6.0.0",
-        "causation_id": "cmd-8f9d2c7a-3b4e-45f6-a9c1-5d8e7b6f3c2a",
-        "flow_id": "model-build-20250331",
-        "retry_count": 0,
-        "ttl": 86400
-      },
-      "body": {
-        "content_type": "json",
-        "content": {
-          "error_id": "GTB-ERR-20250331-083",
-          "timestamp": "2025-03-31T09:52:18.913724Z",
-          "level": "error",
-          "category": "data_quality",
-          "source": {
-            "agent_id": "god-tier-builder",
-            "agent_type": "valuation",
-            "component": "spatial_features",
-            "function": "process_gis_layers",
-            "line_number": 783,
-            "version": "2.4.5"
+    
+    "_comment_calibration": "Defines the calibration data structure for model and agent calibration",
+    "calibration": {
+      "calibration_schema": {
+        "type": "object",
+        "description": "Schema for calibration data",
+        "properties": {
+          "calibration_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier for this calibration"
           },
-          "message": "GIS data quality threshold not met for flood zone layer",
-          "code": "ERR-3045",
-          "details": {
-            "layer_name": "flood_zone_fema_2024",
-            "expected_coverage": 0.995,
-            "actual_coverage": 0.892,
-            "missing_regions": ["tract:53033010100", "tract:53033010200", "tract:53033010300"],
-            "affected_properties": 1423,
-            "error_threshold": 0.95,
-            "missing_data_pattern": "continuous_region"
+          "timestamp": {
+            "type": "string",
+            "format": "iso8601",
+            "description": "When the calibration was performed"
+          },
+          "agent_id": {
+            "type": "string",
+            "description": "ID of the agent being calibrated"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["model_weights", "thresholds", "feature_importance", "uncertainty_bounds", "preprocessing_parameters", "hyperparameters"],
+            "description": "Type of calibration data"
+          },
+          "version": {
+            "type": "string",
+            "description": "Version of the calibration data"
+          },
+          "metrics": {
+            "type": "object",
+            "description": "Performance metrics for this calibration",
+            "properties": {
+              "r2_score": {
+                "type": "number",
+                "description": "R-squared score"
+              },
+              "rmse": {
+                "type": "number",
+                "description": "Root mean squared error"
+              },
+              "mae": {
+                "type": "number",
+                "description": "Mean absolute error"
+              },
+              "prediction_variance": {
+                "type": "number",
+                "description": "Variance in predictions"
+              },
+              "calibration_error": {
+                "type": "number",
+                "description": "Calibration error metric"
+              }
+            }
+          },
+          "parameters": {
+            "type": "object",
+            "description": "Calibration parameters",
+            "additionalProperties": true
+          },
+          "validation_data": {
+            "type": "object",
+            "description": "Metadata about validation data used",
+            "properties": {
+              "sample_size": {
+                "type": "integer",
+                "description": "Number of samples used"
+              },
+              "time_range": {
+                "type": "object",
+                "description": "Time range of validation data",
+                "properties": {
+                  "start": {
+                    "type": "string",
+                    "format": "iso8601"
+                  },
+                  "end": {
+                    "type": "string",
+                    "format": "iso8601"
+                  }
+                }
+              },
+              "data_sources": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Data sources used for validation"
+              }
+            }
+          }
+        }
+      },
+      
+      "_comment_calibration_sample": "Sample calibration data structure for model weights",
+      "calibration_sample": {
+        "calibration_id": "f8c7d6e5-a4b3-c2d1-e0f9-98765432109",
+        "timestamp": "2025-03-31T10:15:32.456Z",
+        "agent_id": "valuation-agent-001",
+        "type": "model_weights",
+        "version": "2.3.0",
+        "metrics": {
+          "r2_score": 0.87,
+          "rmse": 32150.75,
+          "mae": 24980.21,
+          "prediction_variance": 0.025,
+          "calibration_error": 0.042
+        },
+        "parameters": {
+          "weights": {
+            "square_feet": 145.32,
+            "bedrooms": 15250.87,
+            "bathrooms": 21300.43,
+            "lot_size": 2.87,
+            "year_built": 320.15,
+            "neighborhood_factor": 1.12
+          },
+          "intercept": 120350.75
+        },
+        "validation_data": {
+          "sample_size": 1250,
+          "time_range": {
+            "start": "2025-01-01T00:00:00Z",
+            "end": "2025-03-15T00:00:00Z"
+          },
+          "data_sources": ["pacs", "mls", "narrpr"]
+        }
+      }
+    },
+    
+    "_comment_error_logs": "Defines the error logging structure for comprehensive error tracking",
+    "error_logs": {
+      "error_schema": {
+        "type": "object",
+        "description": "Schema for error logs",
+        "properties": {
+          "error_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier for this error"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "iso8601",
+            "description": "When the error occurred"
+          },
+          "agent_id": {
+            "type": "string",
+            "description": "ID of the agent that encountered the error"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["critical", "error", "warning", "info", "debug"],
+            "description": "Severity level of the error"
+          },
+          "error_code": {
+            "type": "string",
+            "description": "Error code for categorization"
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable error message"
           },
           "context": {
-            "workflow_id": "model-building-workflow-20250331",
-            "task_id": "train-model-task-20250331-01",
-            "input_parameters": {
-              "gis_data_source": "primary_gis_database",
-              "required_layers": ["flood_zone", "school_district", "transit_access", "zoning"],
-              "resolution": "tract_level",
-              "tolerance": 0.95
-            },
-            "system_state": {
-              "memory_usage": "68%",
-              "disk_usage": "54%",
-              "processing_stage": "spatial_feature_calculation",
-              "current_dataset": "property_gis_data_20250331"
+            "type": "object",
+            "description": "Contextual information about the error",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "description": "Operation being performed when the error occurred"
+              },
+              "input_parameters": {
+                "type": "object",
+                "description": "Input parameters at the time of error"
+              },
+              "resource_state": {
+                "type": "object",
+                "description": "State of resources at the time of error"
+              },
+              "workflow_state": {
+                "type": "object",
+                "description": "State of the workflow at the time of error"
+              }
             }
           },
-          "impact": {
-            "severity": "high",
-            "scope": "component",
-            "affected_operations": ["spatial_feature_calculation", "model_training"],
-            "data_integrity": "possible"
+          "stacktrace": {
+            "type": "string",
+            "description": "Stack trace if available"
+          },
+          "retry_info": {
+            "type": "object",
+            "description": "Information about retry attempts",
+            "properties": {
+              "attempt_number": {
+                "type": "integer",
+                "description": "Current retry attempt number"
+              },
+              "max_attempts": {
+                "type": "integer",
+                "description": "Maximum number of retry attempts"
+              },
+              "next_retry_at": {
+                "type": "string",
+                "format": "iso8601",
+                "description": "When the next retry will occur"
+              },
+              "backoff_strategy": {
+                "type": "string",
+                "description": "Backoff strategy being used"
+              }
+            }
           },
           "resolution": {
-            "status": "needs_investigation",
-            "action_taken": "Paused spatial feature processing",
-            "recommended_action": "Manually verify flood zone data coverage and source for missing tracts",
-            "retry_strategy": "After manual data verification and correction"
+            "type": "object",
+            "description": "Resolution information if resolved",
+            "properties": {
+              "resolved": {
+                "type": "boolean",
+                "description": "Whether the error has been resolved"
+              },
+              "resolution_time": {
+                "type": "string",
+                "format": "iso8601",
+                "description": "When the error was resolved"
+              },
+              "resolution_method": {
+                "type": "string",
+                "description": "Method used to resolve the error"
+              },
+              "resolved_by": {
+                "type": "string",
+                "description": "Agent or user that resolved the error"
+              }
+            }
+          }
+        }
+      },
+      
+      "_comment_error_sample": "Sample error log structure",
+      "error_sample": {
+        "error_id": "e7d6c5b4-a3b2-c1d0-e9f8-87654321098",
+        "timestamp": "2025-03-31T11:42:17.895Z",
+        "agent_id": "etl-agent-002",
+        "severity": "error",
+        "error_code": "DATA_VALIDATION_FAILURE",
+        "message": "Failed to validate property data: required field 'square_feet' missing for 32 records",
+        "context": {
+          "operation": "validate_property_data",
+          "input_parameters": {
+            "data_source": "mls",
+            "batch_id": "MLS20250331-087",
+            "record_count": 250
           },
-          "related_errors": ["GTB-ERR-20250330-127"],
-          "metadata": {
-            "tags": ["data_quality", "gis", "flood_zone", "spatial_features"],
-            "notification_sent": true,
-            "requires_human_intervention": true,
-            "documentation_link": "https://bcbs-values.local/docs/errors/ERR-3045",
-            "repeat_count": 1
+          "resource_state": {
+            "memory_usage_percent": 78,
+            "cpu_usage_percent": 92,
+            "disk_space_available_gb": 256
+          },
+          "workflow_state": {
+            "workflow_id": "etl-pipeline-daily-20250331",
+            "current_step": "validation",
+            "previous_step": "extraction",
+            "next_step": "transformation"
           }
         },
-        "schema_version": "6.0.0",
-        "is_encrypted": false,
-        "compression": "none",
-        "digital_signature": "ed25519:6d7e8f9a0b1c...",
-        "checksum": "sha256:6d7e8f9a0b1c...",
-        "encoding": "utf-8",
-        "size": 2048
-      },
-      "metadata": {
-        "task_id": "train-model-task-20250331-01",
-        "workflow_id": "model-building-workflow-20250331",
-        "tags": ["error", "data_quality", "gis", "blocking"],
-        "context": {
-          "error_sequence": 1,
-          "parent_operation": "TRAIN_MODEL",
-          "error_handling_policy": "manual_intervention"
+        "stacktrace": "Traceback (most recent call last):\n  File \"etl/data_validation.py\", line 287, in validate_property_data\n    validate_required_fields(data, required_fields)\n  File \"etl/data_validation.py\", line 142, in validate_required_fields\n    raise ValidationError(f\"required field '{field}' missing for {missing_count} records\")",
+        "retry_info": {
+          "attempt_number": 2,
+          "max_attempts": 3,
+          "next_retry_at": "2025-03-31T11:47:17.895Z",
+          "backoff_strategy": "exponential"
         },
-        "security_level": "restricted",
-        "trace_id": "trace-8f9d2c7a-3b4e-45f6-a9c1-5d8e7b6f3c2a",
-        "span_id": "span-0008",
-        "execution_environment": "production",
-        "source_location": "god-tier-builder/services/spatial_features.py:783",
-        "sensitivity": "internal",
-        "retention_policy": "365d"
+        "resolution": {
+          "resolved": false
+        }
       }
     },
-    "calibration_data_message": {
-      "header": {
-        "message_id": "cal-5c6d7e8f-9a0b-1c2d-3e4f-5a6b7c8d9e0f",
-        "timestamp": "2025-03-31T11:25:43.218965Z",
-        "sender_id": "god-tier-builder",
-        "receiver_id": "tdd-validator",
-        "message_type": "calibration",
-        "priority": "normal",
-        "correlation_id": "flow-a1b2c3d4-e5f6-7890-a1b2-c3d4e5f67890",
-        "reply_to": "response-channel-calibration",
-        "expires_at": null,
-        "sequence_num": 23,
-        "protocol_version": "6.0.0",
-        "causation_id": "cmd-8f9d2c7a-3b4e-45f6-a9c1-5d8e7b6f3c2a",
-        "flow_id": "model-build-20250331",
-        "retry_count": 0,
-        "ttl": 7200
-      },
-      "body": {
-        "content_type": "json",
-        "content": {
-          "calibration_id": "CAL-20250331-005",
-          "model_id": "ENH-REG-20250331-001",
-          "calibration_type": "model_weights",
-          "version": "1.0.0",
-          "timestamp": "2025-03-31T11:25:40.123456Z",
-          "parameters": {
-            "feature_weights": {
-              "square_feet": 1.832,
-              "bedrooms": 0.743,
-              "bathrooms": 0.912,
-              "lot_size": 0.416,
-              "year_built": 0.875,
-              "school_district_quality": 1.245,
-              "flood_zone_risk": -0.683,
-              "transit_score": 0.593,
-              "neighborhood_quality_index": 1.417,
-              "recent_sale_price_per_sqft": 2.153
+    
+    "_comment_workflow_orchestration": "Instructions for orchestrating workflows among agents",
+    "workflow_orchestration": {
+      "workflow_schema": {
+        "type": "object",
+        "description": "Schema for workflow definitions",
+        "properties": {
+          "workflow_id": {
+            "type": "string",
+            "description": "Unique identifier for the workflow"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for the workflow"
+          },
+          "description": {
+            "type": "string",
+            "description": "Description of the workflow purpose"
+          },
+          "version": {
+            "type": "string",
+            "description": "Semantic version of the workflow"
+          },
+          "owner": {
+            "type": "string",
+            "description": "Agent that owns/manages this workflow"
+          },
+          "participants": {
+            "type": "array",
+            "items": {
+              "type": "string"
             },
-            "bias_term": 9784.21,
-            "scaling_factors": {
-              "square_feet": [0.0, 10000.0, 2500.0],
-              "bedrooms": [1.0, 10.0, 3.5],
-              "bathrooms": [1.0, 8.0, 2.5],
-              "lot_size": [0.0, 5.0, 0.25],
-              "year_built": [1900, 2025, 1975]
-            },
-            "confidence_intervals": {
-              "prediction_interval_width": 0.15,
-              "confidence_level": 0.95,
-              "uncertainty_scaling": 1.25
-            },
-            "thresholds": {
-              "high_confidence": 0.85,
-              "medium_confidence": 0.70,
-              "low_confidence": 0.50,
-              "minimum_acceptable": 0.35
+            "description": "List of agent IDs participating in this workflow"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "step_id": {
+                  "type": "string",
+                  "description": "Unique identifier for this step"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Human-readable name for this step"
+                },
+                "agent_id": {
+                  "type": "string",
+                  "description": "ID of the agent responsible for this step"
+                },
+                "operation": {
+                  "type": "string",
+                  "description": "Operation to be performed by the agent"
+                },
+                "parameters": {
+                  "type": "object",
+                  "description": "Parameters for the operation",
+                  "additionalProperties": true
+                },
+                "dependencies": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "List of step IDs that must complete before this step"
+                },
+                "retry_policy": {
+                  "type": "object",
+                  "properties": {
+                    "max_attempts": {
+                      "type": "integer",
+                      "description": "Maximum number of retry attempts"
+                    },
+                    "backoff_strategy": {
+                      "type": "string",
+                      "enum": ["fixed", "exponential", "linear"],
+                      "description": "Backoff strategy for retries"
+                    },
+                    "initial_delay_ms": {
+                      "type": "integer",
+                      "description": "Initial delay in milliseconds before first retry"
+                    }
+                  }
+                },
+                "timeout_ms": {
+                  "type": "integer",
+                  "description": "Timeout in milliseconds for this step"
+                },
+                "error_strategy": {
+                  "type": "string",
+                  "enum": ["retry", "ignore", "fail", "compensate", "human_intervention"],
+                  "description": "Strategy for handling errors in this step"
+                }
+              }
             }
           },
-          "performance_metrics": {
-            "training": {
-              "r2": 0.876,
-              "adj_r2": 0.871,
-              "rmse": 24520.15,
-              "mae": 18750.32,
-              "mape": 0.0823,
-              "sample_size": 28000
-            },
-            "validation": {
-              "r2": 0.852,
-              "adj_r2": 0.847,
-              "rmse": 28750.43,
-              "mae": 22150.78,
-              "mape": 0.0956,
-              "sample_size": 4500
-            },
-            "improvement": {
-              "vs_previous_model": "+2.8%",
-              "confidence": "high"
+          "transitions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "from_step": {
+                  "type": "string",
+                  "description": "ID of the source step"
+                },
+                "to_step": {
+                  "type": "string",
+                  "description": "ID of the destination step"
+                },
+                "condition": {
+                  "type": "string",
+                  "description": "Condition expression for conditional transitions"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": ["sequential", "conditional", "parallel"],
+                  "description": "Type of transition"
+                }
+              }
             }
           },
-          "metadata": {
-            "training_dataset": "training_20250331",
-            "validation_dataset": "validation_20250331",
-            "training_duration": "48m12s",
-            "hyperparameters": {
-              "learning_rate": 0.01,
-              "max_depth": 6,
-              "num_leaves": 31,
-              "regularization_alpha": 0.01,
-              "regularization_lambda": 0.1,
-              "boosting_rounds": 250,
-              "early_stopping_rounds": 15
-            },
-            "model_size": "12.8 MB",
-            "feature_count": 48,
-            "created_by": "god-tier-builder",
-            "approved_by": null
+          "error_handling": {
+            "type": "object",
+            "properties": {
+              "global_error_strategy": {
+                "type": "string",
+                "enum": ["retry", "ignore", "fail", "compensate", "human_intervention"],
+                "description": "Default error strategy for all steps"
+              },
+              "max_failures": {
+                "type": "integer",
+                "description": "Maximum number of failures before aborting the workflow"
+              },
+              "notification_targets": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Targets to notify in case of errors"
+              }
+            }
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "description": "Overall workflow timeout in milliseconds"
+          },
+          "variables": {
+            "type": "object",
+            "description": "Workflow-level variables",
+            "additionalProperties": true
+          },
+          "status": {
+            "type": "string",
+            "enum": ["draft", "active", "deprecated", "retired"],
+            "description": "Current status of this workflow definition"
           }
-        },
-        "schema_version": "6.0.0",
-        "is_encrypted": true,
-        "compression": "gzip",
-        "digital_signature": "ed25519:5c6d7e8f9a0b...",
-        "checksum": "sha256:5c6d7e8f9a0b...",
-        "encoding": "utf-8",
-        "size": 4096
+        }
       },
-      "metadata": {
-        "task_id": "train-model-task-20250331-01",
-        "workflow_id": "model-building-workflow-20250331",
-        "tags": ["calibration", "model_weights", "enhanced_regression"],
-        "context": {
-          "calibration_stage": "post_training",
-          "parent_operation": "TRAIN_MODEL",
-          "requires_validation": true,
-          "approval_flow": "standard_model_approval"
+      
+      "_comment_workflow_samples": "Sample workflows for common agent interactions",
+      "sample_workflows": [
+        {
+          "workflow_id": "etl-valuation-pipeline",
+          "name": "ETL to Valuation Pipeline",
+          "description": "Workflow for ETL data processing followed by valuation model execution",
+          "version": "1.2.0",
+          "owner": "bootstrap-commander",
+          "participants": ["bootstrap-commander", "etl-processor", "god-tier-builder"],
+          "steps": [
+            {
+              "step_id": "initialize",
+              "name": "Initialize Pipeline",
+              "agent_id": "bootstrap-commander",
+              "operation": "initialize_pipeline",
+              "parameters": {
+                "sources": ["mls", "pacs", "narrpr"],
+                "mode": "daily_update"
+              },
+              "dependencies": [],
+              "retry_policy": {
+                "max_attempts": 3,
+                "backoff_strategy": "exponential",
+                "initial_delay_ms": 1000
+              },
+              "timeout_ms": 30000,
+              "error_strategy": "retry"
+            },
+            {
+              "step_id": "extract",
+              "name": "Extract Data",
+              "agent_id": "etl-processor",
+              "operation": "extract_data",
+              "parameters": {
+                "sources": ["mls", "pacs", "narrpr"],
+                "incremental": true
+              },
+              "dependencies": ["initialize"],
+              "retry_policy": {
+                "max_attempts": 5,
+                "backoff_strategy": "exponential",
+                "initial_delay_ms": 5000
+              },
+              "timeout_ms": 300000,
+              "error_strategy": "retry"
+            },
+            {
+              "step_id": "transform",
+              "name": "Transform Data",
+              "agent_id": "etl-processor",
+              "operation": "transform_data",
+              "parameters": {
+                "include_derived_features": true,
+                "normalization": "standard"
+              },
+              "dependencies": ["extract"],
+              "timeout_ms": 180000,
+              "error_strategy": "retry"
+            },
+            {
+              "step_id": "load",
+              "name": "Load Data",
+              "agent_id": "etl-processor",
+              "operation": "load_data",
+              "parameters": {
+                "target": "property_database",
+                "batch_size": 1000
+              },
+              "dependencies": ["transform"],
+              "timeout_ms": 240000,
+              "error_strategy": "retry"
+            },
+            {
+              "step_id": "valuation",
+              "name": "Run Valuation Models",
+              "agent_id": "god-tier-builder",
+              "operation": "run_valuation_models",
+              "parameters": {
+                "model_types": ["linear", "ensemble", "lightgbm"],
+                "include_uncertainty": true
+              },
+              "dependencies": ["load"],
+              "timeout_ms": 600000,
+              "error_strategy": "retry"
+            },
+            {
+              "step_id": "finalize",
+              "name": "Finalize Pipeline",
+              "agent_id": "bootstrap-commander",
+              "operation": "finalize_pipeline",
+              "parameters": {
+                "generate_report": true,
+                "notify_completion": true
+              },
+              "dependencies": ["valuation"],
+              "timeout_ms": 60000,
+              "error_strategy": "retry"
+            }
+          ],
+          "transitions": [
+            {
+              "from_step": "initialize",
+              "to_step": "extract",
+              "type": "sequential"
+            },
+            {
+              "from_step": "extract",
+              "to_step": "transform",
+              "type": "sequential"
+            },
+            {
+              "from_step": "transform",
+              "to_step": "load",
+              "type": "sequential"
+            },
+            {
+              "from_step": "load",
+              "to_step": "valuation",
+              "type": "sequential"
+            },
+            {
+              "from_step": "valuation",
+              "to_step": "finalize",
+              "type": "sequential"
+            }
+          ],
+          "error_handling": {
+            "global_error_strategy": "retry",
+            "max_failures": 3,
+            "notification_targets": ["admin", "data-team"]
+          },
+          "timeout_ms": 3600000,
+          "variables": {
+            "batch_id": "${date.now.format('yyyyMMdd')}-${random.uuid.substring(0,8)}",
+            "environment": "production"
+          },
+          "status": "active"
         },
-        "security_level": "confidential",
-        "trace_id": "trace-8f9d2c7a-3b4e-45f6-a9c1-5d8e7b6f3c2a",
-        "span_id": "span-0023",
-        "execution_environment": "production",
-        "source_location": "god-tier-builder/services/model_calibration.py:412",
-        "sensitivity": "confidential",
-        "retention_policy": "365d"
+        {
+          "workflow_id": "model-validation-workflow",
+          "name": "Model Validation Workflow",
+          "description": "Workflow for validating valuation models using the TDD Validator",
+          "version": "1.0.0",
+          "owner": "bootstrap-commander",
+          "participants": ["god-tier-builder", "tdd-validator"],
+          "steps": [
+            {
+              "step_id": "prepare-validation",
+              "name": "Prepare Validation Data",
+              "agent_id": "tdd-validator",
+              "operation": "prepare_validation_data",
+              "parameters": {
+                "data_type": "holdout",
+                "sample_size": 1000,
+                "stratify_by": ["property_type", "neighborhood"]
+              },
+              "dependencies": [],
+              "timeout_ms": 120000,
+              "error_strategy": "retry"
+            },
+            {
+              "step_id": "run-predictions",
+              "name": "Run Model Predictions",
+              "agent_id": "god-tier-builder",
+              "operation": "batch_predict",
+              "parameters": {
+                "model_id": "lightgbm-ensemble-v3",
+                "include_metrics": true
+              },
+              "dependencies": ["prepare-validation"],
+              "timeout_ms": 300000,
+              "error_strategy": "retry"
+            },
+            {
+              "step_id": "evaluate-results",
+              "name": "Evaluate Prediction Results",
+              "agent_id": "tdd-validator",
+              "operation": "evaluate_predictions",
+              "parameters": {
+                "metrics": ["r2", "rmse", "mae", "mape", "calibration_error"],
+                "generate_charts": true
+              },
+              "dependencies": ["run-predictions"],
+              "timeout_ms": 180000,
+              "error_strategy": "retry"
+            },
+            {
+              "step_id": "decision-point",
+              "name": "Validation Decision",
+              "agent_id": "tdd-validator",
+              "operation": "validation_decision",
+              "parameters": {
+                "thresholds": {
+                  "r2_minimum": 0.85,
+                  "rmse_maximum": 50000,
+                  "mae_maximum": 35000
+                }
+              },
+              "dependencies": ["evaluate-results"],
+              "timeout_ms": 30000,
+              "error_strategy": "human_intervention"
+            }
+          ],
+          "transitions": [
+            {
+              "from_step": "prepare-validation",
+              "to_step": "run-predictions",
+              "type": "sequential"
+            },
+            {
+              "from_step": "run-predictions",
+              "to_step": "evaluate-results",
+              "type": "sequential"
+            },
+            {
+              "from_step": "evaluate-results",
+              "to_step": "decision-point",
+              "type": "sequential"
+            }
+          ],
+          "error_handling": {
+            "global_error_strategy": "retry",
+            "max_failures": 2,
+            "notification_targets": ["model-team", "validation-team"]
+          },
+          "timeout_ms": 1800000,
+          "status": "active"
+        }
+      ]
+    },
+    
+    "_comment_status_messages": "Sample status update messages between agents",
+    "sample_messages": {
+      "status_update_message": {
+        "header": {
+          "message_id": "8f7e6d5c-4b3a-2c1d-0e9f-8a7b6c5d4e3f",
+          "timestamp": "2025-03-31T14:27:35.128Z",
+          "sender": {
+            "id": "etl-processor-001",
+            "name": "ETL Processor",
+            "type": "etl",
+            "version": "3.2.1"
+          },
+          "receiver": {
+            "id": "bootstrap-commander-001",
+            "broadcast": false
+          },
+          "message_type": "status",
+          "priority": "normal",
+          "correlation_id": "7a6b5c4d-3e2f-1f0e-9d8c-7b6a5c4d3e2f",
+          "protocol_version": "6.0.0",
+          "workflow_id": "etl-valuation-pipeline-20250331",
+          "sequence_num": 12
+        },
+        "body": {
+          "content_type": "json",
+          "content": {
+            "status": "in_progress",
+            "step_id": "transform",
+            "progress": 0.65,
+            "metrics": {
+              "records_processed": 12500,
+              "records_total": 19200,
+              "processing_rate": 850,
+              "estimated_completion_time": "2025-03-31T14:42:18Z"
+            },
+            "resource_utilization": {
+              "cpu_percent": 78,
+              "memory_percent": 62,
+              "disk_io_mbps": 125
+            },
+            "current_operation": "feature_engineering",
+            "next_operation": "normalization"
+          },
+          "schema_version": "3.1.0"
+        },
+        "metadata": {
+          "tags": ["etl", "transform", "status-update"],
+          "context": {
+            "batch_id": "20250331-7a8b9c0d",
+            "source": "mls"
+          }
+        }
+      },
+      
+      "error_reporting_message": {
+        "header": {
+          "message_id": "1a2b3c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p",
+          "timestamp": "2025-03-31T15:12:43.891Z",
+          "sender": {
+            "id": "god-tier-builder-001",
+            "name": "God-Tier Builder",
+            "type": "valuation",
+            "version": "4.0.2"
+          },
+          "receiver": {
+            "id": ["bootstrap-commander-001", "tdd-validator-001"],
+            "broadcast": false
+          },
+          "message_type": "error",
+          "priority": "high",
+          "correlation_id": "7a6b5c4d-3e2f-1f0e-9d8c-7b6a5c4d3e2f",
+          "protocol_version": "6.0.0",
+          "workflow_id": "etl-valuation-pipeline-20250331",
+          "sequence_num": 24
+        },
+        "body": {
+          "content_type": "json",
+          "content": {
+            "error_code": "MODEL_TRAINING_FAILURE",
+            "message": "Failed to train LightGBM model: Feature 'neighborhood_score' has 18% missing values exceeding threshold",
+            "severity": "error",
+            "timestamp": "2025-03-31T15:12:42.756Z",
+            "context": {
+              "model_type": "lightgbm",
+              "feature_count": 42,
+              "training_records": 15780,
+              "problematic_features": [
+                {
+                  "name": "neighborhood_score",
+                  "missing_percent": 18.3,
+                  "threshold": 15.0
+                }
+              ],
+              "step_id": "valuation"
+            },
+            "attempted_resolution": {
+              "strategy": "imputation",
+              "status": "failed",
+              "reason": "Insufficient data for reliable imputation"
+            },
+            "recommended_actions": [
+              "Reduce missing value threshold for this feature",
+              "Apply advanced imputation methods",
+              "Exclude feature from model training"
+            ]
+          },
+          "schema_version": "3.1.0"
+        },
+        "metadata": {
+          "tags": ["valuation", "error", "model-training"],
+          "context": {
+            "batch_id": "20250331-7a8b9c0d",
+            "pipeline_stage": "valuation"
+          }
+        }
+      },
+      
+      "calibration_exchange_message": {
+        "header": {
+          "message_id": "5p4o3n2m-1l0k-9j8i-7h6g-5f4e3d2c1b0a",
+          "timestamp": "2025-03-31T16:08:27.342Z",
+          "sender": {
+            "id": "tdd-validator-001",
+            "name": "TDD Validator",
+            "type": "validation",
+            "version": "2.5.0"
+          },
+          "receiver": {
+            "id": "god-tier-builder-001",
+            "broadcast": false
+          },
+          "message_type": "calibration",
+          "priority": "high",
+          "correlation_id": "7a6b5c4d-3e2f-1f0e-9d8c-7b6a5c4d3e2f",
+          "protocol_version": "6.0.0",
+          "workflow_id": "model-validation-workflow-20250331",
+          "sequence_num": 8
+        },
+        "body": {
+          "content_type": "json",
+          "content": {
+            "calibration_id": "f8c7d6e5-a4b3-c2d1-e0f9-98765432109",
+            "timestamp": "2025-03-31T16:08:25.123Z",
+            "agent_id": "god-tier-builder-001",
+            "type": "model_weights",
+            "version": "2.3.0",
+            "metrics": {
+              "r2_score": 0.87,
+              "rmse": 32150.75,
+              "mae": 24980.21,
+              "prediction_variance": 0.025,
+              "calibration_error": 0.042
+            },
+            "parameters": {
+              "weights": {
+                "square_feet": 145.32,
+                "bedrooms": 15250.87,
+                "bathrooms": 21300.43,
+                "lot_size": 2.87,
+                "year_built": 320.15,
+                "neighborhood_factor": 1.12
+              },
+              "intercept": 120350.75
+            },
+            "validation_data": {
+              "sample_size": 1250,
+              "time_range": {
+                "start": "2025-01-01T00:00:00Z",
+                "end": "2025-03-15T00:00:00Z"
+              },
+              "data_sources": ["pacs", "mls", "narrpr"]
+            },
+            "calibration_status": "approved",
+            "calibration_notes": "Model weights adjusted based on cross-validation results. Improved performance in high-value property segments.",
+            "effective_from": "2025-03-31T18:00:00Z"
+          },
+          "schema_version": "3.1.0"
+        },
+        "metadata": {
+          "tags": ["calibration", "model-weights", "validation"],
+          "context": {
+            "validation_run_id": "val-20250331-a1b2c3",
+            "model_id": "lightgbm-ensemble-v3"
+          }
+        }
       }
     }
+  },
+  
+  "_comment_security": "Security settings for inter-agent communication",
+  "security": {
+    "authentication": {
+      "mechanism": "mutual_tls",
+      "token_based": true,
+      "token_lifetime": "24h",
+      "renewal_strategy": "sliding_window",
+      "multi_factor": true,
+      "certificate_pinning": true,
+      "revocation_checking": "ocsp"
+    },
+    "authorization": {
+      "mechanism": "role_based",
+      "permission_levels": ["read", "write", "execute", "admin"],
+      "scope_restriction": true,
+      "attribute_based_controls": true,
+      "delegation_capabilities": true,
+      "time_bound_access": true
+    },
+    "encryption": {
+      "transport_layer": "TLS 1.3",
+      "payload_encryption": "AES-256-GCM",
+      "key_rotation": "automatic",
+      "key_rotation_period": "30d",
+      "perfect_forward_secrecy": true,
+      "quantum_resistant_options": true
+    },
+    "integrity": {
+      "message_signing": true,
+      "replay_protection": true,
+      "tamper_detection": true,
+      "non_repudiation": true,
+      "data_provenance": true
+    },
+    "audit": {
+      "logging": {
+        "enabled": true,
+        "log_level": "info",
+        "include_payload": false,
+        "retention_period": "90d"
+      },
+      "monitoring": {
+        "enabled": true,
+        "metrics_collection": true,
+        "anomaly_detection": true,
+        "alert_thresholds": {
+          "authentication_failures": 5,
+          "authorization_failures": 3,
+          "message_validation_failures": 10,
+          "replay_attempts": 1
+        }
+      }
+    }
+  },
+  
+  "_comment_deployment": "Configuration for agent deployment",
+  "deployment": {
+    "environment": "production",
+    "deployment_mode": "kubernetes",
+    "resource_quotas": {
+      "cpu": "2 cores",
+      "memory": "4Gi",
+      "disk": "50Gi",
+      "network": "100Mbps"
+    },
+    "scaling": {
+      "min_replicas": 1,
+      "max_replicas": 5,
+      "scale_based_on": ["cpu", "queue_depth", "response_time"],
+      "auto_scaling": true
+    },
+    "dependencies": {
+      "required_services": ["database", "message-queue", "authentication", "logging", "monitoring"],
+      "compatibility": {
+        "min_api_version": "3.0.0",
+        "min_platform_version": "2.5.0"
+      }
+    },
+    "update_strategy": {
+      "strategy": "rolling",
+      "max_unavailable": "25%",
+      "max_surge": "25%",
+      "health_check": {
+        "initial_delay_seconds": 30,
+        "period_seconds": 10,
+        "timeout_seconds": 5,
+        "success_threshold": 1,
+        "failure_threshold": 3
+      }
+    }
+  },
+  
+  "_comment_metadata": "Additional metadata about this configuration",
+  "metadata": {
+    "created": "2025-03-31T09:30:00Z",
+    "created_by": "BCBS Values Development Team",
+    "last_updated": "2025-03-31T09:45:00Z",
+    "updated_by": "System Administrator",
+    "valid_from": "2025-03-31T12:00:00Z",
+    "schema_url": "https://schema.bcbs-values.local/cascade-operator/v6.0.0.json",
+    "documentation_url": "https://docs.bcbs-values.local/agents/cascade-operator",
+    "support_contact": "support@bcbs-values.local"
   }
 }
