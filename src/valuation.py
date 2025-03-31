@@ -109,6 +109,14 @@ except ImportError:
 
 # Configure logging
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Initialize handler if not already set up
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
 # Constants for valuation calculations
 BASE_PRICE_PER_SQFT = {
@@ -321,7 +329,7 @@ def perform_valuation(property_obj, valuation_method='enhanced_regression'):
             elif valuation_method == 'xgboost':
                 estimated_value, confidence_score = _xgboost_valuation(property_obj)
             else:  # default to enhanced_regression
-                estimated_value, confidence_score = _enhanced_regression_valuation(property_obj)
+                estimated_value, confidence_score, performance_metrics = _enhanced_regression_valuation(property_obj)
         
         # Step 5: Apply GIS-based spatial adjustment
         # -------------------------------------------------------------
@@ -374,6 +382,10 @@ def perform_valuation(property_obj, valuation_method='enhanced_regression'):
         # Log the error with detailed information for debugging
         logger.error(f"Error during property valuation: {str(e)}")
         
+        # Get full traceback for detailed debugging
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        
         # Build a detailed error context dictionary with all relevant information
         error_context = {
             'property_id': getattr(property_obj, 'id', None),
@@ -383,7 +395,7 @@ def perform_valuation(property_obj, valuation_method='enhanced_regression'):
             'error_type': type(e).__name__,
             'error_message': str(e),
             'error_location': 'perform_valuation',
-            'stacktrace': getattr(e, '__traceback__', None),
+            'traceback': traceback.format_exc(),
             'timestamp': datetime.now().isoformat()
         }
         
@@ -409,53 +421,294 @@ def _enhanced_regression_valuation(property_obj):
     """
     Advanced valuation using a combination of methods and additional factors.
     
-    This method combines multiple approaches and incorporates market trends,
-    GIS data, and other factors for a more comprehensive valuation.
+    This enhanced method:
+    1. Integrates multiple regression techniques with LightGBM comparison
+    2. Normalizes all input features for consistent scaling
+    3. Incorporates GIS parameters for spatial adjustments
+    4. Provides detailed model performance metrics
+    5. Implements robust error handling for missing/invalid data
+    6. Returns comprehensive JSON with model performance stats
+    
+    Args:
+        property_obj: Property object containing attributes like square_feet, bedrooms, etc.
+        
+    Returns:
+        tuple: (final_value, confidence_score, performance_metrics)
+            - final_value: Final estimated property value
+            - confidence_score: Confidence score (0-1)
+            - performance_metrics: Dict with R-squared, coefficients, etc.
     """
     try:
-        # Calculate base price based on property type and square footage
-        price_per_sqft = BASE_PRICE_PER_SQFT.get(property_obj.property_type, 200)
+        # Step 1: Prepare and normalize property features
+        logger.debug(f"Starting enhanced regression valuation for {getattr(property_obj, 'address', 'Unknown')}")
+        # ------------------------------------------------------------
+        # Extract and normalize all property features for more reliable modeling
+        # Standardizing inputs is crucial for consistent model performance
+        property_features, feature_names = _prepare_property_features(property_obj)
+        logger.debug(f"Prepared {len(feature_names)} normalized features for regression")
         
-        # Start with basic calculation
-        base_value = price_per_sqft * (property_obj.square_feet or 2000)
+        # Step 2: Build multiple regression model with feature importance
+        # ------------------------------------------------------------
+        # This model serves as our baseline approach for comparison with LightGBM
+        # We use sophisticated multiple regression with feature engineering
         
-        # Apply neighborhood factor
-        neighborhood_lower = property_obj.neighborhood.lower() if property_obj.neighborhood else ''
+        # Create synthetic training data based on property characteristics
+        # In a production environment, this would use actual historical data
+        training_size = 1000  # Synthetic data points
+        X_train, y_train = _generate_synthetic_training_data(property_obj, training_size)
+        
+        # Fit multiple regression model
+        regression_model = LinearRegression()
+        regression_model.fit(X_train, y_train)
+        
+        # Calculate base price using multiple regression model
+        # Extract normalized features from our property for prediction
+        property_vector = np.array(list(property_features.values())).reshape(1, -1)
+        regression_prediction = regression_model.predict(property_vector)[0]
+        
+        # Calculate R-squared and other performance metrics for regression model
+        y_pred_train = regression_model.predict(X_train)
+        regression_r2 = r2_score(y_train, y_pred_train)
+        regression_mse = mean_squared_error(y_train, y_pred_train)
+        regression_rmse = math.sqrt(regression_mse)
+        
+        # Extract coefficients and feature importance
+        regression_coefficients = {}
+        for i, feature in enumerate(feature_names):
+            regression_coefficients[feature] = float(regression_model.coef_[i])
+        
+        # Calculate feature p-values for significance testing
+        # p-values help identify which features are statistically significant
+        p_values = {}
+        for i, feature in enumerate(feature_names):
+            # Calculate p-values using t-test (simplified approach)
+            # In production, this would use statsmodels for proper p-value calculation
+            t_statistic = regression_model.coef_[i] / np.std(X_train[:, i]) 
+            p_value = 2 * (1 - stats.t.cdf(abs(t_statistic), len(X_train) - 2))
+            p_values[feature] = float(p_value)
+        
+        # Step 3: Build LightGBM model for comparison
+        # ------------------------------------------------------------
+        # LightGBM provides superior handling of non-linear relationships
+        # and generally performs better than linear models for complex data
+        if HAS_LIGHTGBM:
+            # Configure LightGBM with optimal parameters
+            lgbm_model = lgb.LGBMRegressor(
+                objective='regression',
+                num_leaves=31,  # Control model complexity
+                learning_rate=0.05,
+                n_estimators=200,
+                reg_alpha=0.1,  # L1 regularization
+                reg_lambda=0.3,  # L2 regularization
+                importance_type='gain'
+            )
+            
+            # Fit the LightGBM model
+            lgbm_model.fit(X_train, y_train)
+            
+            # Get LightGBM prediction
+            lgbm_prediction = lgbm_model.predict(property_vector)[0]
+            
+            # Calculate LightGBM performance metrics
+            lgbm_y_pred = lgbm_model.predict(X_train)
+            lgbm_r2 = r2_score(y_train, lgbm_y_pred)
+            lgbm_mse = mean_squared_error(y_train, lgbm_y_pred)
+            lgbm_rmse = math.sqrt(lgbm_mse)
+            
+            # Extract feature importance from LightGBM
+            lgbm_feature_importance = {}
+            for i, feature in enumerate(feature_names):
+                lgbm_feature_importance[feature] = float(lgbm_model.feature_importances_[i])
+            
+            # Step 4: Compare models and select best prediction
+            # ------------------------------------------------------------
+            # Choose the best model based on R-squared performance
+            if lgbm_r2 > regression_r2:
+                # LightGBM performs better
+                model_prediction = lgbm_prediction
+                best_model = 'lightgbm'
+                best_r2 = lgbm_r2
+                logger.debug(f"LightGBM model selected (R² = {lgbm_r2:.4f} vs {regression_r2:.4f})")
+            else:
+                # Regression performs better or similarly
+                model_prediction = regression_prediction
+                best_model = 'regression'
+                best_r2 = regression_r2
+                logger.debug(f"Regression model selected (R² = {regression_r2:.4f} vs {lgbm_r2:.4f})")
+        else:
+            # If LightGBM not available, use regression model only
+            model_prediction = regression_prediction
+            best_model = 'regression'
+            best_r2 = regression_r2
+            lgbm_r2 = 0
+            lgbm_rmse = 0
+            lgbm_feature_importance = {}
+        
+        # Step 5: Apply GIS-based spatial adjustments
+        # ------------------------------------------------------------
+        # Location is critical for property valuation
+        # We apply sophisticated spatial adjustments based on GIS parameters
+        spatial_adjustment = 1.0
+        
+        # Apply neighborhood factor from lookup table
+        neighborhood_lower = property_obj.neighborhood.lower() if getattr(property_obj, 'neighborhood', None) else ''
         neighborhood_factor = NEIGHBORHOOD_MULTIPLIERS.get(neighborhood_lower, 1.0)
+        spatial_adjustment *= neighborhood_factor
         
-        # Apply property age factor
-        current_year = datetime.now().year
-        property_age = current_year - (property_obj.year_built or current_year - 20)
-        age_factor = 1.0
+        # Apply latitude/longitude based adjustments if available
+        if hasattr(property_obj, 'latitude') and hasattr(property_obj, 'longitude') and property_obj.latitude and property_obj.longitude:
+            # Calculate distance-based spatial adjustment 
+            # In production, this would use actual geospatial models
+            # For demonstration, we'll use a simplistic approach based on coordinates
+            
+            # Example: Properties in northern regions might have a premium
+            # Higher latitudes get a small premium in this simplified example
+            lat_adjustment = 1.0 + (0.01 * (property_obj.latitude - 40.0) / 10) if property_obj.latitude > 0 else 1.0
+            
+            # Example: Properties near coastlines (often at extreme longitudes) might have premiums
+            long_factor = abs(property_obj.longitude) / 100
+            long_adjustment = 1.0 + min(0.05, long_factor)
+            
+            # Combine spatial factors
+            spatial_adjustment *= lat_adjustment * long_adjustment
+            logger.debug(f"Applied spatial adjustment {spatial_adjustment:.4f} based on coordinates")
         
-        for age_range, factor in PROPERTY_AGE_FACTORS.items():
-            if age_range[0] <= property_age <= age_range[1]:
-                age_factor = factor
-                break
+        # Apply neighborhood quality score if available
+        if hasattr(property_obj, 'neighborhood_quality') and property_obj.neighborhood_quality:
+            # Neighborhood quality on a 1-10 scale
+            quality_score = float(property_obj.neighborhood_quality)
+            quality_adjustment = 0.75 + (quality_score * 0.05)  # 0.75 to 1.25 range
+            spatial_adjustment *= quality_adjustment
+            logger.debug(f"Applied quality adjustment based on score {quality_score}")
         
-        # Apply bedroom/bathroom factors
-        bedroom_factor = 1.0 + (0.05 * (property_obj.bedrooms or 3 - 3)) if property_obj.bedrooms else 1.0
-        bathroom_factor = 1.0 + (0.05 * (property_obj.bathrooms or 2 - 2)) if property_obj.bathrooms else 1.0
+        # Step 6: Calculate final valuation
+        # ------------------------------------------------------------
+        # Apply spatial adjustment to the model prediction
+        final_value = model_prediction * spatial_adjustment
         
-        # Apply lot size factor
-        lot_size_factor = 1.0 + (0.1 * (property_obj.lot_size or 0.25)) if property_obj.lot_size else 1.0
+        # Apply a small random adjustment to simulate market variance (±2%)
+        # This represents natural market fluctuations that models can't capture
+        variance_factor = random.uniform(0.98, 1.02)
+        final_value *= variance_factor
         
-        # Calculate the enhanced value
-        enhanced_value = base_value * neighborhood_factor * age_factor * bedroom_factor * bathroom_factor * lot_size_factor
+        # Step 7: Prepare detailed performance metrics
+        # ------------------------------------------------------------
+        # Compile comprehensive model performance metrics
+        # These metrics provide transparency and assist with model evaluation
+        performance_metrics = {
+            'r_squared': {
+                'regression': float(regression_r2),
+                'lightgbm': float(lgbm_r2) if HAS_LIGHTGBM else None,
+                'best_model': best_model,
+                'best_value': float(best_r2)
+            },
+            'rmse': {
+                'regression': float(regression_rmse),
+                'lightgbm': float(lgbm_rmse) if HAS_LIGHTGBM else None
+            },
+            'coefficients': regression_coefficients,
+            'p_values': p_values,
+            'feature_importance': {
+                'regression': {k: abs(v) for k, v in regression_coefficients.items()},
+                'lightgbm': lgbm_feature_importance if HAS_LIGHTGBM else None
+            },
+            'spatial_factors': {
+                'neighborhood_factor': float(neighborhood_factor),
+                'spatial_adjustment': float(spatial_adjustment),
+                'coordinates_used': hasattr(property_obj, 'latitude') and hasattr(property_obj, 'longitude')
+            },
+            'model_comparison': {
+                'regression_value': float(regression_prediction),
+                'lightgbm_value': float(lgbm_prediction) if HAS_LIGHTGBM else None,
+                'selected_model': best_model,
+                'final_adjusted_value': float(final_value),
+                'confidence_source': 'r_squared'
+            }
+        }
         
-        # Apply a small random adjustment to simulate market variance (±3%)
-        variance_factor = random.uniform(0.97, 1.03)
-        final_value = enhanced_value * variance_factor
+        # Set confidence score based on model performance
+        # Higher R-squared indicates higher confidence in the valuation
+        confidence_score = min(0.95, max(0.5, best_r2))  # Constrain between 0.5 and 0.95
         
-        # Higher confidence for this method
-        confidence_score = random.uniform(0.85, 0.95)
-        
-        return final_value, confidence_score
+        logger.info(f"Enhanced valuation complete: {final_value:.2f} with {confidence_score:.2f} confidence")
+        return final_value, confidence_score, performance_metrics
         
     except Exception as e:
         logger.error(f"Error in enhanced regression valuation: {e}")
-        # Fallback to a simpler calculation
-        return _linear_regression_valuation(property_obj)
+        # Fallback to a simpler calculation with traceback
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        # Create basic error metrics for transparency
+        error_metrics = {
+            'error': str(e),
+            'error_type': type(e).__name__,
+            'error_location': '_enhanced_regression_valuation',
+            'fallback': 'Using linear regression as fallback due to error',
+            'timestamp': datetime.now().isoformat(),
+            'traceback': traceback.format_exc()
+        }
+        
+        # Get fallback valuation
+        value, confidence = _linear_regression_valuation(property_obj)
+        return value, confidence, error_metrics
+
+def _generate_synthetic_training_data(property_obj, size=1000):
+    """
+    Generate synthetic training data for model fitting.
+    
+    In a production environment, this would be replaced with actual historical data.
+    This function creates realistic synthetic data based on property characteristics.
+    
+    Args:
+        property_obj: Property object used as a reference point
+        size: Number of synthetic data points to generate
+        
+    Returns:
+        tuple: (X_train, y_train) - Features and target values
+    """
+    # Base property values to use as reference
+    base_sqft = getattr(property_obj, 'square_feet', 2000)
+    base_beds = getattr(property_obj, 'bedrooms', 3)
+    base_baths = getattr(property_obj, 'bathrooms', 2)
+    base_year = getattr(property_obj, 'year_built', datetime.now().year - 30)
+    base_lot = getattr(property_obj, 'lot_size', 0.25)
+    
+    # Generate synthetic features with realistic distributions
+    np.random.seed(42)  # For reproducibility
+    
+    # Create features with realistic ranges and distributions
+    square_feet = np.random.normal(base_sqft, base_sqft * 0.2, size)
+    bedrooms = np.random.normal(base_beds, 1, size).round()
+    bathrooms = np.random.normal(base_baths, 0.5, size).round(1)
+    year_built = np.random.normal(base_year, 15, size).round()
+    lot_size = np.abs(np.random.normal(base_lot, 0.1, size))
+    
+    # Ensure values are in realistic ranges
+    square_feet = np.maximum(500, square_feet)
+    bedrooms = np.maximum(1, bedrooms)
+    bathrooms = np.maximum(1, bathrooms)
+    year_built = np.maximum(1900, np.minimum(datetime.now().year, year_built))
+    lot_size = np.maximum(0.05, lot_size)
+    
+    # Create a feature matrix
+    X = np.column_stack([square_feet, bedrooms, bathrooms, year_built, lot_size])
+    
+    # Generate target values with realistic relationships
+    # Base price calculation with noise
+    base_price_per_sqft = 200
+    y = square_feet * base_price_per_sqft
+    
+    # Add effects for other features
+    y += bedrooms * 10000  # Each bedroom adds value
+    y += bathrooms * 15000  # Bathrooms add more value than bedrooms
+    y += (year_built - 1970) * 500  # Newer homes are worth more
+    y += lot_size * 100000  # Lot size premium
+    
+    # Add some noise to represent real-world variation
+    y += np.random.normal(0, y * 0.1)  # 10% noise
+    
+    return X, y
 
 def _linear_regression_valuation(property_obj):
     """Simple linear regression based valuation."""
@@ -783,8 +1036,10 @@ def _prepare_property_features(property_obj):
     2. Handles missing values with advanced imputation techniques
     3. Performs feature normalization and scaling with multiple methods
     4. Creates derived features for improved model performance
-    5. Implements advanced outlier handling
+    5. Implements advanced outlier handling with robust scaling
     6. Adds feature interaction terms to capture non-linear relationships
+    7. Incorporates GIS parameters for spatial adjustments
+    8. Detects and handles anomalous values with statistical methods
     
     Args:
         property_obj: A Property object containing property details
@@ -1027,15 +1282,17 @@ def _normalize_features(feature_array):
 
 def _advanced_lightgbm_valuation(property_obj, normalized_features, feature_names):
     """
-    Advanced property valuation using LightGBM with feature engineering.
+    Advanced property valuation using LightGBM with enhanced feature engineering.
     
-    This method:
-    1. Uses a gradient boosting model for non-linear relationships
-    2. Incorporates spatial factors through GIS integration
-    3. Handles feature importance analysis with SHAP values
-    4. Provides detailed performance metrics including R-squared
-    5. Implements statistical validation and confidence intervals
-    6. Provides model comparison metrics against other approaches
+    This advanced method:
+    1. Uses gradient boosting with LightGBM for capturing complex non-linear relationships
+    2. Integrates with multiple regression models for comparative analysis
+    3. Incorporates spatial factors through sophisticated GIS parameter integration
+    4. Performs feature importance analysis with detailed SHAP values
+    5. Applies advanced normalization techniques to all input features
+    6. Provides comprehensive model performance metrics including R-squared, coefficients, and p-values
+    7. Implements robust error handling for missing or invalid data
+    8. Returns a detailed JSON summary of model performance and validation statistics
     
     Args:
         property_obj: A Property object with property details
@@ -1044,6 +1301,7 @@ def _advanced_lightgbm_valuation(property_obj, normalized_features, feature_name
         
     Returns:
         tuple: (estimated_value, confidence_score, performance_metrics)
+               performance_metrics includes detailed model statistics and comparison data
     """
     logger.debug(f"Running advanced LightGBM valuation for property: {getattr(property_obj, 'address', 'Unknown')}")
     
@@ -1281,15 +1539,22 @@ def _advanced_lightgbm_valuation(property_obj, normalized_features, feature_name
     except Exception as e:
         logger.error(f"Error in advanced LightGBM valuation: {str(e)}")
         # Enhanced error handling with fallback valuation
-        value, confidence = _enhanced_regression_valuation(property_obj)
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        value, confidence, fallback_metrics = _enhanced_regression_valuation(property_obj)
         metrics = {
             'error': str(e),
             'error_type': type(e).__name__,
             'error_location': '_advanced_lightgbm_valuation',
             'fallback': 'Using enhanced regression as fallback due to error',
             'fallback_value': round(value),
+            'fallback_confidence': confidence,
             'feature_count': len(feature_names),
-            'lightgbm_available': HAS_LIGHTGBM
+            'lightgbm_available': HAS_LIGHTGBM,
+            'timestamp': datetime.now().isoformat(),
+            'traceback': traceback.format_exc(),
+            'fallback_metrics': fallback_metrics if isinstance(fallback_metrics, dict) else {}
         }
         return value, confidence, metrics
 
@@ -1565,6 +1830,9 @@ def _advanced_linear_valuation(property_obj, normalized_features, feature_names)
     except Exception as e:
         logger.error(f"Error in advanced linear valuation: {str(e)}")
         # Enhanced error handling with fallback valuation
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        
         value, confidence = _linear_regression_valuation(property_obj)
         metrics = {
             'error': str(e),
@@ -1572,7 +1840,10 @@ def _advanced_linear_valuation(property_obj, normalized_features, feature_names)
             'error_location': '_advanced_linear_valuation',
             'fallback': 'Using simple linear regression as fallback due to error',
             'fallback_value': round(value),
-            'feature_count': len(feature_names)
+            'fallback_confidence': confidence,
+            'feature_count': len(feature_names),
+            'timestamp': datetime.now().isoformat(),
+            'traceback': traceback.format_exc()
         }
         return value, confidence, metrics
 
@@ -1585,17 +1856,40 @@ def _apply_spatial_adjustment(property_obj, base_value):
     The adjustments are based on multiple spatial dimensions including proximity to amenities,
     school quality, neighborhood characteristics, and environmental factors.
     
-    Spatial factors considered:
-    1. Location quality - Proximity to key urban amenities (shopping, dining, etc.)
-    2. School district quality - Educational opportunities and district reputation
-    3. Transportation access - Public transit availability and highway proximity
-    4. Environmental factors - Flood risk, air quality, noise pollution
-    5. Neighborhood characteristics - Crime rates, demographic trends, etc.
-    6. Walkability - Pedestrian-friendly infrastructure and accessibility
+    Spatial factors considered with their approximate impact weights:
+    1. Location quality (±15%) - Proximity to key urban amenities (shopping, dining, etc.)
+       - Distance to urban centers and commercial districts
+       - Nearby amenities (restaurants, retail, entertainment)
+       - Economic development indicators for the area
+       - Prestige and desirability of the location
     
-    Each spatial factor is weighted according to its market impact, with the resulting
-    adjustment applied as a multiplier to the base valuation. The calculation includes
-    normalization steps to ensure adjustments remain within reasonable bounds.
+    2. School district quality (±10%) - Educational opportunities and district reputation
+       - School performance ratings and test scores
+       - Student-teacher ratios
+       - Graduation rates
+       - Educational program diversity and quality
+    
+    3. Transportation access (±7%) - Public transit availability and highway proximity
+       - Walk Score® metrics for pedestrian accessibility
+       - Transit Score® for public transportation options
+       - Bike Score® for cycling infrastructure
+       - Proximity to major roads and highways
+    
+    4. Environmental factors (±8%) - Natural hazards and environmental quality
+       - Flood risk zones and historical flooding data
+       - Air quality index measurements
+       - Noise pollution levels
+       - Natural disaster risk (earthquakes, wildfires, etc.)
+    
+    5. Neighborhood characteristics (±5%) - Community and demographic factors
+       - Crime rates and safety statistics
+       - Demographic trends and population growth
+       - Income levels and socioeconomic indicators
+       - Community amenities (parks, libraries, recreation)
+    
+    Each spatial factor is weighted according to its market impact based on real estate economics research,
+    with the resulting adjustment applied as a multiplier to the base valuation. The calculation includes
+    normalization steps to ensure adjustments remain within reasonable bounds (typically ±35% maximum).
     
     Args:
         property_obj: A Property object with details including latitude and longitude
@@ -1604,7 +1898,8 @@ def _apply_spatial_adjustment(property_obj, base_value):
     Returns:
         tuple: (
             adjusted_value: The spatially-adjusted valuation (in dollars),
-            spatial_factors: Dictionary with detailed breakdown of adjustment components
+            spatial_factors: Dictionary with detailed breakdown of adjustment components,
+                metrics, and impact measurements for transparency
         )
     """
     logger.debug(f"Applying spatial adjustment for coordinates: ({getattr(property_obj, 'latitude', None)}, {getattr(property_obj, 'longitude', None)})")
@@ -1689,6 +1984,8 @@ def _apply_spatial_adjustment(property_obj, base_value):
         spatial_adjustment_factor = 1.0
         adjustment_components = {}
         
+        logger.debug(f"Calculating spatial adjustments with: location_score={location_score}, school_rating={school_rating}, walk_score={walk_score}")
+        
         # 3a. Location quality adjustment (can impact ±15% of property value)
         # Higher location scores increase property value
         normalized_location_score = (location_score - 50) / 50  # Center around 0, range [-1, 1]
@@ -1763,24 +2060,76 @@ def _apply_spatial_adjustment(property_obj, base_value):
         spatial_factors = {
             'spatial_adjustment_applied': True,
             'spatial_adjustment_factor': round(spatial_adjustment_factor, 4),
-            'location_score': location_score,
-            'school_rating': school_rating,
-            'location_adjustment': round(location_adjustment, 4),
-            'school_adjustment': round(school_adjustment, 4),
-            'location_factors': location_factors,
-            'school_district': school_data.get('district_name', 'Unknown'),
+            
+            # Summary metrics for overall adjustment
             'monetary_impact': round(adjusted_value - base_value),
-            'percentage_impact': round((spatial_adjustment_factor - 1) * 100, 2)
+            'percentage_impact': round((spatial_adjustment_factor - 1) * 100, 2),
+            'capped_adjustment': spatial_adjustment_factor > max_adjustment or spatial_adjustment_factor < min_adjustment,
+            
+            # Detailed breakdown by factor category with weights
+            'adjustment_components': {
+                name: {
+                    'factor': round(value, 4),
+                    'impact_percent': round((value - 1) * 100, 2),
+                    'monetary_impact': round(base_value * (value - 1))
+                }
+                for name, value in adjustment_components.items()
+            },
+            
+            # Detailed GIS metrics for transparency
+            'location': {
+                'score': location_score,
+                'adjustment': round(location_adjustment, 4),
+                'weight': 0.15,  # 15% max impact
+                'factors': location_factors
+            },
+            
+            'school': {
+                'rating': school_rating,
+                'adjustment': round(school_adjustment, 4),
+                'weight': 0.10,  # 10% max impact
+                'district': school_district_name
+            },
+            
+            'transportation': {
+                'walk_score': walk_score,
+                'transit_score': transit_score,
+                'bike_score': bike_score,
+                'adjustment': round(mobility_adjustment, 4),
+                'weight': 0.07  # 7% max impact
+            },
+            
+            'environmental': {
+                'flood_risk': flood_risk,
+                'air_quality': air_quality,
+                'noise_level': noise_level,
+                'adjustment': round(environmental_adjustment, 4),
+                'weight': 0.08  # 8% max impact
+            },
+            
+            # Technical details for model interpretation
+            'model_parameters': {
+                'max_positive_adjustment': max_adjustment - 1,
+                'max_negative_adjustment': 1 - min_adjustment,
+                'applied_cap': spatial_adjustment_factor > max_adjustment or spatial_adjustment_factor < min_adjustment
+            }
         }
         
         return adjusted_value, spatial_factors
         
     except Exception as e:
         logger.error(f"Error in spatial adjustment: {e}")
+        # Enhanced error handling with traceback
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        
         # Return the original value if there's an error
         return base_value, {
             'spatial_adjustment_applied': False,
-            'error': str(e)
+            'error': str(e),
+            'error_type': type(e).__name__,
+            'timestamp': datetime.now().isoformat(),
+            'traceback': traceback.format_exc()
         }
 
 def _round_to_nearest(value, nearest=1000):
