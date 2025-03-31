@@ -1092,6 +1092,331 @@ def test_etl_data_validation_errors(app, client, auth_headers, mock_etl_pipeline
                     assert 'source' in error, "Error should include data source"
 
 
+# === API Endpoint Tests ===
+
+class TestAPIEndpoints:
+    """
+    Test suite for the enhanced API endpoints.
+    
+    This class tests all the enhanced API endpoints:
+    - /api/valuations 
+    - /api/etl-status
+    - /api/agent-status
+    
+    It verifies that each endpoint:
+    - Returns the correct HTTP status codes
+    - Handles authentication properly
+    - Returns data in the expected format
+    - Handles query parameters correctly
+    - Properly handles error cases
+    """
+    
+    @pytest.fixture
+    def api_client(self, app, seed_test_data):
+        """Create a FastAPI test client."""
+        from fastapi.testclient import TestClient
+        from api import create_api_app
+        
+        # Create FastAPI app and test client
+        fastapi_app = create_api_app()
+        return TestClient(fastapi_app)
+    
+    @pytest.fixture
+    def token_headers(self, api_client, api_key):
+        """Get authorization token and create headers."""
+        # Request a token
+        response = api_client.post(
+            "/api/token",
+            headers={"X-API-Key": api_key}
+        )
+        assert response.status_code == 200
+        token_data = response.json()
+        assert "access_token" in token_data
+        
+        # Return authorization headers
+        return {"Authorization": f"Bearer {token_data['access_token']}"}
+    
+    def test_api_valuations_endpoint(self, api_client, token_headers):
+        """
+        Test the /api/valuations endpoint.
+        
+        This test verifies that:
+        1. The endpoint returns a 200 status code for valid requests
+        2. The response contains the expected fields
+        3. Pagination works correctly
+        4. Sorting and filtering parameters are applied correctly
+        """
+        # Test basic endpoint functionality
+        response = api_client.get("/api/valuations", headers=token_headers)
+        assert response.status_code == 200, "API should return 200 OK for valid token"
+        
+        # Verify response structure
+        data = response.json()
+        assert "valuations" in data, "Response should contain 'valuations' field"
+        assert "page" in data, "Response should contain pagination info"
+        assert "limit" in data, "Response should contain limit info"
+        assert "total" in data, "Response should contain total items count"
+        assert "pages" in data, "Response should contain total pages count"
+        
+        # If there are valuations, check the structure of the first one
+        if data["valuations"]:
+            valuation = data["valuations"][0]
+            assert "property_id" in valuation, "Valuation should include property_id"
+            assert "estimated_value" in valuation, "Valuation should include estimated_value"
+            assert "valuation_method" in valuation, "Valuation should include valuation_method"
+            assert "confidence_score" in valuation, "Valuation should include confidence_score"
+        
+        # Test pagination
+        response = api_client.get("/api/valuations?page=1&limit=2", headers=token_headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["valuations"]) <= 2, "Limit parameter should restrict results"
+        
+        # Test sorting
+        response = api_client.get(
+            "/api/valuations?sort_by=estimated_value&sort_dir=desc", 
+            headers=token_headers
+        )
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify sorting order if there are at least 2 valuations
+        if len(data["valuations"]) >= 2:
+            assert data["valuations"][0]["estimated_value"] >= data["valuations"][1]["estimated_value"], \
+                "Results should be sorted by estimated_value in descending order"
+        
+        # Test filtering by neighborhood
+        response = api_client.get(
+            "/api/valuations?neighborhood=Test+Neighborhood", 
+            headers=token_headers
+        )
+        assert response.status_code == 200
+        
+        # Test filtering by valuation method
+        response = api_client.get(
+            "/api/valuations?method=enhanced_regression", 
+            headers=token_headers
+        )
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify filter was applied if there are results
+        if data["valuations"]:
+            assert all(v["valuation_method"] == "enhanced_regression" for v in data["valuations"]), \
+                "All results should have valuation_method = enhanced_regression"
+    
+    def test_api_etl_status_endpoint(self, api_client, token_headers):
+        """
+        Test the /api/etl-status endpoint.
+        
+        This test verifies that:
+        1. The endpoint returns a 200 status code for valid requests
+        2. The response contains information about ETL jobs and their status
+        3. The response includes data quality metrics and statistics
+        """
+        # Test basic endpoint functionality
+        response = api_client.get("/api/etl-status", headers=token_headers)
+        assert response.status_code == 200
+        
+        # Verify response structure
+        data = response.json()
+        assert "jobs" in data, "Response should contain ETL jobs"
+        assert "stats" in data, "Response should contain ETL statistics"
+        assert "health" in data, "Response should contain system health information"
+        assert "timestamp" in data, "Response should contain timestamp"
+        
+        # Check jobs structure if there are jobs
+        if data["jobs"]:
+            job = data["jobs"][0]
+            assert "job_type" in job, "Job should include type"
+            assert "status" in job, "Job should include status"
+            assert "start_time" in job, "Job should include start_time"
+            assert "progress" in job, "Job should include progress"
+        
+        # Test filtering by job type
+        response = api_client.get(
+            "/api/etl-status?job_type=extract", 
+            headers=token_headers
+        )
+        assert response.status_code == 200
+        
+        # Test filtering by status
+        response = api_client.get(
+            "/api/etl-status?status=completed", 
+            headers=token_headers
+        )
+        assert response.status_code == 200
+        
+        # Test filtering by timeframe
+        response = api_client.get(
+            "/api/etl-status?timeframe=today", 
+            headers=token_headers
+        )
+        assert response.status_code == 200
+        
+        # Test limiting results
+        response = api_client.get(
+            "/api/etl-status?limit=2", 
+            headers=token_headers
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["jobs"]) <= 2, "Limit parameter should restrict results"
+    
+    def test_api_agent_status_endpoint(self, api_client, token_headers):
+        """
+        Test the /api/agent-status endpoint.
+        
+        This test verifies that:
+        1. The endpoint returns a 200 status code for valid requests
+        2. The response contains information about agents and their status
+        3. The detailed agent endpoint returns additional agent information
+        """
+        # Test basic endpoint functionality
+        response = api_client.get("/api/agent-status", headers=token_headers)
+        assert response.status_code == 200
+        
+        # Verify response structure
+        data = response.json()
+        assert "agents" in data, "Response should contain agents list"
+        assert "stats" in data, "Response should contain agent statistics"
+        assert "timestamp" in data, "Response should contain timestamp"
+        
+        # Check agent structure if there are agents
+        if data["agents"]:
+            agent = data["agents"][0]
+            assert "id" in agent, "Agent should include id"
+            assert "name" in agent, "Agent should include name"
+            assert "status" in agent, "Agent should include status"
+            assert "agent_type" in agent, "Agent should include agent_type"
+            assert "success_rate" in agent, "Agent should include success_rate"
+            
+            # Test detailed agent endpoint
+            agent_id = agent["id"]
+            response = api_client.get(
+                f"/api/agent-status/{agent_id}", 
+                headers=token_headers
+            )
+            assert response.status_code == 200
+            
+            # Verify detailed agent response structure
+            agent_data = response.json()
+            assert "id" in agent_data, "Detailed agent should include id"
+            assert "logs" in agent_data, "Detailed agent should include logs"
+            assert "metrics" in agent_data, "Detailed agent should include metrics"
+            
+            # Check logs structure if there are logs
+            if agent_data["logs"]:
+                log = agent_data["logs"][0]
+                assert "timestamp" in log, "Log should include timestamp"
+                assert "level" in log, "Log should include level"
+                assert "message" in log, "Log should include message"
+    
+    def test_api_valuation_with_missing_gis_data(self, api_client, token_headers):
+        """
+        Test the /api/valuation endpoint with missing GIS data.
+        
+        This test verifies that the API correctly handles the case where GIS data is missing.
+        The API should still return a valuation, but with appropriate adjustments to the
+        confidence score and possibly a fallback valuation method.
+        """
+        # Test POST endpoint with property missing GIS coordinates
+        payload = {
+            "square_feet": 2000,
+            "bedrooms": 3,
+            "bathrooms": 2.5,
+            "year_built": 2005,
+            # Intentionally omitting latitude and longitude
+            "city": "Richland",
+            "neighborhood": "Meadow Springs",
+            "use_gis": True  # Request to use GIS even though coordinates are missing
+        }
+        
+        response = api_client.post(
+            "/api/valuation",
+            json=payload,
+            headers=token_headers
+        )
+        
+        # We should still get a 200 OK, but with warnings or adjusted confidence
+        assert response.status_code == 200, "API should handle missing GIS data gracefully"
+        
+        data = response.json()
+        assert "estimated_value" in data, "Response should include an estimated value"
+        assert "confidence_score" in data, "Response should include a confidence score"
+        
+        # The confidence score should be lower due to missing GIS data
+        assert data["confidence_score"] < 0.9, "Confidence score should be reduced for missing GIS data"
+        
+        # There should be a warning message
+        assert "warnings" in data, "Response should include warnings about missing data"
+        assert any("gis" in warning.lower() for warning in data["warnings"]), \
+            "Warnings should mention missing GIS data"
+    
+    def test_api_unauthorized_access(self, api_client):
+        """
+        Test API endpoints without authorization.
+        
+        This test verifies that API endpoints correctly reject requests without valid
+        authorization headers, returning appropriate 401 Unauthorized status codes.
+        """
+        # Test endpoints without authorization
+        endpoints = [
+            "/api/valuations",
+            "/api/etl-status",
+            "/api/agent-status"
+        ]
+        
+        for endpoint in endpoints:
+            response = api_client.get(endpoint)
+            assert response.status_code in (401, 403), \
+                f"Endpoint {endpoint} should require authorization"
+    
+    def test_api_invalid_parameters(self, api_client, token_headers):
+        """
+        Test API endpoints with invalid parameters.
+        
+        This test verifies that API endpoints correctly handle invalid parameters,
+        returning appropriate 400 Bad Request status codes with helpful error messages.
+        """
+        # Test valuations endpoint with invalid sort_by parameter
+        response = api_client.get(
+            "/api/valuations?sort_by=nonexistent_field",
+            headers=token_headers
+        )
+        assert response.status_code == 400, "API should reject invalid sort_by parameter"
+        data = response.json()
+        assert "error" in data, "Response should include error message"
+        
+        # Test valuations endpoint with invalid sort_dir parameter
+        response = api_client.get(
+            "/api/valuations?sort_dir=invalid",
+            headers=token_headers
+        )
+        assert response.status_code == 400, "API should reject invalid sort_dir parameter"
+        
+        # Test ETL status endpoint with invalid timeframe parameter
+        response = api_client.get(
+            "/api/etl-status?timeframe=invalid",
+            headers=token_headers
+        )
+        assert response.status_code == 400, "API should reject invalid timeframe parameter"
+        
+        # Test valuations endpoint with excessively large limit parameter
+        response = api_client.get(
+            "/api/valuations?limit=1000",
+            headers=token_headers
+        )
+        assert response.status_code == 400, "API should reject excessive limit parameter"
+        
+        # Test agent status endpoint with nonexistent agent ID
+        response = api_client.get(
+            "/api/agent-status/nonexistent-agent",
+            headers=token_headers
+        )
+        assert response.status_code == 404, "API should return 404 for nonexistent agent"
+
+
 # Run tests if executed directly
 if __name__ == '__main__':
     pytest.main(['-xvs', __file__])
