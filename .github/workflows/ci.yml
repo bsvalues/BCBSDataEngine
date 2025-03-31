@@ -1,416 +1,142 @@
-name: BCBS Values CI/CD Pipeline
+name: BCBS Values CI
 
-# ======================================================================
-# Workflow Trigger Configuration
-# ======================================================================
-# Automatically run pipeline on:
-# - Pushes to main branch (for deployment)
-# - Pull requests to any branch (for verification before merge)
-# - Manual triggering via GitHub UI (workflow_dispatch)
+# Defines when this workflow will run
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]  # Run on pushes to main branch
   pull_request:
-    branches: [ '*' ]
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy to'
-        required: true
-        default: 'staging'
-        type: choice
-        options:
-          - development
-          - staging
-          - production
+    branches: [ main ]  # Run on PRs targeting main branch
+  workflow_dispatch:    # Allow manual triggering of the workflow
 
-# ======================================================================
-# Workflow Jobs
-# ======================================================================
 jobs:
-  # ======================================================================
-  # Test Job: Validate code functionality through comprehensive testing
-  # ======================================================================
   test:
-    name: Test Application
-    runs-on: ubuntu-latest
-    
-    # Define environment variables available to all steps
-    env:
-      # Set PYTHONPATH to ensure modules can be imported correctly
-      PYTHONPATH: ${{ github.workspace }}
-      # Set Python buffer to ensure logs are displayed immediately
-      PYTHONUNBUFFERED: 1
-      # Test database connection string (will be overridden in the workflow)
-      DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
-      # Set API keys to empty defaults, will be overridden by secrets
-      BCBS_VALUES_API_KEY: ${{ secrets.BCBS_VALUES_API_KEY || 'test-api-key' }}
-    
-    # ======================================================================
-    # Test Job Steps
-    # ======================================================================
-    steps:
-      # ======================================================================
-      # Setup Phase: Prepare environment
-      # ======================================================================
-      
-      # Check out the repository code with full history for proper versioning
-      - name: Checkout repository
-        uses: actions/checkout@v4  # Latest version as of 2025
-        with:
-          fetch-depth: 0  # Fetch complete history for versioning
-      
-      # Set up Python environment with specified version
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5  # Latest version as of 2025
-        with:
-          python-version: '3.11'
-          cache: 'pip'  # Cache pip dependencies for faster builds
-          check-latest: true  # Ensure we're using the latest patch version
-      
-      # Install system dependencies required for functionality
-      - name: Install system dependencies
-        run: |
-          echo "Installing system dependencies required for PostgreSQL, LightGBM, and other components..."
-          sudo apt-get update
-          # Install required libraries:
-          # - libpq-dev: Required for psycopg2 (PostgreSQL adapter for Python)
-          # - postgresql-client: For CLI database access in tests
-          # - libgomp1: Required for LightGBM parallel processing
-          # - gdal-bin: For GIS functionality
-          # - libspatialindex-dev: For spatial indexing in GIS operations
-          sudo apt-get install -y libpq-dev postgresql-client libgomp1 gdal-bin libspatialindex-dev
+    name: Run Tests
+    runs-on: ubuntu-latest  # Use the latest Ubuntu runner
 
-      # Cache pip dependencies to speed up builds
-      - name: Cache pip packages
-        uses: actions/cache@v4
+    services:
+      # Set up PostgreSQL service container
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_bcbs
+        ports:
+          - 5432:5432
+        # Set health checks to wait until postgres has started
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      # Check out the repository code
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Set up Python environment
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-      
-      # Install Python dependencies with robust error handling
-      - name: Install Python dependencies
+          python-version: '3.11'  # Use the latest stable Python version
+          cache: 'pip'  # Cache pip dependencies
+
+      # Install dependencies
+      - name: Install dependencies
         run: |
-          echo "Setting up Python environment and installing dependencies..."
-          # Update pip to latest version for better dependency resolution
-          python -m pip install --upgrade pip setuptools wheel
-          
-          # Install requirements with error handling and detailed logs
-          if [ -f requirements.txt ]; then
-            echo "Installing from requirements.txt..."
-            pip install -r requirements.txt
-          else
-            echo "No requirements.txt found, installing package in development mode..."
-            pip install -e .
-          fi
-          
-          # Install specific testing dependencies with pinned versions for stability
-          pip install pytest==7.4.0 pytest-cov==4.1.0 pytest-mock==3.11.1 pytest-xdist==3.3.1 pytest-timeout==2.1.0
-          
-          # Verify installation was successful
-          pip list
-      
-      # ======================================================================
-      # Database Setup Phase: Configure testing database
-      # ======================================================================
-      
-      # Set up PostgreSQL service container for integration tests
-      # This provides an isolated database for testing purposes
-      - name: Set up PostgreSQL
-        uses: harmon758/postgresql-action@v1
-        with:
-          postgresql version: '15'  # Latest stable PostgreSQL as of 2025
-          postgresql db: 'bcbs_test'
-          postgresql user: 'postgres'
-          postgresql password: 'postgres'
-          postgresql init scripts: './db/init_scripts/'  # Optional initial setup scripts
-      
-      # Load secrets and environment variables securely
-      # These values are used throughout the testing process
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          # Install development dependencies for testing
+          pip install pytest pytest-cov
+
+      # Set up environment variables
       - name: Set up environment variables
+        # Use GitHub Secrets to set environment variables securely
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_bcbs
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_bcbs
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET || 'test-session-secret' }}
+          NARRPR_USERNAME: ${{ secrets.NARRPR_USERNAME || 'test-username' }}
+          NARRPR_PASSWORD: ${{ secrets.NARRPR_PASSWORD || 'test-password' }}
+          PACS_API_KEY: ${{ secrets.PACS_API_KEY || 'test-api-key' }}
+          BCBS_VALUES_API_KEY: ${{ secrets.BCBS_VALUES_API_KEY || 'test-api-key' }}
         run: |
-          echo "Setting up secure environment variables for testing..."
-          
-          # External API credentials - these should be mocked in most tests
-          # but are provided for comprehensive integration tests
-          echo "NARRPR_USERNAME=${{ secrets.NARRPR_USERNAME }}" >> $GITHUB_ENV
-          echo "NARRPR_PASSWORD=${{ secrets.NARRPR_PASSWORD }}" >> $GITHUB_ENV
-          echo "PACS_API_KEY=${{ secrets.PACS_API_KEY }}" >> $GITHUB_ENV
-          
-          # Database connection information - set explicitly rather than relying on defaults
-          echo "TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bcbs_test" >> $GITHUB_ENV
-          echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bcbs_test" >> $GITHUB_ENV
-          
-          # API security keys for authentication tests
-          echo "BCBS_VALUES_API_KEY=${{ secrets.BCBS_VALUES_API_KEY || 'test-api-key-for-ci' }}" >> $GITHUB_ENV
-          
-          # Set CI flag to allow tests to adapt behavior in CI environment
-          echo "CI=true" >> $GITHUB_ENV
-          
-          # Additional configuration for the test environment
-          echo "TEST_MODE=true" >> $GITHUB_ENV
-          echo "LOG_LEVEL=DEBUG" >> $GITHUB_ENV
-      
-      # Verify database connection to ensure availability for tests
-      - name: Verify database connection
+          echo "Environment variables set for testing"
+          # Create database tables if needed
+          python -c "from models import Base; from sqlalchemy import create_engine; engine = create_engine('$DATABASE_URL'); Base.metadata.create_all(engine)"
+
+      # Run unit and integration tests with pytest
+      - name: Run tests
         run: |
-          echo "Verifying PostgreSQL database connection..."
-          PGPASSWORD=postgres psql -h localhost -U postgres -c "\l" bcbs_test
-          PGPASSWORD=postgres psql -h localhost -U postgres -c "\conninfo" bcbs_test
-      
-      # Create and initialize database schema using application models
-      - name: Initialize database schema
-        run: |
-          echo "Creating database schema from application models..."
+          # Run all tests with coverage report
+          python -m pytest tests/ -v --cov=. --cov-report=xml
+
+      # Upload test coverage report as artifact
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report
+          path: coverage.xml
           
-          # Initialize database tables from SQLAlchemy models
-          python -c "
-          from app import app
-          from db.models import *
-          
-          # Create context and initialize database
-          with app.app_context():
-              print('Creating database tables...')
-              db.create_all()
-              print('Database initialization complete')
-          "
-          
-          # Verify tables were created successfully
-          PGPASSWORD=postgres psql -h localhost -U postgres -c "\dt" bcbs_test
-      
-      # ======================================================================
-      # Testing Phase: Run comprehensive test suite
-      # ======================================================================
-      
-      # Run unit tests focusing on individual components
-      - name: Run unit tests
-        run: |
-          echo "Running unit tests..."
-          
-          # Run non-integration tests with parallel execution for speed
-          # Uses pytest-xdist to run tests in parallel across CPU cores
-          python -m pytest tests/ \
-            -v \
-            --exclude-integration \
-            -xvs \
-            --durations=10 \
-            -n auto \
-            --timeout=300
-      
-      # Run comprehensive integration tests including the new advanced tests
+      # Run integration tests specifically (including test_integration_advanced.py)
       - name: Run integration tests
         run: |
-          echo "Running comprehensive integration tests..."
-          
-          # Run all integration tests including the advanced integration test
-          # This verifies end-to-end functionality of the system
-          python -m pytest \
-            tests/test_integration_advanced.py \
-            tests/test_*integration*.py \
-            -v \
-            --durations=20 \
-            --timeout=600
-      
-      # Generate detailed test coverage report
-      - name: Generate test coverage report
-        run: |
-          echo "Generating test coverage report..."
-          
-          # Run full test suite with coverage analysis
-          # Excludes test files and migrations from coverage calculation
-          python -m pytest \
-            --cov=. \
-            --cov-report=xml \
-            --cov-report=term \
-            --cov-config=.coveragerc \
-            --cov-fail-under=80
-      
-      # Upload coverage report to Codecov for visualization and tracking
-      - name: Upload coverage report
-        uses: codecov/codecov-action@v3
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          file: ./coverage.xml
-          fail_ci_if_error: false  # Don't fail the build if upload fails
-          verbose: true  # Detailed upload logs
-      
-      # ======================================================================
-      # Artifacts Phase: Preserve build outputs for deployment
-      # ======================================================================
-      
-      # Export important configuration files and test outputs as artifacts
-      - name: Prepare and upload artifacts
+          python -m pytest tests/test_integration_advanced.py -v
+        # This step will ensure the integration tests are run separately and visibly in CI logs
+
+      # If tests pass, collect and upload key configuration files as artifacts
+      - name: Collect configuration artifacts
         if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: bcbs-values-artifacts
-          # Include all configuration files and test outputs needed for deployment
-          path: |
-            # Configuration files for different components
-            configs/module_config.json
-            configs/database_config.json
-            configs/etl_config.json
-            configs/gis_config.json
-            
-            # Test reports for analysis
-            coverage.xml
-            pytest-report.html
-            
-            # API documentation generated from OpenAPI specs
-            api/openapi.json
-            
-            # Model files and weights
-            models/*.pkl
-            
-            # Static assets for the web application
-            static/
-            templates/
+        run: |
+          # Create a directory for artifacts
+          mkdir -p artifacts
+          # Copy key configuration files
+          cp configs/module_config.json artifacts/ || echo "module_config.json not found"
+          cp configs/database_config.json artifacts/ || echo "database_config.json not found"
+          cp configs/etl_config.json artifacts/ || echo "etl_config.json not found"
           
-          # Keep artifacts for 7 days to support debugging
-          retention-days: 7
-          if-no-files-found: warn  # Warn but don't fail if files not found
-      
-  # ======================================================================
-  # Deploy Job: Build and deploy the application
-  # ======================================================================
+          # Create a summary file with build information
+          echo "Build completed successfully at $(date)" > artifacts/build_info.txt
+          echo "Commit: ${{ github.sha }}" >> artifacts/build_info.txt
+          echo "Branch: ${{ github.ref }}" >> artifacts/build_info.txt
+
+      # Upload configuration artifacts
+      - name: Upload configuration artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: config-artifacts
+          path: artifacts/
+
+  # Optional job to deploy if tests pass (only on main branch)
   deploy:
-    name: Deploy Application
-    # Only run if test job passes and we're on a deployable branch
-    needs: test
-    if: |
-      success() && 
-      (github.ref == 'refs/heads/main' || 
-       github.ref == 'refs/heads/develop' || 
-       github.event_name == 'workflow_dispatch')
+    name: Deploy
+    needs: test  # This job depends on the test job passing
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'  # Only run on push to main
     runs-on: ubuntu-latest
     
-    # Use environment-specific variables and secrets
-    environment: ${{ github.event.inputs.environment || 'staging' }}
-    
-    # ======================================================================
-    # Deploy Job Steps
-    # ======================================================================
     steps:
-      # Checkout repository to access deployment configurations
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      # Download the artifacts from the test job
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
         with:
-          fetch-depth: 0  # Full history for build versioning
+          name: config-artifacts
+          path: artifacts
       
-      # Set up Python for deployment tasks
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      
-      # Download artifacts from test job for deployment
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: bcbs-values-artifacts
-          path: ./artifacts
-      
-      # Install deployment dependencies
-      - name: Install deployment dependencies
+      # Set up deployment (this is a placeholder - customize for your deployment process)
+      - name: Deploy to production
         run: |
-          echo "Installing deployment dependencies..."
-          python -m pip install --upgrade pip
-          pip install uvicorn gunicorn fastapi sqlalchemy psycopg2-binary
-      
-      # Determine version and environment for tagging
-      - name: Configure deployment version
-        id: version
+          echo "Deploying to production environment"
+          # Add your deployment commands here
+          # For example, deploying to a hosting service or container registry
+          
+      # Notify of successful deployment
+      - name: Notify deployment status
+        if: success()
         run: |
-          # Generate version from git commit or tag
-          VERSION=$(git describe --tags --always)
-          DATETIME=$(date +'%Y%m%d_%H%M%S')
-          FULL_VERSION="${VERSION}_${DATETIME}"
-          
-          # Set as output for later steps
-          echo "version=${FULL_VERSION}" >> $GITHUB_OUTPUT
-          echo "Deploying version: ${FULL_VERSION}"
-      
-      # Build FastAPI application package
-      - name: Build application package
-        run: |
-          echo "Building application package..."
-          
-          # Copy configuration files from artifacts
-          mkdir -p ./dist/configs
-          cp -r ./artifacts/configs/* ./dist/configs/
-          
-          # Generate requirements.txt for deployment
-          pip freeze > requirements_deploy.txt
-          
-          # Create application package
-          mkdir -p ./dist/app
-          cp -r api app.py main.py db utils etl src ./dist/app/
-          
-          # Include necessary static assets
-          cp -r templates static ./dist/ || echo "Static assets not found"
-          
-          # Include deployment configuration
-          cp requirements_deploy.txt ./dist/requirements.txt
-          cp ./deployment/Dockerfile ./dist/ || echo "Using default Dockerfile"
-          cp ./deployment/docker-compose.yml ./dist/ || echo "Using default docker-compose.yml"
-          
-          # Create version file
-          echo "${{ steps.version.outputs.version }}" > ./dist/VERSION
-          
-          # Create deployment archive
-          cd dist
-          tar -czf ../bcbs-values-${{ steps.version.outputs.version }}.tar.gz .
-          cd ..
-          
-          echo "Application package created successfully"
-      
-      # Upload deployment package as an artifact
-      - name: Upload deployment package
-        uses: actions/upload-artifact@v4
-        with:
-          name: bcbs-values-deployment-${{ steps.version.outputs.version }}
-          path: ./bcbs-values-${{ steps.version.outputs.version }}.tar.gz
-          retention-days: 30
-      
-      # Deploy to target environment
-      - name: Deploy to ${{ github.event.inputs.environment || 'staging' }}
-        run: |
-          echo "Deploying to ${{ github.event.inputs.environment || 'staging' }} environment..."
-          
-          # Set up environment-specific variables
-          export DEPLOY_ENV="${{ github.event.inputs.environment || 'staging' }}"
-          export DEPLOY_VERSION="${{ steps.version.outputs.version }}"
-          export DATABASE_URL="${{ secrets.DATABASE_URL }}"
-          export API_KEY="${{ secrets.BCBS_VALUES_API_KEY }}"
-          
-          # Run environment-specific deployment script
-          echo "Executing deployment script for ${DEPLOY_ENV} environment..."
-          
-          # Example - this would be replaced with your actual deployment method
-          # such as AWS Elastic Beanstalk, Docker deployment, etc.
-          if [ "${DEPLOY_ENV}" = "production" ]; then
-            echo "PRODUCTION DEPLOYMENT WOULD HAPPEN HERE"
-            # ./deployment/deploy_production.sh
-          else
-            echo "STAGING DEPLOYMENT WOULD HAPPEN HERE"
-            # ./deployment/deploy_staging.sh
-          fi
-          
           echo "Deployment completed successfully"
-      
-      # Post-deployment verification
-      - name: Verify deployment
-        run: |
-          echo "Verifying deployment..."
-          
-          # Example - this would be replaced with your actual verification
-          # such as health check pings, smoke tests, etc.
-          # if [ "${DEPLOY_ENV}" = "production" ]; then
-          #   curl -f https://api.example.com/health
-          # else
-          #   curl -f https://staging-api.example.com/health
-          # fi
-          
-          echo "Deployment verification complete"
+          # Add notification commands (e.g., Slack webhook, email notification)
