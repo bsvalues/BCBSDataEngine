@@ -1,24 +1,26 @@
 [tool.poetry]
 name = "bcbs-values"
 version = "0.1.0"
-description = "BCBS Values - Real Estate Valuation Platform for Benton County"
-authors = ["Replit"]
+description = "BCBS Values - Property Valuation"
+authors = ["BCBS Values Team"]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<4.0"
-flask = "^2.3.3"
-flask-sqlalchemy = "^3.1.1"
-requests = "^2.31.0"
+python = "^3.11"
+flask = "^2.0.1"
+flask-sqlalchemy = "^3.0.0"
+flask-wtf = "^1.0.0"
+wtforms = "^3.0.0"
+pytest = "^7.0.0"
+requests = "^2.0.0"
 python-dotenv = "^1.0.0"
-flask-migrate = "^4.0.5"
-flask-dance = "^7.0.0"
-werkzeug = "^2.3.7"
-pandas = "^2.1.4"
-numpy = "^1.26.4"
-scikit-learn = "^1.4.0"
-lightgbm = "^4.1.0"
-xgboost = "^2.0.3"
-statsmodels = "^0.14.1"
+pandas = "^2.0.0"
+numpy = "^1.0.0"
+scikit-learn = "^1.0.0"
+lightgbm = "^3.0.0"
+xgboost = "^1.0.0"
+statsmodels = "^0.13.0"
+geopy = "^2.0.0"
+psycopg2-binary = "^2.9.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

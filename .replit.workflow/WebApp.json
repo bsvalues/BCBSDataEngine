@@ -1,23 +1,15 @@
 {
-  "displayName": "Web Application",
-  "description": "Starts the BCBS Values web application",
-  "icon": "server",
-  "colorIndex": 3,
-  "entrypoint": "main.py",
-  "ignorePorts": false,
-  "detached": true,
-  "terminalDarkTheme": true,
-  "interpreter": {
-    "type": "python3",
-    "module": {}
+  "run": {
+    "internalCmd": "python start_webapp.py",
+    "description": "Run the BCBS Values web application",
+    "label": "WebApp"
   },
-  "ports": [
-    {
-      "internalPort": 5002,
-      "externalPort": 5002,
-      "description": "Web user interface",
-      "label": "WebApp",
-      "export": true
-    }
-  ]
+  "display": {
+    "port": 5002,
+    "protocol": "http"
+  },
+  "environment": {
+    "pythonPath": "python -m",
+    "DATABASE_URL": "$DATABASE_URL"
+  }
 }

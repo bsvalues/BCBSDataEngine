@@ -1,23 +1,15 @@
 {
-  "id": "API",
-  "name": "API",
-  "icon": "🔌",
-  "description": "Real estate valuation API server",
-  "documentation": "FastAPI server for BCBS Property Valuation System",
-  "type": "script",
-  "run_command": [
-    "python",
-    "run_api.py"
-  ],
-  "entrypoint": "api.py",
-  "public_port": 5001,
-  "preferred_port": 5001,
-  "restart_policy": "on-failure",
-  "categories": [
-    "api"
-  ],
-  "dependencies": [
-    "fastapi",
-    "uvicorn"
-  ]
+  "run": {
+    "internalCmd": "python api.py",
+    "description": "Run the BCBS Values API server",
+    "label": "API"
+  },
+  "display": {
+    "port": 5001,
+    "protocol": "http"
+  },
+  "environment": {
+    "pythonPath": "python -m",
+    "DATABASE_URL": "$DATABASE_URL"
+  }
 }
