@@ -15,9 +15,12 @@ dependencies = [
   "flask",
   "flask-sqlalchemy",
   "flask-login",
+  "flask-wtf",
+  "flask-migrate",
   "werkzeug",
   "sqlalchemy",
   "psycopg2-binary",
+  "email-validator",
 ]
 
 [project.urls]

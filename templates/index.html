@@ -1,91 +1,201 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 
-{% block title %}Welcome{% endblock %}
+{% block title %}Home - BCBS Property Valuation{% endblock %}
 
 {% block content %}
-<div class="px-4 py-5 my-5 text-center">
-    <i class="bi bi-houses display-1 text-primary mb-3"></i>
-    <h1 class="display-5 fw-bold">BCBS Values</h1>
-    <div class="col-lg-8 mx-auto">
-        <p class="lead mb-4">
-            Advanced real estate valuation platform for Benton County, Washington. 
-            Combining machine learning with comprehensive property data to deliver accurate valuations.
-        </p>
-        <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
-            {% if current_user.is_authenticated %}
-            <a href="{{ url_for('main.dashboard') }}" class="btn btn-primary btn-lg px-4 gap-3">Go to Dashboard</a>
-            {% else %}
-            <a href="{{ url_for('auth.login') }}" class="btn btn-primary btn-lg px-4 gap-3">Log In</a>
-            <a href="{{ url_for('auth.register') }}" class="btn btn-outline-secondary btn-lg px-4">Register</a>
-            {% endif %}
-        </div>
-    </div>
-</div>
-
-<div class="container py-5">
-    <div class="row g-4 py-5 row-cols-1 row-cols-lg-3">
-        <div class="col d-flex align-items-start">
-            <div class="icon-square text-body-emphasis bg-body-secondary d-inline-flex align-items-center justify-content-center fs-4 flex-shrink-0 me-3 p-3 rounded">
-                <i class="bi bi-graph-up-arrow"></i>
-            </div>
-            <div>
-                <h3 class="fs-2 text-body-emphasis">Accurate Valuations</h3>
-                <p>Using advanced machine learning algorithms trained on extensive Benton County property data to provide precise valuations.</p>
-            </div>
-        </div>
-        <div class="col d-flex align-items-start">
-            <div class="icon-square text-body-emphasis bg-body-secondary d-inline-flex align-items-center justify-content-center fs-4 flex-shrink-0 me-3 p-3 rounded">
-                <i class="bi bi-geo-alt"></i>
-            </div>
-            <div>
-                <h3 class="fs-2 text-body-emphasis">GIS Integration</h3>
-                <p>Incorporates Geographic Information System data for advanced spatial analysis and neighborhood quality assessment.</p>
-            </div>
-        </div>
-        <div class="col d-flex align-items-start">
-            <div class="icon-square text-body-emphasis bg-body-secondary d-inline-flex align-items-center justify-content-center fs-4 flex-shrink-0 me-3 p-3 rounded">
-                <i class="bi bi-database-check"></i>
-            </div>
-            <div>
-                <h3 class="fs-2 text-body-emphasis">Comprehensive Data</h3>
-                <p>Leveraging data from multiple sources including MLS, NARRPR, and PACS to ensure complete property insights.</p>
-            </div>
-        </div>
-    </div>
-</div>
-
 <div class="container">
-    <div class="p-5 mb-4 bg-dark rounded-3">
-        <div class="container-fluid py-5">
-            <h2 class="display-5 fw-bold">How It Works</h2>
-            <p class="col-md-8 fs-4">Our system combines data extraction, machine learning, and spatial analysis to deliver accurate property valuations.</p>
-            <div class="row mt-4">
-                <div class="col-md-4 mb-3">
-                    <div class="card h-100">
-                        <div class="card-body">
-                            <h5 class="card-title"><i class="bi bi-1-circle"></i> Add Your Property</h5>
-                            <p class="card-text">Enter your property details or import from county records.</p>
+    <!-- Hero Section -->
+    <section class="my-5 text-center">
+        <div class="py-5">
+            <h1 class="display-4 fw-bold">Benton County Property Valuation</h1>
+            <p class="lead">
+                Advanced AI-powered real estate valuation platform using machine learning, 
+                interactive design, and intelligent data visualization.
+            </p>
+            <div class="d-flex justify-content-center gap-3 mt-4">
+                <a href="/dashboard" class="btn btn-primary btn-lg">
+                    <i class="bi bi-speedometer2"></i> View Dashboard
+                </a>
+                <a href="/properties" class="btn btn-outline-primary btn-lg">
+                    <i class="bi bi-buildings"></i> Browse Properties
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="my-5">
+        <h2 class="text-center mb-4">Key Features</h2>
+        <div class="row g-4">
+            <div class="col-md-4">
+                <div class="card h-100 border-0 bg-primary bg-opacity-10">
+                    <div class="card-body text-center">
+                        <div class="feature-icon bg-primary text-white">
+                            <i class="bi bi-graph-up-arrow"></i>
                         </div>
+                        <h3 class="card-title mt-4">Advanced Valuation</h3>
+                        <p class="card-text">
+                            Utilizing multiple machine learning models to provide accurate 
+                            property valuations based on comprehensive feature analysis.
+                        </p>
                     </div>
                 </div>
-                <div class="col-md-4 mb-3">
-                    <div class="card h-100">
-                        <div class="card-body">
-                            <h5 class="card-title"><i class="bi bi-2-circle"></i> Choose Valuation Method</h5>
-                            <p class="card-text">Select from basic, enhanced ML, or advanced GIS valuation methods.</p>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100 border-0 bg-success bg-opacity-10">
+                    <div class="card-body text-center">
+                        <div class="feature-icon bg-success text-white">
+                            <i class="bi bi-map"></i>
                         </div>
+                        <h3 class="card-title mt-4">GIS Integration</h3>
+                        <p class="card-text">
+                            Spatial data integration for location-based analysis, providing 
+                            insights into neighborhood quality and proximity features.
+                        </p>
                     </div>
                 </div>
-                <div class="col-md-4 mb-3">
-                    <div class="card h-100">
-                        <div class="card-body">
-                            <h5 class="card-title"><i class="bi bi-3-circle"></i> Get Your Valuation</h5>
-                            <p class="card-text">Receive detailed valuation with confidence scores and market insights.</p>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100 border-0 bg-info bg-opacity-10">
+                    <div class="card-body text-center">
+                        <div class="feature-icon bg-info text-white">
+                            <i class="bi bi-bar-chart"></i>
                         </div>
+                        <h3 class="card-title mt-4">Interactive Analytics</h3>
+                        <p class="card-text">
+                            Dynamic dashboards and visualizations allowing users to explore 
+                            property data and perform custom analysis.
+                        </p>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
+    </section>
+
+    <!-- Data Sources Section -->
+    <section class="my-5">
+        <h2 class="text-center mb-4">Comprehensive Data Sources</h2>
+        <div class="row align-items-center">
+            <div class="col-lg-6">
+                <img src="/static/img/data-sources.svg" class="img-fluid rounded shadow" alt="Data sources visualization" onerror="this.src='https://via.placeholder.com/600x400?text=Data+Sources+Visualization'">
+            </div>
+            <div class="col-lg-6">
+                <div class="ps-lg-4">
+                    <h3 class="mb-3">Multiple Data Integration</h3>
+                    <p>
+                        Our platform integrates data from multiple authoritative sources to create 
+                        a comprehensive view of the property market in Benton County, Washington.
+                    </p>
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item bg-transparent"><i class="bi bi-check-circle-fill text-success me-2"></i> Multiple Listing Service (MLS) data</li>
+                        <li class="list-group-item bg-transparent"><i class="bi bi-check-circle-fill text-success me-2"></i> National Association of REALTORS® (NARRPR)</li>
+                        <li class="list-group-item bg-transparent"><i class="bi bi-check-circle-fill text-success me-2"></i> Public Records and Assessment Data (PACS)</li>
+                        <li class="list-group-item bg-transparent"><i class="bi bi-check-circle-fill text-success me-2"></i> Geographic Information System (GIS) spatial data</li>
+                        <li class="list-group-item bg-transparent"><i class="bi bi-check-circle-fill text-success me-2"></i> Historical transaction records</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Valuation Methodology Section -->
+    <section class="my-5 py-5 bg-light rounded">
+        <div class="container">
+            <h2 class="text-center mb-5">Valuation Methodology</h2>
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <div class="methodology-card text-center">
+                        <div class="methodology-icon">
+                            <span class="method-number">1</span>
+                        </div>
+                        <h4 class="mt-4">Basic Valuation</h4>
+                        <p>
+                            Traditional comparative market analysis using 
+                            square footage, bedrooms, bathrooms, and property age.
+                        </p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="methodology-card text-center">
+                        <div class="methodology-icon">
+                            <span class="method-number">2</span>
+                        </div>
+                        <h4 class="mt-4">Enhanced ML</h4>
+                        <p>
+                            Machine learning models including linear regression, 
+                            ridge regression, and gradient boosting for improved accuracy.
+                        </p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="methodology-card text-center">
+                        <div class="methodology-icon">
+                            <span class="method-number">3</span>
+                        </div>
+                        <h4 class="mt-4">Advanced GIS</h4>
+                        <p>
+                            Incorporates spatial data analysis including location quality, 
+                            proximity to amenities, and neighborhood metrics.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Call to Action -->
+    <section class="my-5 text-center">
+        <div class="p-5 bg-primary bg-opacity-10 rounded">
+            <h2 class="mb-4">Start Exploring Property Valuations</h2>
+            <p class="lead mb-4">
+                Access our interactive dashboard to explore property valuations, 
+                market trends, and in-depth property analysis.
+            </p>
+            <a href="/dashboard" class="btn btn-primary btn-lg">
+                <i class="bi bi-speedometer2"></i> Go to Dashboard
+            </a>
+        </div>
+    </section>
 </div>
+{% endblock %}
+
+{% block additional_head %}
+<style>
+    .feature-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 4rem;
+        height: 4rem;
+        font-size: 2rem;
+        border-radius: 50%;
+    }
+    
+    .methodology-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 5rem;
+        height: 5rem;
+        font-size: 2rem;
+        border-radius: 50%;
+        background-color: var(--bs-primary);
+        color: white;
+    }
+    
+    .method-number {
+        font-size: 2.5rem;
+        font-weight: bold;
+    }
+    
+    .methodology-card {
+        padding: 2rem;
+        height: 100%;
+        transition: transform 0.3s;
+    }
+    
+    .methodology-card:hover {
+        transform: translateY(-5px);
+    }
+</style>
 {% endblock %}

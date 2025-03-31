@@ -1,4 +1,4 @@
-from flask import Flask, render_template, send_from_directory, redirect
+from flask import Flask, render_template, send_from_directory, redirect, url_for
 import os
 import json
 
@@ -7,8 +7,8 @@ app.secret_key = os.environ.get("SESSION_SECRET", "bcbs_values_session_secret_ke
 
 @app.route('/')
 def index():
-    """Redirect to dashboard page"""
-    return redirect('/dashboard')
+    """Redirect to interactive dashboard page"""
+    return redirect('/interactive-dashboard')
 
 @app.route('/dashboard')
 def dashboard():
@@ -18,6 +18,11 @@ def dashboard():
         html_content = f.read()
     return html_content
 
+@app.route('/interactive-dashboard')
+def interactive_dashboard():
+    """Render the new React-based interactive dashboard"""
+    return render_template('reactive_dashboard.html', title='Benton County Property Valuation Dashboard')
+
 @app.route('/demo')
 def demo():
     """Serve the dashboard_demo.html file"""
@@ -25,6 +30,11 @@ def demo():
     with open('dashboard_demo.html', 'r') as f:
         html_content = f.read()
     return html_content
+
+@app.route('/static/<path:path>')
+def serve_static(path):
+    """Serve static files from the static directory"""
+    return send_from_directory('static', path)
 
 @app.route('/<path:path>')
 def serve_file(path):

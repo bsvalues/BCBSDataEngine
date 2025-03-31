@@ -1,0 +1,1784 @@
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement, TimeScale, Filler, RadialLinearScale, DoughnutController } from 'chart.js';
+import { Line, Bar, Pie, Doughnut } from 'react-chartjs-2';
+import 'chartjs-adapter-date-fns'; // For time scale
+import { debounce } from 'lodash'; // For search optimization
+
+// Register Chart.js components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  ArcElement,
+  TimeScale,
+  Filler,
+  Title,
+  Tooltip,
+  Legend,
+  RadialLinearScale,
+  DoughnutController
+);
+
+/**
+ * Dashboard Component
+ * 
+ * This component fetches property valuation data from the API and displays it in a
+ * filterable table and interactive visualizations. It includes options for filtering 
+ * by neighborhood, price range, property type, and date, and handles loading states 
+ * and errors gracefully.
+ * 
+ * Key Features:
+ * - Data fetching with loading indicators and error handling
+ * - Interactive filtering by neighborhood, price range, property type, and date
+ * - Real-time search functionality with debounce optimization
+ * - Tabular display of property valuations with sortable columns
+ * - Advanced data visualization with Chart.js showing trends and distributions
+ * - Responsive design with Tailwind CSS
+ * - Detailed property information with advanced metrics
+ */
+const Dashboard = () => {
+  // State for storing property valuations data
+  const [properties, setProperties] = useState([]);
+  // State for tracking loading status
+  const [loading, setLoading] = useState(true);
+  // State for storing any error messages
+  const [error, setError] = useState(null);
+  // State for tracking filter values
+  const [filters, setFilters] = useState({
+    neighborhood: '',
+    minValue: '',
+    maxValue: '',
+    propertyType: '',
+    fromDate: '',
+    toDate: '',
+    searchQuery: '',
+    sortBy: 'estimated_value',
+    sortDirection: 'desc'
+  });
+  // State for active tab in the chart section
+  const [activeTab, setActiveTab] = useState('distribution');
+  // State for selected property detail view
+  const [selectedProperty, setSelectedProperty] = useState(null);
+  // State for available neighborhoods from data
+  const [availableNeighborhoods, setAvailableNeighborhoods] = useState([]);
+  // State for tracking pagination
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    itemsPerPage: 10,
+    totalItems: 0,
+    totalPages: 0
+  });
+  // State for API key
+  const [apiKey, setApiKey] = useState('');
+  
+  // State for ETL pipeline status
+  const [etlStatus, setEtlStatus] = useState({
+    status: 'unknown',
+    lastUpdate: null,
+    progress: 0,
+    sources: [],
+    metrics: {
+      recordsProcessed: 0,
+      successRate: 0,
+      averageProcessingTime: 0
+    },
+    dataQuality: {
+      completeness: 0,
+      accuracy: 0,
+      timeliness: 0
+    },
+    isLoading: false,
+    error: null
+  });
+  
+  // State for agent status
+  const [agentStatus, setAgentStatus] = useState({
+    agents: [],
+    isLoading: false,
+    error: null,
+    lastUpdate: null
+  });
+  
+  // State for selected agent (for detailed view)
+  const [selectedAgent, setSelectedAgent] = useState(null);
+  
+  // State for controlling the status refresh intervals
+  const [refreshSettings, setRefreshSettings] = useState({
+    autoRefresh: true,
+    interval: 60000, // 1 minute
+    lastRefreshTime: null
+  });
+  
+  // State for active dashboard tab
+  const [activeDashboardTab, setActiveDashboardTab] = useState('properties');
+  
+  // State for tracking chart data
+  const [chartData, setChartData] = useState({
+    valueTrends: null,
+    valuationDistribution: null,
+    neighborhoodComparison: null,
+    modelDistribution: null
+  });
+  
+  // Refs for chart containers and observer for dashboard metrics
+  const valueDistributionChartRef = useRef(null);
+  const neighborhoodChartRef = useRef(null);
+  const trendChartRef = useRef(null);
+  const etlProgressChartRef = useRef(null);
+  const agentPerformanceChartRef = useRef(null);
+  const metricsObserverRef = useRef(null);
+
+  /**
+   * Function to fetch property valuations from the enhanced API endpoint
+   * Includes pagination, sorting, and filtering capabilities with improved error handling
+   * Wrapped in useCallback to prevent recreation on each render
+   */
+  const fetchPropertyValuations = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Build query parameters based on active filters
+      const queryParams = new URLSearchParams();
+      
+      // Add all filter parameters with null/undefined checks
+      if (filters.neighborhood) queryParams.append('neighborhood', filters.neighborhood);
+      if (filters.minValue) queryParams.append('min_value', filters.minValue);
+      if (filters.maxValue) queryParams.append('max_value', filters.maxValue);
+      if (filters.propertyType) queryParams.append('property_type', filters.propertyType);
+      if (filters.fromDate) queryParams.append('from_date', filters.fromDate);
+      if (filters.toDate) queryParams.append('to_date', filters.toDate);
+      if (filters.searchQuery && filters.searchQuery.length >= 3) queryParams.append('search', filters.searchQuery);
+      if (filters.sortBy) queryParams.append('sort_by', filters.sortBy);
+      if (filters.sortDirection) queryParams.append('sort_direction', filters.sortDirection);
+      
+      // Add pagination parameters
+      queryParams.append('page', pagination.currentPage);
+      queryParams.append('page_size', pagination.itemsPerPage);
+      
+      // Headers for the API request including the API key
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+      
+      // Add API key header if available
+      if (apiKey) {
+        headers['X-API-KEY'] = apiKey;
+      }
+      
+      // Log the API request being made (useful for debugging)
+      console.log(`Fetching data from /api/valuations with params: ${queryParams.toString()}`);
+      
+      // Make the API request to the enhanced valuations endpoint with a timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
+      const response = await fetch(`/api/valuations?${queryParams.toString()}`, {
+        method: 'GET',
+        headers: headers,
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId); // Clear the timeout if the request completes
+      
+      if (!response.ok) {
+        // Enhanced error handling with status code categorization
+        const errorText = await response.text();
+        let errorMessage;
+        
+        if (response.status === 401) {
+          errorMessage = 'Authentication failed. Please check your API key.';
+        } else if (response.status === 403) {
+          errorMessage = 'You do not have permission to access this resource.';
+        } else if (response.status === 404) {
+          errorMessage = 'The requested resource was not found.';
+        } else if (response.status >= 500) {
+          errorMessage = 'Server error. Please try again later.';
+        } else {
+          errorMessage = `API request failed: ${errorText}`;
+        }
+        
+        throw new Error(errorMessage);
+      }
+      
+      const data = await response.json();
+      
+      // Detailed validation of the API response structure
+      if (Array.isArray(data.properties)) {
+        // New API format with pagination info
+        
+        // Process properties with date normalization and additional data formatting
+        const processedProperties = data.properties.map(property => ({
+          ...property,
+          valuation_date: property.valuation_date ? new Date(property.valuation_date) : new Date(),
+          confidence_score: property.confidence_score !== undefined ? property.confidence_score : 0.85, // Ensure a default if missing
+        }));
+        
+        setProperties(processedProperties);
+        setPagination(prev => ({
+          ...prev,
+          totalItems: data.total_count || data.properties.length,
+          totalPages: Math.ceil((data.total_count || data.properties.length) / pagination.itemsPerPage)
+        }));
+        
+        // Extract unique neighborhoods for the filter dropdown
+        extractUniqueNeighborhoods(processedProperties);
+        
+        // Update chart data
+        prepareChartData(processedProperties);
+        
+      } else if (Array.isArray(data)) {
+        // Legacy API format (just an array of properties)
+        
+        // Process properties with date normalization and additional data formatting
+        const processedProperties = data.map(property => ({
+          ...property,
+          valuation_date: property.valuation_date ? new Date(property.valuation_date) : new Date(),
+          confidence_score: property.confidence_score !== undefined ? property.confidence_score : 0.85, // Ensure a default if missing
+        }));
+        
+        setProperties(processedProperties);
+        setPagination(prev => ({
+          ...prev,
+          totalItems: data.length,
+          totalPages: Math.ceil(data.length / pagination.itemsPerPage)
+        }));
+        
+        // Extract unique neighborhoods for the filter dropdown
+        extractUniqueNeighborhoods(processedProperties);
+        
+        // Update chart data
+        prepareChartData(processedProperties);
+        
+      } else {
+        throw new Error("Unexpected data format received from API");
+      }
+      
+      console.log(`Loaded ${Array.isArray(data.properties) ? data.properties.length : data.length} properties from API`);
+      
+      // Update last refresh time
+      setRefreshSettings(prev => ({
+        ...prev,
+        lastRefreshTime: new Date()
+      }));
+      
+    } catch (err) {
+      console.error('Error fetching property valuations:', err);
+      
+      // Handle specific abort error separately
+      if (err.name === 'AbortError') {
+        setError('Request timed out. Please try again later.');
+      } else {
+        setError(`Failed to load property valuations: ${err.message}`);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [filters, pagination, apiKey]); // Added dependencies
+
+  /**
+   * Function to extract neighborhood from address
+   * Enhanced to support more address formats and provide consistent results
+   * @param {string} address - The property address
+   * @returns {string} - Extracted neighborhood
+   */
+  const extractNeighborhood = useCallback((address) => {
+    if (!address) return 'Unknown';
+    
+    // First, handle structured addresses that contain commas
+    const parts = address.split(',');
+    if (parts.length >= 2) {
+      // Try to extract a neighborhood from the second part (assuming format: "street, neighborhood, city")
+      if (parts.length >= 3) {
+        return parts[1].trim();
+      }
+      // Otherwise get from the city part (assuming format: "street, city")
+      return parts[1].trim();
+    }
+    
+    // For addresses without commas, try to extract known neighborhood patterns
+    if (address.includes('District') || address.includes('Heights') || 
+        address.includes('Park') || address.includes('Village')) {
+      const words = address.split(' ');
+      for (let i = 0; i < words.length - 1; i++) {
+        const twoWords = words.slice(i, i + 2).join(' ');
+        if (twoWords.includes('District') || twoWords.includes('Heights') || 
+            twoWords.includes('Park') || twoWords.includes('Village')) {
+          return twoWords;
+        }
+      }
+    }
+    
+    // Default to Unknown if we couldn't extract a neighborhood
+    return 'Unknown';
+  }, []);
+
+  /**
+   * Extract unique neighborhoods from the property data with improved handling
+   * @param {Array} propertyData - Array of property objects
+   */
+  const extractUniqueNeighborhoods = useCallback((propertyData) => {
+    if (!propertyData || !Array.isArray(propertyData)) {
+      console.warn('Invalid property data provided to extractUniqueNeighborhoods');
+      return;
+    }
+    
+    // Get neighborhoods either from property.neighborhood field or extract from address
+    const neighborhoods = propertyData.map(property => 
+      property.neighborhood || extractNeighborhood(property.address)
+    ).filter((value, index, self) => 
+      value !== 'Unknown' && self.indexOf(value) === index
+    ).sort();
+    
+    setAvailableNeighborhoods(neighborhoods);
+  }, [extractNeighborhood]);
+
+  /**
+   * Function to prepare and update chart data based on property valuations
+   * @param {Array} propertyData - The processed property data array
+   */
+  const prepareChartData = useCallback((propertyData) => {
+    if (!propertyData || !Array.isArray(propertyData) || propertyData.length === 0) {
+      console.warn('No valid property data available for chart preparation');
+      return;
+    }
+    
+    // 1. Value Distribution Chart - Histogram of property values
+    const valueBuckets = [
+      '0-100k', '100k-200k', '200k-300k', '300k-400k', '400k-500k',
+      '500k-600k', '600k-700k', '700k-800k', '800k-900k', '900k-1M', '1M+'
+    ];
+    
+    const valueCounts = Array(valueBuckets.length).fill(0);
+    
+    propertyData.forEach(property => {
+      const value = property.estimated_value;
+      if (value < 100000) valueCounts[0]++;
+      else if (value < 200000) valueCounts[1]++;
+      else if (value < 300000) valueCounts[2]++;
+      else if (value < 400000) valueCounts[3]++;
+      else if (value < 500000) valueCounts[4]++;
+      else if (value < 600000) valueCounts[5]++;
+      else if (value < 700000) valueCounts[6]++;
+      else if (value < 800000) valueCounts[7]++;
+      else if (value < 900000) valueCounts[8]++;
+      else if (value < 1000000) valueCounts[9]++;
+      else valueCounts[10]++;
+    });
+    
+    const valueDistributionData = {
+      labels: valueBuckets,
+      datasets: [
+        {
+          label: 'Number of Properties',
+          data: valueCounts,
+          backgroundColor: 'rgba(75, 192, 192, 0.6)',
+          borderColor: 'rgba(75, 192, 192, 1)',
+          borderWidth: 1,
+        }
+      ]
+    };
+    
+    // 2. Neighborhood Comparison Chart - Average value by neighborhood
+    const neighborhoodData = {};
+    const neighborhoodCounts = {};
+    
+    propertyData.forEach(property => {
+      const neighborhood = property.neighborhood || extractNeighborhood(property.address);
+      if (!neighborhoodData[neighborhood]) {
+        neighborhoodData[neighborhood] = 0;
+        neighborhoodCounts[neighborhood] = 0;
+      }
+      neighborhoodData[neighborhood] += property.estimated_value;
+      neighborhoodCounts[neighborhood]++;
+    });
+    
+    // Calculate average value for each neighborhood
+    const neighborhoodLabels = [];
+    const neighborhoodAverages = [];
+    
+    for (const neighborhood in neighborhoodData) {
+      if (neighborhoodCounts[neighborhood] > 0) {
+        neighborhoodLabels.push(neighborhood);
+        neighborhoodAverages.push(
+          Math.round(neighborhoodData[neighborhood] / neighborhoodCounts[neighborhood])
+        );
+      }
+    }
+    
+    // Sort by average value (descending)
+    const sortedIndices = neighborhoodAverages
+      .map((value, index) => ({ value, index }))
+      .sort((a, b) => b.value - a.value)
+      .map(item => item.index);
+    
+    const sortedLabels = sortedIndices.map(index => neighborhoodLabels[index]);
+    const sortedAverages = sortedIndices.map(index => neighborhoodAverages[index]);
+    
+    // Limit to top 10 neighborhoods
+    const topLabels = sortedLabels.slice(0, 10);
+    const topAverages = sortedAverages.slice(0, 10);
+    
+    const neighborhoodComparisonData = {
+      labels: topLabels,
+      datasets: [
+        {
+          label: 'Average Property Value',
+          data: topAverages,
+          backgroundColor: 'rgba(54, 162, 235, 0.6)',
+          borderColor: 'rgba(54, 162, 235, 1)',
+          borderWidth: 1,
+        }
+      ]
+    };
+    
+    // 3. Trend Chart - Values over time
+    // Sort properties by valuation date
+    const sortedByDate = [...propertyData].sort((a, b) => 
+      new Date(a.valuation_date) - new Date(b.valuation_date)
+    );
+    
+    // Group by month and calculate average value
+    const monthlyData = {};
+    
+    sortedByDate.forEach(property => {
+      const date = new Date(property.valuation_date);
+      const monthYear = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+      
+      if (!monthlyData[monthYear]) {
+        monthlyData[monthYear] = {
+          total: 0,
+          count: 0,
+          date: new Date(date.getFullYear(), date.getMonth(), 1)
+        };
+      }
+      
+      monthlyData[monthYear].total += property.estimated_value;
+      monthlyData[monthYear].count++;
+    });
+    
+    const trendDates = [];
+    const trendValues = [];
+    
+    for (const monthYear in monthlyData) {
+      if (monthlyData[monthYear].count > 0) {
+        trendDates.push(monthlyData[monthYear].date);
+        trendValues.push(
+          Math.round(monthlyData[monthYear].total / monthlyData[monthYear].count)
+        );
+      }
+    }
+    
+    const valueTrendData = {
+      labels: trendDates,
+      datasets: [
+        {
+          label: 'Average Property Value',
+          data: trendDates.map((date, index) => ({
+            x: date,
+            y: trendValues[index]
+          })),
+          backgroundColor: 'rgba(255, 99, 132, 0.2)',
+          borderColor: 'rgba(255, 99, 132, 1)',
+          borderWidth: 2,
+          tension: 0.3,
+          fill: true,
+        }
+      ]
+    };
+    
+    // 4. Model Distribution - Pie chart of valuation methods used
+    const modelCounts = {};
+    
+    propertyData.forEach(property => {
+      const model = property.model_used || 'Unknown';
+      modelCounts[model] = (modelCounts[model] || 0) + 1;
+    });
+    
+    const modelLabels = Object.keys(modelCounts);
+    const modelValues = Object.values(modelCounts);
+    
+    // Color palette for different models
+    const modelColors = [
+      'rgba(255, 99, 132, 0.7)',
+      'rgba(54, 162, 235, 0.7)',
+      'rgba(255, 206, 86, 0.7)',
+      'rgba(75, 192, 192, 0.7)',
+      'rgba(153, 102, 255, 0.7)',
+      'rgba(255, 159, 64, 0.7)',
+      'rgba(199, 199, 199, 0.7)',
+    ];
+    
+    const modelDistributionData = {
+      labels: modelLabels,
+      datasets: [
+        {
+          label: 'Valuation Models Used',
+          data: modelValues,
+          backgroundColor: modelColors.slice(0, modelLabels.length),
+          borderColor: modelColors.slice(0, modelLabels.length).map(color => color.replace('0.7', '1')),
+          borderWidth: 1,
+        }
+      ]
+    };
+    
+    // Update chart data state
+    setChartData({
+      valueTrends: valueTrendData,
+      valuationDistribution: valueDistributionData,
+      neighborhoodComparison: neighborhoodComparisonData,
+      modelDistribution: modelDistributionData
+    });
+    
+  }, [extractNeighborhood]);
+
+  /**
+   * Function to handle filter changes with optimized search capability
+   */
+  const handleFilterChange = (e) => {
+    const { name, value } = e.target;
+    setFilters(prevFilters => ({
+      ...prevFilters,
+      [name]: value
+    }));
+    
+    // Reset to first page when filters change
+    if (name !== 'searchQuery') {
+      setPagination(prev => ({
+        ...prev,
+        currentPage: 1
+      }));
+    }
+    
+    // If search query is changing, use the debounced search function
+    if (name === 'searchQuery') {
+      debouncedSearch(value);
+    }
+  };
+
+  /**
+   * Debounced search function to prevent excessive API calls while typing
+   */
+  const debouncedSearch = useCallback(
+    debounce((query) => {
+      // Reset to first page when search query changes
+      setPagination(prev => ({
+        ...prev,
+        currentPage: 1
+      }));
+      
+      // Only fetch if we're not already searching or if query length is appropriate
+      if (query.length === 0 || query.length >= 3) {
+        fetchPropertyValuations();
+      }
+    }, 500),
+    [fetchPropertyValuations] // Include fetchPropertyValuations in the dependency array
+  );
+
+  /**
+   * Function to apply filters
+   */
+  const applyFilters = (e) => {
+    e.preventDefault();
+    setPagination(prev => ({
+      ...prev,
+      currentPage: 1
+    }));
+    fetchPropertyValuations();
+  };
+
+  /**
+   * Function to reset all filters
+   */
+  const resetFilters = () => {
+    setFilters({
+      neighborhood: '',
+      minValue: '',
+      maxValue: '',
+      propertyType: '',
+      fromDate: '',
+      toDate: '',
+      searchQuery: '',
+      sortBy: 'estimated_value',
+      sortDirection: 'desc'
+    });
+    
+    setPagination(prev => ({
+      ...prev,
+      currentPage: 1
+    }));
+    
+    // Re-fetch data with cleared filters
+    fetchPropertyValuations();
+  };
+
+  /**
+   * Function to format currency
+   * @param {number} value - The numeric value to format as currency
+   * @returns {string} - Formatted currency string
+   */
+  const formatCurrency = (value) => {
+    if (value === null || value === undefined) return 'N/A';
+    
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0
+    }).format(value);
+  };
+
+  /**
+   * Format percentage values for display
+   * @param {number} value - Value to format as percentage
+   * @returns {string} - Formatted percentage string
+   */
+  const formatPercentage = (value) => {
+    if (value === null || value === undefined) return 'N/A';
+    return `${(value * 100).toFixed(1)}%`;
+  };
+
+  /**
+   * Format date values for display
+   * @param {string} dateString - ISO date string
+   * @returns {string} - Formatted date string
+   */
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch (err) {
+      console.error('Error formatting date:', err);
+      return 'Invalid Date';
+    }
+  };
+  
+  /**
+   * Format date values for display with time included
+   * @param {string|Date} dateTimeValue - Date object or ISO date string
+   * @returns {string} - Formatted date and time string
+   */
+  const formatDateTime = (dateTimeValue) => {
+    if (!dateTimeValue) return 'N/A';
+    
+    try {
+      const date = dateTimeValue instanceof Date ? dateTimeValue : new Date(dateTimeValue);
+      return date.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    } catch (err) {
+      console.error('Error formatting datetime:', err);
+      return 'Invalid Date';
+    }
+  };
+
+  /**
+   * Function to handle sorting column clicks
+   * @param {string} columnName - The name of the column to sort by
+   */
+  const handleSortColumn = (columnName) => {
+    setFilters(prevFilters => ({
+      ...prevFilters,
+      sortDirection: prevFilters.sortBy === columnName && prevFilters.sortDirection === 'asc' ? 'desc' : 'asc',
+      sortBy: columnName
+    }));
+    fetchPropertyValuations();
+  };
+
+  /**
+   * Function to handle pagination changes
+   * @param {number} newPage - The new page number to navigate to
+   */
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= Math.ceil(pagination.totalItems / pagination.itemsPerPage)) {
+      setPagination(prev => ({
+        ...prev,
+        currentPage: newPage
+      }));
+      fetchPropertyValuations();
+    }
+  };
+
+  /**
+   * Handle items per page change
+   * @param {Event} e - The change event
+   */
+  const handleItemsPerPageChange = (e) => {
+    const newItemsPerPage = parseInt(e.target.value, 10);
+    setPagination(prev => ({
+      ...prev,
+      itemsPerPage: newItemsPerPage,
+      currentPage: 1 // Reset to first page when changing items per page
+    }));
+    fetchPropertyValuations();
+  };
+
+  /**
+   * Handle property row click to view detailed information
+   * @param {Object} property - The property to view in detail
+   */
+  const handlePropertyClick = (property) => {
+    setSelectedProperty(property);
+  };
+
+  /**
+   * Close the property detail modal
+   */
+  const closePropertyDetail = () => {
+    setSelectedProperty(null);
+  };
+
+  /**
+   * Function to filter properties by search query and neighborhood
+   * for client-side filtering in addition to API-based filtering
+   */
+  const filteredProperties = useMemo(() => {
+    return properties.filter(property => {
+      // Apply neighborhood filter (client-side filtering if needed)
+      if (filters.neighborhood && property.neighborhood !== filters.neighborhood &&
+          !extractNeighborhood(property.address).toLowerCase().includes(filters.neighborhood.toLowerCase())) {
+        return false;
+      }
+      
+      // Apply search query filter on address or property_id
+      if (filters.searchQuery && 
+          !(property.address?.toLowerCase().includes(filters.searchQuery.toLowerCase()) || 
+            property.property_id?.toLowerCase().includes(filters.searchQuery.toLowerCase()))) {
+        return false;
+      }
+      
+      return true;
+    });
+  }, [properties, filters.neighborhood, filters.searchQuery, extractNeighborhood]);
+
+  /**
+   * Set up the charts and fetch initial data when component mounts
+   */
+  useEffect(() => {
+    // Initial data fetch
+    fetchPropertyValuations();
+    
+    // Set up auto-refresh if enabled
+    let refreshInterval;
+    if (refreshSettings.autoRefresh) {
+      refreshInterval = setInterval(() => {
+        fetchPropertyValuations();
+      }, refreshSettings.interval);
+    }
+    
+    // Clean up interval on component unmount
+    return () => {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+    };
+  }, [fetchPropertyValuations, refreshSettings.autoRefresh, refreshSettings.interval]);
+
+  /**
+   * Chart.js options for Value Distribution chart
+   */
+  const valueDistributionOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'top',
+      },
+      title: {
+        display: true,
+        text: 'Property Value Distribution',
+      },
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            return `${context.dataset.label}: ${context.parsed.y} properties`;
+          }
+        }
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        title: {
+          display: true,
+          text: 'Number of Properties'
+        }
+      },
+      x: {
+        title: {
+          display: true,
+          text: 'Value Range'
+        }
+      }
+    }
+  };
+
+  /**
+   * Chart.js options for Neighborhood Comparison chart
+   */
+  const neighborhoodComparisonOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    indexAxis: 'y', // Horizontal bar chart
+    plugins: {
+      legend: {
+        position: 'top',
+      },
+      title: {
+        display: true,
+        text: 'Average Value by Neighborhood',
+      },
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            return `Average Value: ${formatCurrency(context.parsed.x)}`;
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        beginAtZero: true,
+        title: {
+          display: true,
+          text: 'Average Property Value'
+        },
+        ticks: {
+          callback: function(value) {
+            return formatCurrency(value);
+          }
+        }
+      }
+    }
+  };
+
+  /**
+   * Chart.js options for Trend Chart
+   */
+  const trendChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'top',
+      },
+      title: {
+        display: true,
+        text: 'Property Value Trends Over Time',
+      },
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            return `Average Value: ${formatCurrency(context.parsed.y)}`;
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        type: 'time',
+        time: {
+          unit: 'month',
+          displayFormats: {
+            month: 'MMM yyyy'
+          }
+        },
+        title: {
+          display: true,
+          text: 'Date'
+        }
+      },
+      y: {
+        beginAtZero: false,
+        title: {
+          display: true,
+          text: 'Average Value'
+        },
+        ticks: {
+          callback: function(value) {
+            return formatCurrency(value);
+          }
+        }
+      }
+    }
+  };
+
+  /**
+   * Chart.js options for Model Distribution pie chart
+   */
+  const modelDistributionOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'top',
+      },
+      title: {
+        display: true,
+        text: 'Valuation Models Used',
+      },
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            const value = context.parsed;
+            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+            const percentage = Math.round((value / total) * 100);
+            return `${context.label}: ${value} properties (${percentage}%)`;
+          }
+        }
+      }
+    }
+  };
+
+  /**
+   * Function to render pagination controls
+   */
+  const renderPagination = () => {
+    const totalPages = Math.ceil(pagination.totalItems / pagination.itemsPerPage);
+    
+    if (totalPages <= 1) return null;
+    
+    return (
+      <nav className="flex items-center justify-between mt-4" aria-label="Pagination">
+        <div className="hidden sm:block">
+          <p className="text-sm text-gray-500">
+            Showing <span className="font-medium">{((pagination.currentPage - 1) * pagination.itemsPerPage) + 1}</span> to{' '}
+            <span className="font-medium">
+              {Math.min(pagination.currentPage * pagination.itemsPerPage, pagination.totalItems)}
+            </span> of{' '}
+            <span className="font-medium">{pagination.totalItems}</span> results
+          </p>
+        </div>
+        <div className="flex justify-between sm:justify-end space-x-2">
+          <button
+            onClick={() => handlePageChange(pagination.currentPage - 1)}
+            disabled={pagination.currentPage === 1}
+            className={`relative inline-flex items-center px-4 py-2 text-sm font-medium rounded-md 
+                      ${pagination.currentPage === 1 
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                        : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+          >
+            Previous
+          </button>
+          
+          {/* Show page numbers with ellipsis for large page counts */}
+          <div className="hidden md:flex space-x-1">
+            {[...Array(totalPages)].map((_, i) => {
+              const page = i + 1;
+              
+              // Show first page, last page, current page, and pages around current
+              if (
+                page === 1 || 
+                page === totalPages || 
+                (page >= pagination.currentPage - 1 && page <= pagination.currentPage + 1)
+              ) {
+                return (
+                  <button
+                    key={page}
+                    onClick={() => handlePageChange(page)}
+                    className={`relative inline-flex items-center px-4 py-2 text-sm font-medium rounded-md 
+                              ${pagination.currentPage === page 
+                                ? 'bg-blue-600 text-white' 
+                                : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                  >
+                    {page}
+                  </button>
+                );
+              }
+              
+              // Show ellipsis for breaks in sequence
+              if (
+                (page === 2 && pagination.currentPage > 3) ||
+                (page === totalPages - 1 && pagination.currentPage < totalPages - 2)
+              ) {
+                return (
+                  <span
+                    key={page}
+                    className="relative inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white"
+                  >
+                    ...
+                  </span>
+                );
+              }
+              
+              return null;
+            })}
+          </div>
+          
+          <button
+            onClick={() => handlePageChange(pagination.currentPage + 1)}
+            disabled={pagination.currentPage === totalPages}
+            className={`relative inline-flex items-center px-4 py-2 text-sm font-medium rounded-md 
+                      ${pagination.currentPage === totalPages 
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                        : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+          >
+            Next
+          </button>
+        </div>
+      </nav>
+    );
+  };
+
+  /**
+   * Render loading spinner component
+   */
+  const renderLoadingSpinner = () => (
+    <div className="flex justify-center items-center py-10">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      <span className="ml-3 text-lg text-gray-500">Loading data...</span>
+    </div>
+  );
+
+  /**
+   * Render error message component
+   */
+  const renderErrorMessage = () => (
+    <div className="bg-red-50 border-l-4 border-red-500 p-4 my-4">
+      <div className="flex">
+        <div className="flex-shrink-0">
+          <svg className="h-5 w-5 text-red-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+          </svg>
+        </div>
+        <div className="ml-3">
+          <h3 className="text-sm leading-5 font-medium text-red-800">Error</h3>
+          <p className="text-sm text-red-700 mt-1">{error}</p>
+          <button 
+            onClick={fetchPropertyValuations}
+            className="mt-2 inline-flex items-center px-3 py-1 border border-transparent text-sm leading-4 font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200 focus:outline-none focus:border-red-300 focus:shadow-outline-red"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  /**
+   * Render the filter section
+   */
+  const renderFilters = () => (
+    <div className="bg-white rounded-lg shadow-md p-4 mb-6">
+      <h2 className="text-lg font-medium mb-4">Filter Valuations</h2>
+      <form onSubmit={applyFilters} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* Search field */}
+        <div>
+          <label htmlFor="searchQuery" className="block text-sm font-medium text-gray-700 mb-1">Search</label>
+          <input
+            type="text"
+            id="searchQuery"
+            name="searchQuery"
+            value={filters.searchQuery}
+            onChange={handleFilterChange}
+            placeholder="Address or Property ID"
+            className="px-3 py-2 border border-gray-300 rounded-md w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        
+        {/* Neighborhood dropdown */}
+        <div>
+          <label htmlFor="neighborhood" className="block text-sm font-medium text-gray-700 mb-1">Neighborhood</label>
+          <select
+            id="neighborhood"
+            name="neighborhood"
+            value={filters.neighborhood}
+            onChange={handleFilterChange}
+            className="px-3 py-2 border border-gray-300 rounded-md w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">All Neighborhoods</option>
+            {availableNeighborhoods.map(neighborhood => (
+              <option key={neighborhood} value={neighborhood}>{neighborhood}</option>
+            ))}
+          </select>
+        </div>
+        
+        {/* Property Type dropdown */}
+        <div>
+          <label htmlFor="propertyType" className="block text-sm font-medium text-gray-700 mb-1">Property Type</label>
+          <select
+            id="propertyType"
+            name="propertyType"
+            value={filters.propertyType}
+            onChange={handleFilterChange}
+            className="px-3 py-2 border border-gray-300 rounded-md w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">All Types</option>
+            <option value="single_family">Single Family</option>
+            <option value="condo">Condominium</option>
+            <option value="townhouse">Townhouse</option>
+            <option value="multi_family">Multi-Family</option>
+            <option value="land">Land/Lot</option>
+            <option value="commercial">Commercial</option>
+          </select>
+        </div>
+        
+        {/* Price Range */}
+        <div className="flex space-x-2">
+          <div className="w-1/2">
+            <label htmlFor="minValue" className="block text-sm font-medium text-gray-700 mb-1">Min Value</label>
+            <input
+              type="number"
+              id="minValue"
+              name="minValue"
+              value={filters.minValue}
+              onChange={handleFilterChange}
+              placeholder="Min Value"
+              className="px-3 py-2 border border-gray-300 rounded-md w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div className="w-1/2">
+            <label htmlFor="maxValue" className="block text-sm font-medium text-gray-700 mb-1">Max Value</label>
+            <input
+              type="number"
+              id="maxValue"
+              name="maxValue"
+              value={filters.maxValue}
+              onChange={handleFilterChange}
+              placeholder="Max Value"
+              className="px-3 py-2 border border-gray-300 rounded-md w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+        
+        {/* Date Range */}
+        <div className="flex space-x-2">
+          <div className="w-1/2">
+            <label htmlFor="fromDate" className="block text-sm font-medium text-gray-700 mb-1">From Date</label>
+            <input
+              type="date"
+              id="fromDate"
+              name="fromDate"
+              value={filters.fromDate}
+              onChange={handleFilterChange}
+              className="px-3 py-2 border border-gray-300 rounded-md w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div className="w-1/2">
+            <label htmlFor="toDate" className="block text-sm font-medium text-gray-700 mb-1">To Date</label>
+            <input
+              type="date"
+              id="toDate"
+              name="toDate"
+              value={filters.toDate}
+              onChange={handleFilterChange}
+              className="px-3 py-2 border border-gray-300 rounded-md w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+        
+        {/* Action buttons */}
+        <div className="flex items-end space-x-2">
+          <button
+            type="submit"
+            className="px-4 py-2 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            Apply Filters
+          </button>
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="px-4 py-2 bg-gray-200 text-gray-700 font-medium rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500"
+          >
+            Reset
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+
+  /**
+   * Render the property valuation table
+   */
+  const renderPropertyTable = () => (
+    <div className="bg-white rounded-lg shadow-md overflow-hidden mb-6">
+      <div className="flex justify-between items-center p-4 border-b">
+        <h2 className="text-lg font-medium">Property Valuations</h2>
+        <div className="flex items-center space-x-2">
+          <label htmlFor="itemsPerPage" className="text-sm text-gray-700">Items per page:</label>
+          <select
+            id="itemsPerPage"
+            value={pagination.itemsPerPage}
+            onChange={handleItemsPerPageChange}
+            className="px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value={10}>10</option>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
+          
+          {/* Last refresh time */}
+          {refreshSettings.lastRefreshTime && (
+            <div className="text-xs text-gray-500 ml-4">
+              Last updated: {formatDateTime(refreshSettings.lastRefreshTime)}
+            </div>
+          )}
+          
+          {/* Refresh button */}
+          <button
+            onClick={fetchPropertyValuations}
+            className="ml-2 p-1 text-gray-500 hover:text-gray-700 focus:outline-none"
+            aria-label="Refresh data"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      
+      {/* Table */}
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th 
+                scope="col" 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                onClick={() => handleSortColumn('property_id')}
+              >
+                <div className="flex items-center">
+                  Property ID
+                  {filters.sortBy === 'property_id' && (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="ml-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={filters.sortDirection === 'asc' ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
+                    </svg>
+                  )}
+                </div>
+              </th>
+              <th 
+                scope="col" 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                onClick={() => handleSortColumn('address')}
+              >
+                <div className="flex items-center">
+                  Address
+                  {filters.sortBy === 'address' && (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="ml-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={filters.sortDirection === 'asc' ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
+                    </svg>
+                  )}
+                </div>
+              </th>
+              <th 
+                scope="col" 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                onClick={() => handleSortColumn('estimated_value')}
+              >
+                <div className="flex items-center">
+                  Estimated Value
+                  {filters.sortBy === 'estimated_value' && (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="ml-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={filters.sortDirection === 'asc' ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
+                    </svg>
+                  )}
+                </div>
+              </th>
+              <th 
+                scope="col" 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                onClick={() => handleSortColumn('confidence_score')}
+              >
+                <div className="flex items-center">
+                  Confidence
+                  {filters.sortBy === 'confidence_score' && (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="ml-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={filters.sortDirection === 'asc' ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
+                    </svg>
+                  )}
+                </div>
+              </th>
+              <th 
+                scope="col" 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                onClick={() => handleSortColumn('valuation_date')}
+              >
+                <div className="flex items-center">
+                  Valuation Date
+                  {filters.sortBy === 'valuation_date' && (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="ml-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={filters.sortDirection === 'asc' ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
+                    </svg>
+                  )}
+                </div>
+              </th>
+              <th 
+                scope="col" 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                onClick={() => handleSortColumn('model_used')}
+              >
+                <div className="flex items-center">
+                  Model
+                  {filters.sortBy === 'model_used' && (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="ml-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={filters.sortDirection === 'asc' ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
+                    </svg>
+                  )}
+                </div>
+              </th>
+              <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {filteredProperties.length > 0 ? (
+              filteredProperties.map(property => (
+                <tr 
+                  key={property.property_id || property.id}
+                  className="hover:bg-gray-50 transition-colors cursor-pointer"
+                  onClick={() => handlePropertyClick(property)}
+                >
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {property.property_id || 'N/A'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {property.address || 'N/A'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {formatCurrency(property.estimated_value)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {property.confidence_score 
+                      ? <div className="flex items-center">
+                          <div className="w-16 bg-gray-200 rounded-full h-2.5 mr-2">
+                            <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${property.confidence_score * 100}%` }}></div>
+                          </div>
+                          {formatPercentage(property.confidence_score)}
+                        </div>
+                      : 'N/A'
+                    }
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {formatDate(property.valuation_date)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                      {property.model_used || 'Standard'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePropertyClick(property);
+                      }}
+                      className="text-blue-600 hover:text-blue-900 focus:outline-none"
+                    >
+                      View Details
+                    </button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="7" className="px-6 py-4 text-center text-sm text-gray-500">
+                  {loading ? (
+                    <span>Loading properties...</span>
+                  ) : (
+                    <span>No properties found matching your criteria.</span>
+                  )}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      
+      {/* Pagination */}
+      <div className="px-4 py-3 border-t border-gray-200">
+        {renderPagination()}
+      </div>
+    </div>
+  );
+
+  /**
+   * Render visualization tabs and charts
+   */
+  const renderVisualizations = () => (
+    <div className="bg-white rounded-lg shadow-md overflow-hidden mb-6">
+      <div className="p-4 border-b">
+        <h2 className="text-lg font-medium mb-4">Valuation Insights</h2>
+        
+        {/* Tabs */}
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => setActiveTab('distribution')}
+              className={`pb-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'distribution'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Value Distribution
+            </button>
+            <button
+              onClick={() => setActiveTab('neighborhoods')}
+              className={`pb-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'neighborhoods'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Neighborhoods
+            </button>
+            <button
+              onClick={() => setActiveTab('trends')}
+              className={`pb-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'trends'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Value Trends
+            </button>
+            <button
+              onClick={() => setActiveTab('models')}
+              className={`pb-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'models'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Models Used
+            </button>
+          </nav>
+        </div>
+      </div>
+      
+      {/* Chart content */}
+      <div className="p-4">
+        <div className="h-80">
+          {loading ? (
+            renderLoadingSpinner()
+          ) : error ? (
+            renderErrorMessage()
+          ) : (
+            <>
+              {activeTab === 'distribution' && chartData.valuationDistribution && (
+                <div className="h-full" ref={valueDistributionChartRef}>
+                  <Bar 
+                    data={chartData.valuationDistribution} 
+                    options={valueDistributionOptions} 
+                  />
+                </div>
+              )}
+              
+              {activeTab === 'neighborhoods' && chartData.neighborhoodComparison && (
+                <div className="h-full" ref={neighborhoodChartRef}>
+                  <Bar 
+                    data={chartData.neighborhoodComparison} 
+                    options={neighborhoodComparisonOptions} 
+                  />
+                </div>
+              )}
+              
+              {activeTab === 'trends' && chartData.valueTrends && (
+                <div className="h-full" ref={trendChartRef}>
+                  <Line 
+                    data={chartData.valueTrends} 
+                    options={trendChartOptions} 
+                  />
+                </div>
+              )}
+              
+              {activeTab === 'models' && chartData.modelDistribution && (
+                <div className="h-full w-full mx-auto max-w-lg flex items-center justify-center">
+                  <Doughnut 
+                    data={chartData.modelDistribution} 
+                    options={modelDistributionOptions} 
+                  />
+                </div>
+              )}
+              
+              {!chartData[activeTab === 'distribution' ? 'valuationDistribution' : 
+                          activeTab === 'neighborhoods' ? 'neighborhoodComparison' : 
+                          activeTab === 'trends' ? 'valueTrends' : 'modelDistribution'] && (
+                <div className="flex flex-col items-center justify-center h-full">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  <p className="mt-2 text-gray-500">No chart data available.</p>
+                  <button
+                    onClick={fetchPropertyValuations}
+                    className="mt-4 px-4 py-2 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    Refresh Data
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  /**
+   * Render property detail modal
+   */
+  const renderPropertyDetailModal = () => {
+    if (!selectedProperty) return null;
+    
+    return (
+      <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+            <h2 className="text-xl font-medium text-gray-900">Property Details</h2>
+            <button
+              onClick={closePropertyDetail}
+              className="text-gray-400 hover:text-gray-500 focus:outline-none"
+            >
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          
+          <div className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Basic Info */}
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Basic Information</h3>
+                <div className="grid grid-cols-1 gap-3">
+                  <div>
+                    <p className="text-sm text-gray-500">Property ID</p>
+                    <p className="font-medium">{selectedProperty.property_id || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Address</p>
+                    <p className="font-medium">{selectedProperty.address || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Neighborhood</p>
+                    <p className="font-medium">{selectedProperty.neighborhood || extractNeighborhood(selectedProperty.address) || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Property Type</p>
+                    <p className="font-medium">{selectedProperty.property_type ? selectedProperty.property_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Square Feet</p>
+                    <p className="font-medium">{selectedProperty.square_feet ? `${selectedProperty.square_feet.toLocaleString()} sq ft` : 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Bedrooms / Bathrooms</p>
+                    <p className="font-medium">
+                      {selectedProperty.bedrooms || 'N/A'} bed / {selectedProperty.bathrooms || 'N/A'} bath
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Year Built</p>
+                    <p className="font-medium">{selectedProperty.year_built || 'N/A'}</p>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Valuation Info */}
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Valuation Details</h3>
+                <div className="mb-4">
+                  <p className="text-sm text-gray-500">Estimated Value</p>
+                  <p className="text-3xl font-bold text-blue-600">{formatCurrency(selectedProperty.estimated_value)}</p>
+                </div>
+                
+                <div className="grid grid-cols-1 gap-3">
+                  <div>
+                    <p className="text-sm text-gray-500">Confidence Score</p>
+                    <div className="flex items-center mt-1">
+                      <div className="w-full bg-gray-200 rounded-full h-2.5 mr-2">
+                        <div 
+                          className="bg-blue-600 h-2.5 rounded-full" 
+                          style={{ width: `${(selectedProperty.confidence_score || 0) * 100}%` }}
+                        ></div>
+                      </div>
+                      <span>{formatPercentage(selectedProperty.confidence_score)}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Valuation Date</p>
+                    <p className="font-medium">{formatDate(selectedProperty.valuation_date)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Valuation Model</p>
+                    <p className="font-medium">
+                      <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                        {selectedProperty.model_used || 'Standard'}
+                      </span>
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Price per Sq Ft</p>
+                    <p className="font-medium">
+                      {selectedProperty.square_feet && selectedProperty.estimated_value 
+                        ? formatCurrency(selectedProperty.estimated_value / selectedProperty.square_feet) + '/sq ft'
+                        : 'N/A'
+                      }
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Advanced Metrics section */}
+            {(selectedProperty.feature_importance || 
+              selectedProperty.p_values || 
+              selectedProperty.adj_r2_score || 
+              selectedProperty.model_metrics) && (
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Advanced Metrics</h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Statistical Metrics */}
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="font-medium mb-2">Statistical Metrics</h4>
+                    <ul className="space-y-2">
+                      {selectedProperty.adj_r2_score !== undefined && (
+                        <li className="flex justify-between">
+                          <span className="text-sm text-gray-500">Adjusted R²:</span>
+                          <span className="font-medium">{selectedProperty.adj_r2_score.toFixed(4)}</span>
+                        </li>
+                      )}
+                      {selectedProperty.rmse !== undefined && (
+                        <li className="flex justify-between">
+                          <span className="text-sm text-gray-500">RMSE:</span>
+                          <span className="font-medium">{formatCurrency(selectedProperty.rmse)}</span>
+                        </li>
+                      )}
+                      {selectedProperty.mae !== undefined && (
+                        <li className="flex justify-between">
+                          <span className="text-sm text-gray-500">MAE:</span>
+                          <span className="font-medium">{formatCurrency(selectedProperty.mae)}</span>
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                  
+                  {/* Feature Importance */}
+                  {selectedProperty.feature_importance && Object.keys(selectedProperty.feature_importance).length > 0 && (
+                    <div className="bg-gray-50 p-4 rounded-lg md:col-span-2">
+                      <h4 className="font-medium mb-2">Feature Importance</h4>
+                      <div className="space-y-2">
+                        {Object.entries(selectedProperty.feature_importance)
+                          .sort((a, b) => b[1] - a[1])
+                          .slice(0, 5)
+                          .map(([feature, importance]) => (
+                            <div key={feature} className="flex items-center">
+                              <div className="w-32 text-sm truncate mr-2">
+                                {feature.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}:
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-2 mr-2">
+                                <div 
+                                  className="bg-blue-600 h-2 rounded-full" 
+                                  style={{ width: `${importance * 100}%` }}
+                                ></div>
+                              </div>
+                              <span className="text-sm">{(importance * 100).toFixed(1)}%</span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                {/* GIS Factors if available */}
+                {selectedProperty.gis_factors && Object.keys(selectedProperty.gis_factors).length > 0 && (
+                  <div className="mt-4 bg-gray-50 p-4 rounded-lg">
+                    <h4 className="font-medium mb-2">GIS Factors</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {Object.entries(selectedProperty.gis_factors).map(([factor, value]) => (
+                        <div key={factor} className="flex justify-between">
+                          <span className="text-sm text-gray-500">
+                            {factor.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}:
+                          </span>
+                          <span className="font-medium">
+                            {typeof value === 'number' ? value.toFixed(2) : value}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          
+          <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end">
+            <button
+              onClick={closePropertyDetail}
+              className="px-4 py-2 bg-gray-200 text-gray-700 font-medium rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Main render
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Property Valuation Dashboard</h1>
+        
+        {/* API Key input */}
+        <div className="flex space-x-2">
+          <div>
+            <input
+              type="text"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="Enter API Key"
+              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+            />
+          </div>
+          <button
+            onClick={fetchPropertyValuations}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            Refresh Data
+          </button>
+        </div>
+      </div>
+      
+      {/* Error message */}
+      {error && renderErrorMessage()}
+      
+      {/* Filter section */}
+      {renderFilters()}
+      
+      {/* Loading state */}
+      {loading ? (
+        renderLoadingSpinner()
+      ) : (
+        <>
+          {/* Property table */}
+          {renderPropertyTable()}
+          
+          {/* Visualizations */}
+          {renderVisualizations()}
+          
+          {/* Property detail modal */}
+          {renderPropertyDetailModal()}
+        </>
+      )}
+    </div>
+  );
+};
+
+export default Dashboard;

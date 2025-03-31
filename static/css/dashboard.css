@@ -1,0 +1,261 @@
+/* Dashboard-specific styles */
+
+/* Metric card styling */
+.metric-card {
+    padding: 1.5rem;
+    text-align: center;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.metric-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.15);
+}
+
+.metric-value {
+    font-size: 2.5rem;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+}
+
+.metric-label {
+    font-size: 1rem;
+    opacity: 0.8;
+}
+
+/* Filter section styling */
+.filter-section {
+    padding: 1.25rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1.5rem;
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+/* Search box with icon */
+.search-box {
+    position: relative;
+}
+
+.search-box input {
+    padding-left: 2.5rem;
+}
+
+.search-box .search-icon {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0.5;
+}
+
+/* Table styling */
+.table {
+    vertical-align: middle;
+}
+
+.table th {
+    cursor: pointer;
+    position: relative;
+}
+
+.table th::after {
+    content: "↕️";
+    position: absolute;
+    right: 0.5rem;
+    opacity: 0.3;
+    font-size: 0.8rem;
+}
+
+.table th.sort-asc::after {
+    content: "↑";
+    opacity: 1;
+}
+
+.table th.sort-desc::after {
+    content: "↓";
+    opacity: 1;
+}
+
+/* Property type badges */
+.property-type-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.type-single_family {
+    background-color: rgba(var(--bs-primary-rgb), 0.1);
+    color: var(--bs-primary);
+}
+
+.type-condo {
+    background-color: rgba(var(--bs-success-rgb), 0.1);
+    color: var(--bs-success);
+}
+
+.type-townhouse {
+    background-color: rgba(var(--bs-info-rgb), 0.1);
+    color: var(--bs-info);
+}
+
+.type-multi_family {
+    background-color: rgba(var(--bs-warning-rgb), 0.1);
+    color: var(--bs-warning);
+}
+
+.type-land {
+    background-color: rgba(var(--bs-danger-rgb), 0.1);
+    color: var(--bs-danger);
+}
+
+.type-commercial {
+    background-color: rgba(var(--bs-secondary-rgb), 0.1);
+    color: var(--bs-secondary);
+}
+
+/* Confidence score indicators */
+.confidence-indicator {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-weight: bold;
+}
+
+.confidence-high {
+    background-color: rgba(var(--bs-success-rgb), 0.1);
+    color: var(--bs-success);
+}
+
+.confidence-medium {
+    background-color: rgba(var(--bs-warning-rgb), 0.1);
+    color: var(--bs-warning);
+}
+
+.confidence-low {
+    background-color: rgba(var(--bs-danger-rgb), 0.1);
+    color: var(--bs-danger);
+}
+
+/* Loading spinner and placeholder */
+.loading-placeholder {
+    padding: 3rem 0;
+    text-align: center;
+}
+
+/* Chart containers */
+.chart-container {
+    position: relative;
+    height: 300px;
+    width: 100%;
+}
+
+/* Property detail modal */
+.property-detail-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.property-detail-header .property-image {
+    width: 120px;
+    height: 120px;
+    background-color: rgba(0, 0, 0, 0.1);
+    border-radius: 0.5rem;
+    margin-right: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.property-detail-image-placeholder {
+    font-size: 2rem;
+    opacity: 0.5;
+}
+
+.property-detail-info {
+    flex-grow: 1;
+}
+
+.property-detail-address {
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+}
+
+.property-detail-meta {
+    display: flex;
+    gap: 1rem;
+    opacity: 0.7;
+    margin-bottom: 0.5rem;
+}
+
+.property-detail-value {
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: var(--bs-primary);
+}
+
+.property-attributes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin: 1.5rem 0;
+}
+
+.property-attribute {
+    flex: 1 0 30%;
+    min-width: 150px;
+    padding: 1rem;
+    background-color: rgba(0, 0, 0, 0.05);
+    border-radius: 0.5rem;
+    text-align: center;
+}
+
+.attribute-value {
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+
+.attribute-label {
+    font-size: 0.9rem;
+    opacity: 0.7;
+}
+
+/* Animation for dashboard elements */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-fade-in-up {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .metric-value {
+        font-size: 2rem;
+    }
+    
+    .chart-container {
+        height: 250px;
+    }
+    
+    .property-attributes {
+        gap: 0.5rem;
+    }
+    
+    .property-attribute {
+        flex: 1 0 100%;
+    }
+}
