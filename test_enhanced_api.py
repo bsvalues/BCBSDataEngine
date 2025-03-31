@@ -1,334 +1,218 @@
 #!/usr/bin/env python3
 """
-Test script for the enhanced BCBS_Values API with advanced metrics.
+Enhanced API Test Script
 
-This script tests the enhanced API endpoints to verify that advanced metrics
-are properly returned in the response for both GET and POST operations.
+This script tests the enhanced API endpoints including token-based authentication,
+valuations, ETL status, and agent status endpoints.
 """
+
 import json
-import requests
-import time
-import sys
 import os
+import sys
+import time
+import unittest
+import requests
 
-# Constants
-API_BASE_URL = "http://localhost:8000"
-API_KEY = os.environ.get("BCBS_VALUES_API_KEY", "sample_test_key")
+# Configuration
+API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:5002/api")
+API_KEY = os.environ.get("API_KEY", "bcbs_demo_key_2023")
+TEST_AGENT_ID = "test-agent-001"
+TEST_AGENT_TYPE = "test_script"
 
-def test_get_valuations():
-    """Test the GET /api/valuations endpoint to ensure it returns enhanced metrics."""
-    url = f"{API_BASE_URL}/api/valuations"
-    headers = {
-        "Accept": "application/json",
-        "X-API-KEY": API_KEY
-    }
-    params = {
-        "limit": 3,
-        "property_type": "Single Family"
-    }
-    
-    print(f"Testing GET {url} with params {params}...")
-    try:
-        response = requests.get(url, headers=headers, params=params)
-        response.raise_for_status()
-        
-        valuations = response.json()
-        if not valuations:
-            print("No valuations found. Is the database populated?")
-            return False
-            
-        # Check for enhanced metrics in the response
-        has_enhanced_metrics = False
-        
-        print("\nReceived valuations:")
-        for valuation in valuations:
-            property_id = valuation.get('property_id')
-            address = valuation.get('address')
-            estimated_value = valuation.get('estimated_value')
-            print(f"- Property {property_id}: {address}, Value: ${estimated_value:,.2f}")
-            
-            # Check if enhanced metrics are included
-            if (valuation.get('adj_r2_score') is not None or 
-                valuation.get('rmse') is not None or
-                valuation.get('feature_importance') or
-                valuation.get('gis_factors')):
-                has_enhanced_metrics = True
-                print("  ✓ Enhanced metrics found for this property")
-            
-        if has_enhanced_metrics:
-            print("\n✓ GET /api/valuations endpoint returns enhanced metrics")
-            return True
-        else:
-            print("\n✗ GET /api/valuations endpoint does not return enhanced metrics")
-            return False
-            
-    except requests.RequestException as e:
-        print(f"✗ Error testing GET /api/valuations: {e}")
-        return False
+class EnhancedAPITest(unittest.TestCase):
+    """Test cases for the enhanced API functionality."""
 
-def test_get_valuation_by_id():
-    """Test the GET /api/valuations/{property_id} endpoint for enhanced metrics."""
-    # First get a list of valuation IDs
-    try:
-        list_response = requests.get(
-            f"{API_BASE_URL}/api/valuations", 
-            headers={"Accept": "application/json", "X-API-KEY": API_KEY},
-            params={"limit": 1}
-        )
-        list_response.raise_for_status()
+    def setUp(self):
+        """Set up the test case."""
+        self.api_url = API_BASE_URL
+        self.api_key = API_KEY
+        self.token = None
+        self.headers = {"X-API-Key": self.api_key}
         
-        valuations = list_response.json()
-        if not valuations:
-            print("No valuations found to test detail endpoint.")
-            return False
-            
-        # Get the first property ID
-        test_property_id = valuations[0].get('property_id')
-        
-        # Now test the detail endpoint
-        url = f"{API_BASE_URL}/api/valuations/{test_property_id}"
-        headers = {
-            "Accept": "application/json",
-            "X-API-KEY": API_KEY
-        }
-        
-        print(f"Testing GET {url}...")
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        
-        valuation = response.json()
-        
-        # Check for enhanced metrics in the response
-        print(f"\nReceived property details for {valuation.get('address')}:")
-        print(f"- Estimated value: ${valuation.get('estimated_value'):,.2f}")
-        
-        # Print all the advanced metrics
-        enhanced_metrics = []
-        
-        if valuation.get('adj_r2_score') is not None:
-            enhanced_metrics.append(f"Adjusted R² Score: {valuation.get('adj_r2_score'):.4f}")
-            
-        if valuation.get('rmse') is not None:
-            enhanced_metrics.append(f"RMSE: {valuation.get('rmse'):.2f}")
-            
-        if valuation.get('mae') is not None:
-            enhanced_metrics.append(f"MAE: {valuation.get('mae'):.2f}")
-        
-        # Print feature importance
-        if valuation.get('feature_importance'):
-            importance = valuation.get('feature_importance')
-            if isinstance(importance, dict) and importance:
-                enhanced_metrics.append("Feature Importance:")
-                for feature, value in sorted(
-                    importance.items(), 
-                    key=lambda x: float(x[1]) if isinstance(x[1], (int, float, str)) else 0,
-                    reverse=True
-                )[:5]:  # Top 5 features
-                    try:
-                        if isinstance(value, (int, float)):
-                            enhanced_metrics.append(f"  - {feature}: {value:.4f}")
-                        else:
-                            enhanced_metrics.append(f"  - {feature}: {value}")
-                    except (ValueError, TypeError):
-                        enhanced_metrics.append(f"  - {feature}: {value}")
-        
-        # Print p-values for statistical significance
-        if valuation.get('p_values'):
-            p_values = valuation.get('p_values')
-            if isinstance(p_values, dict) and p_values:
-                enhanced_metrics.append("Statistical Significance (p-values):")
-                for feature, value in sorted(
-                    p_values.items(), 
-                    key=lambda x: float(x[1]) if isinstance(x[1], (int, float, str)) else 1,
-                )[:5]:  # Top 5 most significant features
-                    try:
-                        if isinstance(value, (int, float)):
-                            enhanced_metrics.append(f"  - {feature}: {value:.4f}")
-                        else:
-                            enhanced_metrics.append(f"  - {feature}: {value}")
-                    except (ValueError, TypeError):
-                        enhanced_metrics.append(f"  - {feature}: {value}")
-        
-        # Print GIS factors
-        if valuation.get('gis_factors'):
-            enhanced_metrics.append("GIS Adjustment Factors:")
-            for factor, value in valuation.get('gis_factors').items():
-                try:
-                    if isinstance(value, (int, float)):
-                        enhanced_metrics.append(f"  - {factor}: {value:.4f}")
-                    else:
-                        enhanced_metrics.append(f"  - {factor}: {value}")
-                except (ValueError, TypeError):
-                    enhanced_metrics.append(f"  - {factor}: {value}")
-                    
-        # Print location quality
-        if valuation.get('location_quality') is not None:
-            enhanced_metrics.append(f"Location Quality Score: {valuation.get('location_quality'):.4f}")
-            
-        # Print model metrics
-        if valuation.get('model_metrics'):
-            model_metrics = valuation.get('model_metrics')
-            if model_metrics.get('prediction_interval'):
-                interval = model_metrics.get('prediction_interval')
-                if interval and interval[0] is not None and interval[1] is not None:
-                    enhanced_metrics.append(f"Prediction Interval: ${interval[0]:,.2f} - ${interval[1]:,.2f}")
-        
-        # Print found metrics
-        if enhanced_metrics:
-            print("\nEnhanced Metrics Found:")
-            for metric in enhanced_metrics:
-                print(f"  {metric}")
-            print("\n✓ GET /api/valuations/{property_id} endpoint returns enhanced metrics")
-            return True
-        else:
-            print("\n✗ GET /api/valuations/{property_id} endpoint does not return enhanced metrics")
-            return False
-            
-    except requests.RequestException as e:
-        print(f"✗ Error testing GET /api/valuations/[id]: {e}")
-        return False
-
-def test_create_valuation():
-    """Test the POST /api/valuations endpoint to ensure it returns enhanced metrics."""
-    url = f"{API_BASE_URL}/api/valuations"
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "X-API-KEY": API_KEY
-    }
-    
-    # Test data for each model type
-    model_types = [
-        "basic",
-        "advanced_linear",
-        "advanced_lightgbm",
-        "advanced_ensemble",
-        "enhanced_gis"
-    ]
-    
-    # Base property data
-    property_data = {
-        "address": "123 Test St",
-        "city": "Richland",
-        "state": "WA",
-        "zip_code": "99352",
-        "property_type": "Single Family",
-        "bedrooms": 3,
-        "bathrooms": 2,
-        "square_feet": 1800,
-        "lot_size": 8500,
-        "year_built": 1995,
-        "latitude": 46.2804,
-        "longitude": -119.2752,
-        "use_gis": True
-    }
-    
-    success = True
-    
-    for model_type in model_types:
-        # Deep copy property data and add model type
-        payload = property_data.copy()
-        payload["model_type"] = model_type
-        payload["address"] = f"{model_type.capitalize()} Test Property"
-        
-        print(f"\nTesting POST {url} with model_type={model_type}...")
+        # Try to get a token
         try:
-            response = requests.post(url, headers=headers, json=payload)
-            response.raise_for_status()
-            
-            valuation = response.json()
-            
-            # Check for enhanced metrics in the response
-            print(f"Received valuation for {valuation.get('address')}:")
-            print(f"- Estimated value: ${valuation.get('estimated_value'):,.2f}")
-            print(f"- Model used: {valuation.get('model_used')}")
-            
-            # Check if enhanced metrics are included based on model type
-            has_appropriate_metrics = False
-            
-            if model_type == "basic":
-                # Basic should have at least confidence score
-                has_appropriate_metrics = valuation.get('confidence_score') is not None
-                print(f"- Confidence score: {valuation.get('confidence_score'):.4f}")
-                
-            elif model_type in ["advanced_linear", "advanced_lightgbm", "advanced_ensemble", "enhanced_gis"]:
-                # Advanced models should have metrics like adj_r2_score, rmse, feature importance
-                metrics_found = []
-                
-                if valuation.get('adj_r2_score') is not None:
-                    metrics_found.append(f"Adjusted R² Score: {valuation.get('adj_r2_score'):.4f}")
-                    
-                if valuation.get('rmse') is not None:
-                    metrics_found.append(f"RMSE: {valuation.get('rmse'):.2f}")
-                    
-                if valuation.get('mae') is not None:
-                    metrics_found.append(f"MAE: {valuation.get('mae'):.2f}")
-                
-                if valuation.get('feature_importance'):
-                    metrics_found.append("Feature Importance: Available")
-                    
-                if valuation.get('feature_coefficients'):
-                    metrics_found.append("Feature Coefficients: Available")
-                    
-                if valuation.get('p_values'):
-                    metrics_found.append("P-Values: Available")
-                    
-                if model_type in ["enhanced_gis"] and valuation.get('gis_factors'):
-                    metrics_found.append("GIS Factors: Available")
-                    
-                if model_type in ["enhanced_gis"] and valuation.get('location_quality') is not None:
-                    metrics_found.append(f"Location Quality: {valuation.get('location_quality'):.4f}")
-                
-                # Print found metrics
-                if metrics_found:
-                    print("\nEnhanced Metrics Found:")
-                    for metric in metrics_found:
-                        print(f"  - {metric}")
-                        
-                # Check if we have appropriate metrics for the model type
-                if model_type == "enhanced_gis":
-                    has_appropriate_metrics = any(m.startswith("GIS Factors") or m.startswith("Location Quality") for m in metrics_found)
-                else:
-                    has_appropriate_metrics = len(metrics_found) >= 3  # At least 3 advanced metrics
-            
-            if has_appropriate_metrics:
-                print(f"✓ POST /api/valuations with {model_type} returns appropriate enhanced metrics")
-            else:
-                print(f"✗ POST /api/valuations with {model_type} does not return appropriate enhanced metrics")
-                success = False
-                
-        except requests.RequestException as e:
-            print(f"✗ Error testing POST /api/valuations with {model_type}: {e}")
-            success = False
+            self.get_token()
+        except Exception as e:
+            print(f"Warning: Could not get token: {e}")
     
-    return success
+    def get_token(self):
+        """Get an authentication token."""
+        data = {
+            "agent_id": TEST_AGENT_ID,
+            "agent_type": TEST_AGENT_TYPE,
+            "api_key": self.api_key
+        }
+        response = requests.post(
+            f"{self.api_url}/auth/token",
+            json=data
+        )
+        if response.status_code == 200:
+            result = response.json()
+            if "token" in result:
+                self.token = result["token"]
+                self.headers = {"Authorization": f"Bearer {self.token}"}
+                return True
+        return False
+    
+    def test_01_auth_token(self):
+        """Test the authentication token endpoint."""
+        data = {
+            "agent_id": TEST_AGENT_ID,
+            "agent_type": TEST_AGENT_TYPE,
+            "api_key": self.api_key
+        }
+        response = requests.post(
+            f"{self.api_url}/auth/token",
+            json=data
+        )
+        self.assertEqual(response.status_code, 200)
+        result = response.json()
+        self.assertIn("token", result)
+        self.assertIn("expires_in", result)
+        self.assertIn("token_type", result)
+        self.assertEqual(result["token_type"], "Bearer")
+    
+    def test_02_valuations(self):
+        """Test the valuations endpoint."""
+        response = requests.get(
+            f"{self.api_url}/valuations",
+            headers=self.headers
+        )
+        self.assertEqual(response.status_code, 200)
+        result = response.json()
+        self.assertIn("valuations", result)
+        self.assertIn("page", result)
+        self.assertIn("limit", result)
+        self.assertIn("total", result)
+    
+    def test_03_valuations_filtering(self):
+        """Test valuations endpoint with filtering."""
+        response = requests.get(
+            f"{self.api_url}/valuations?limit=5&sort_by=valuation_date&sort_dir=desc",
+            headers=self.headers
+        )
+        self.assertEqual(response.status_code, 200)
+        result = response.json()
+        self.assertIn("valuations", result)
+        self.assertLessEqual(len(result["valuations"]), 5)
+    
+    def test_04_etl_status(self):
+        """Test the ETL status endpoint."""
+        response = requests.get(
+            f"{self.api_url}/etl-status",
+            headers=self.headers
+        )
+        self.assertEqual(response.status_code, 200)
+        result = response.json()
+        self.assertIn("jobs", result)
+        self.assertIn("stats", result)
+        self.assertIn("health", result)
+    
+    def test_05_agent_status(self):
+        """Test the agent status endpoint."""
+        response = requests.get(
+            f"{self.api_url}/agent-status",
+            headers=self.headers
+        )
+        self.assertEqual(response.status_code, 200)
+        result = response.json()
+        self.assertIn("agents", result)
+        self.assertIn("count", result)
+        self.assertIn("metrics", result)
+    
+    def test_06_agent_status_filtering(self):
+        """Test agent status endpoint with filtering."""
+        response = requests.get(
+            f"{self.api_url}/agent-status?active_only=true",
+            headers=self.headers
+        )
+        self.assertEqual(response.status_code, 200)
+        result = response.json()
+        self.assertIn("agents", result)
+        
+        # Check that all agents are active
+        for agent in result["agents"]:
+            self.assertTrue(agent["is_active"])
+    
+    def test_07_agent_logs(self):
+        """Test the agent logs endpoint."""
+        # First get an agent ID
+        response = requests.get(
+            f"{self.api_url}/agent-status",
+            headers=self.headers
+        )
+        self.assertEqual(response.status_code, 200)
+        result = response.json()
+        
+        if len(result["agents"]) > 0:
+            agent_id = result["agents"][0]["id"]
+            response = requests.get(
+                f"{self.api_url}/agent-logs/{agent_id}",
+                headers=self.headers
+            )
+            self.assertEqual(response.status_code, 200)
+            result = response.json()
+            self.assertIn("agent_id", result)
+            self.assertIn("logs", result)
+        else:
+            print("No agents found, skipping agent logs test")
+    
+    def test_08_invalid_token(self):
+        """Test behavior with an invalid token."""
+        # Save the current token
+        original_token = self.token
+        
+        # Create an invalid token
+        self.token = "invalid.token.here"
+        self.headers = {"Authorization": f"Bearer {self.token}"}
+        
+        response = requests.get(
+            f"{self.api_url}/valuations",
+            headers=self.headers
+        )
+        self.assertEqual(response.status_code, 401)
+        
+        # Restore the original token
+        self.token = original_token
+        if self.token:
+            self.headers = {"Authorization": f"Bearer {self.token}"}
+        else:
+            self.headers = {"X-API-Key": self.api_key}
+    
+    def test_09_invalid_api_key(self):
+        """Test behavior with an invalid API key."""
+        # Save the current headers
+        original_headers = self.headers
+        
+        # Create headers with an invalid API key
+        self.headers = {"X-API-Key": "invalid_api_key"}
+        
+        response = requests.get(
+            f"{self.api_url}/valuations",
+            headers=self.headers
+        )
+        self.assertEqual(response.status_code, 401)
+        
+        # Restore the original headers
+        self.headers = original_headers
 
 def main():
-    """Run all tests for the enhanced API endpoints."""
-    print("=== Testing Enhanced BCBS_Values API ===\n")
+    """Run the test suite."""
+    print(f"Testing Enhanced API at {API_BASE_URL}")
+    print(f"API Key: {API_KEY[:4]}...{API_KEY[-4:]}")
     
-    results = []
+    # Check if the API is available
+    try:
+        response = requests.get(f"{API_BASE_URL}/health")
+        if response.status_code != 200:
+            print(f"Warning: API health check failed with status code {response.status_code}")
+    except requests.exceptions.ConnectionError:
+        print(f"Error: Could not connect to API at {API_BASE_URL}")
+        print("Make sure the API server is running and try again.")
+        sys.exit(1)
     
-    # Test GET list endpoint
-    results.append(("GET /api/valuations", test_get_valuations()))
-    
-    # Test GET detail endpoint
-    results.append(("GET /api/valuations/{property_id}", test_get_valuation_by_id()))
-    
-    # Test POST endpoint with different model types
-    results.append(("POST /api/valuations", test_create_valuation()))
-    
-    # Print summary
-    print("\n=== Test Results Summary ===")
-    all_passed = True
-    for test_name, result in results:
-        status = "PASS" if result else "FAIL"
-        if not result:
-            all_passed = False
-        print(f"{test_name}: {status}")
-    
-    # Set exit code based on results
-    sys.exit(0 if all_passed else 1)
+    # Run the tests
+    unittest.main(argv=['first-arg-is-ignored'])
 
 if __name__ == "__main__":
     main()

@@ -23,5 +23,30 @@
         "export": true
       }
     ]
+  },
+  "APIServer": {
+    "displayName": "API Server",
+    "description": "Runs the enhanced API server with token authentication",
+    "icon": "api",
+    "colorIndex": 2,
+    "entrypoint": "api.py",
+    "ignorePorts": false,
+    "detached": true,
+    "terminalDarkTheme": true,
+    "showCommand": true,
+    "commands": ["/mnt/nixmodules/nix/store/b03kwd9a5dm53k0z5vfzdhkvaa64c4g7-python3-3.10.13-env/bin/python3 api.py"],
+    "interpreter": {
+      "type": "python3",
+      "module": {}
+    },
+    "ports": [
+      {
+        "internalPort": 5001,
+        "externalPort": 5001,
+        "description": "API Server",
+        "label": "API",
+        "export": true
+      }
+    ]
   }
 }

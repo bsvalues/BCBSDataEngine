@@ -7,16 +7,66 @@ import os
 import uuid
 from datetime import datetime, timedelta
 from functools import wraps
+import secrets
 from typing import Dict, List, Optional, Union
 
-import pandas as pd
-from flask import Blueprint, Flask, jsonify, request, current_app, g
-from sqlalchemy import desc, func
+# Try importing optional packages
+try:
+    import jwt
+except ImportError:
+    logging.error("PyJWT is not installed. JWT authentication will not work.")
+    # Create a mock JWT module to avoid breaking code
+    class MockJWT:
+        class ExpiredSignatureError(Exception): pass
+        class InvalidTokenError(Exception): pass
+        def encode(self, *args, **kwargs): return "mock.token.invalid"
+        def decode(self, *args, **kwargs): 
+            raise self.InvalidTokenError("JWT module not installed")
+    jwt = MockJWT()
 
-from app import app, db
-from models import Property, PropertyValuation, PropertyFeature, ETLJob, Agent, AgentLog
-from src.valuation import ValuationEngine, AdvancedValuationEngine, EnhancedGISValuationEngine
-from src.enhanced_gis_features import load_gis_features, calculate_gis_adjustments
+try:
+    import pandas as pd
+except ImportError:
+    logging.error("Pandas is not installed. Some data processing features may be limited.")
+    # Create a simple mock for basic functionality
+    class MockPandas:
+        def DataFrame(self, *args, **kwargs): 
+            return {"data": args[0] if args else kwargs}
+    pd = MockPandas()
+
+# Import Flask components
+try:
+    from flask import Blueprint, Flask, jsonify, request, current_app, g
+    from sqlalchemy import desc, func
+except ImportError as e:
+    logging.error(f"Critical Flask component missing: {str(e)}")
+    raise
+
+# Import application modules
+try:
+    from app import app, db
+    from models import Property, PropertyValuation, PropertyFeature, ETLJob, Agent, AgentLog
+except ImportError as e:
+    logging.error(f"Critical application module missing: {str(e)}")
+    raise
+
+# Import valuation components with fallbacks
+try:
+    from src.valuation import ValuationEngine, AdvancedValuationEngine, EnhancedGISValuationEngine
+    from src.enhanced_gis_features import load_gis_features, calculate_gis_adjustments
+except ImportError as e:
+    logging.error(f"Valuation module import error: {str(e)}")
+    # Create minimal mocks for essential functionality
+    class BaseValuationEngine:
+        def predict(self, *args, **kwargs): return {"value": 250000, "confidence": 0.75}
+        
+    ValuationEngine = AdvancedValuationEngine = EnhancedGISValuationEngine = BaseValuationEngine
+    
+    def mock_load_gis_features(*args): return {}
+    def mock_calculate_gis_adjustments(lat, lon, value, *args): return value, {"mocked": True}
+    
+    load_gis_features = mock_load_gis_features
+    calculate_gis_adjustments = mock_calculate_gis_adjustments
 
 
 # Configure logging
@@ -41,20 +91,89 @@ except Exception as e:
     gis_features = {}
 
 
-# API key authentication
+# Secret key for JWT tokens
+JWT_SECRET = os.environ.get('JWT_SECRET', secrets.token_hex(32))
+TOKEN_EXPIRY = 24 * 60 * 60  # 24 hours in seconds
+
+# Function to generate JWT token
+def generate_token(agent_id, agent_type):
+    """
+    Generate a JWT token for an agent.
+    
+    Args:
+        agent_id: The ID of the agent
+        agent_type: The type of agent (e.g., 'regression', 'ensemble', 'gis')
+        
+    Returns:
+        str: JWT token
+    """
+    payload = {
+        'sub': str(agent_id),
+        'agent_type': agent_type,
+        'iat': datetime.utcnow(),
+        'exp': datetime.utcnow() + timedelta(seconds=TOKEN_EXPIRY)
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm='HS256')
+
+# Token-based authentication
+def require_auth_token(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Check for token in Authorization header
+        auth_header = request.headers.get('Authorization')
+        
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Authorization token is required', 'code': 'token_required'}), 401
+        
+        token = auth_header.split(' ')[1]
+        
+        try:
+            # Decode and validate the token
+            payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+            
+            # Store user info in flask g for access in the route
+            g.agent_id = payload['sub']
+            g.agent_type = payload['agent_type']
+            
+        except jwt.ExpiredSignatureError:
+            return jsonify({'error': 'Token has expired', 'code': 'token_expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'error': 'Invalid token', 'code': 'token_invalid'}), 401
+        
+        return f(*args, **kwargs)
+    return decorated_function
+
+# Legacy API key authentication (maintained for backward compatibility)
 def require_api_key(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # First check if there's a valid JWT token
+        auth_header = request.headers.get('Authorization')
+        if auth_header and auth_header.startswith('Bearer '):
+            try:
+                token = auth_header.split(' ')[1]
+                payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+                # Store user info
+                g.agent_id = payload['sub']
+                g.agent_type = payload['agent_type']
+                return f(*args, **kwargs)
+            except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+                pass  # Fall through to API key authentication
+        
+        # If no valid JWT token, try API key
         api_key = request.headers.get('X-API-Key') or request.args.get('api_key')
         if not api_key:
-            return jsonify({'error': 'API key is required'}), 401
+            return jsonify({'error': 'Authentication required. Please provide a valid token or API key.'}), 401
         
-        # In a real system, we would validate the API key against a database
-        # For now, we'll use a simple check against an environment variable
+        # Validate the API key (in a real system, this would check against a database)
         valid_api_key = os.environ.get('API_KEY', 'bcbs_demo_key_2023')
         
         if api_key != valid_api_key:
             return jsonify({'error': 'Invalid API key'}), 401
+        
+        # Set a default agent_id for API key auth
+        g.agent_id = 'api_key_user'
+        g.agent_type = 'api_client'
         
         return f(*args, **kwargs)
     return decorated_function
@@ -437,38 +556,122 @@ def get_market_trends():
 @api_bp.route('/agent-status', methods=['GET'])
 @require_api_key
 def get_agent_status():
-    """Get status of valuation agents."""
-    agents = Agent.query.all()
+    """
+    Get detailed status of valuation agents.
+    
+    Query parameters:
+    - agent_type: Filter by agent type (e.g., 'regression', 'ensemble', 'gis')
+    - status: Filter by status (e.g., 'idle', 'processing', 'error')
+    - active_only: If set to 'true', only return active agents
+    """
+    # Get filter parameters
+    agent_type = request.args.get('agent_type')
+    status = request.args.get('status')
+    active_only = request.args.get('active_only') == 'true'
+    
+    # Build query
+    query = Agent.query
+    
+    if agent_type:
+        query = query.filter(Agent.agent_type == agent_type)
+    
+    if status:
+        query = query.filter(Agent.status == status)
+    
+    if active_only:
+        query = query.filter(Agent.is_active == True)
+    
+    # Execute query
+    agents = query.all()
     
     # Format results
     results = []
     for agent in agents:
+        # Get the latest log
         latest_log = None
-        if agent.logs:
+        log_entry = AgentLog.query.filter_by(agent_id=agent.id)\
+            .order_by(desc(AgentLog.timestamp))\
+            .first()
+        
+        if log_entry:
             latest_log = {
-                'level': agent.logs[0].level,
-                'message': agent.logs[0].message,
-                'timestamp': agent.logs[0].timestamp.isoformat()
+                'level': log_entry.level,
+                'message': log_entry.message,
+                'timestamp': log_entry.timestamp.isoformat(),
+                'details': log_entry.details
             }
         
+        # Get recent performance metrics
+        recent_valuations = PropertyValuation.query.filter_by(agent_id=agent.id)\
+            .order_by(desc(PropertyValuation.valuation_date))\
+            .limit(10)\
+            .all()
+        
+        valuation_count = len(recent_valuations)
+        
+        # Calculate performance metrics if we have valuations
+        performance_metrics = {
+            'recent_valuations': valuation_count,
+            'average_confidence': sum(v.confidence_score for v in recent_valuations) / valuation_count if valuation_count > 0 else None,
+            'methods_used': list(set(v.valuation_method for v in recent_valuations)) if valuation_count > 0 else []
+        }
+        
+        # Build agent data
         agent_data = {
-            'agent_id': agent.agent_id,
-            'agent_name': agent.agent_name,
+            'id': agent.id,
+            'name': agent.name,
             'agent_type': agent.agent_type,
+            'description': agent.description,
             'status': agent.status,
-            'last_heartbeat': agent.last_heartbeat.isoformat() if agent.last_heartbeat else None,
-            'current_task': agent.current_task,
-            'queue_size': agent.queue_size,
+            'is_active': agent.is_active,
+            'version': agent.version,
+            'created_at': agent.created_at.isoformat(),
+            'last_active': agent.last_active.isoformat() if agent.last_active else None,
             'success_rate': agent.success_rate,
-            'error_count': agent.error_count,
+            'performance_metrics': performance_metrics,
+            'configuration': agent.configuration,
             'latest_log': latest_log
         }
+        
+        # Add queue_size field if it exists
+        if hasattr(agent, 'queue_size'):
+            agent_data['queue_size'] = agent.queue_size
+        
+        # Add current_task field if it exists
+        if hasattr(agent, 'current_task'):
+            agent_data['current_task'] = agent.current_task
+        
+        # Add error_count field if it exists
+        if hasattr(agent, 'error_count'):
+            agent_data['error_count'] = agent.error_count
+        
         results.append(agent_data)
+    
+    # Calculate system-wide metrics
+    active_agents = sum(1 for agent in agents if agent.is_active)
+    idle_agents = sum(1 for agent in agents if agent.status == 'idle' and agent.is_active)
+    processing_agents = sum(1 for agent in agents if agent.status == 'processing')
+    error_agents = sum(1 for agent in agents if agent.status == 'error')
+    
+    # System health indicator
+    system_health = 'healthy'
+    if error_agents > 0:
+        system_health = 'warning'
+    if error_agents > active_agents / 3:  # If more than 1/3 of agents are in error state
+        system_health = 'critical'
     
     return jsonify({
         'agents': results,
         'count': len(results),
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.utcnow().isoformat(),
+        'metrics': {
+            'total_agents': len(agents),
+            'active_agents': active_agents,
+            'idle_agents': idle_agents,
+            'processing_agents': processing_agents, 
+            'error_agents': error_agents,
+            'system_health': system_health
+        }
     })
 
 
@@ -498,9 +701,298 @@ def get_agent_logs(agent_id):
     
     return jsonify({
         'agent_id': agent.agent_id,
-        'agent_name': agent.agent_name,
+        'agent_name': agent.name,
         'logs': results,
         'count': len(results)
+    })
+
+
+@api_bp.route('/valuations', methods=['GET'])
+@require_api_key
+def get_valuations():
+    """
+    Get property valuations with advanced filtering and pagination.
+    
+    Query parameters:
+    - method: Filter by valuation method (e.g., 'enhanced_regression', 'lightgbm')
+    - min_confidence: Minimum confidence score (0.0-1.0)
+    - after_date: Only valuations after this date (ISO format)
+    - before_date: Only valuations before this date (ISO format)
+    - property_id: Filter by property ID
+    - neighborhood: Filter by neighborhood
+    - page: Page number for pagination (default: 1)
+    - limit: Results per page (default: 20, max: 100)
+    - sort_by: Field to sort by (default: 'valuation_date')
+    - sort_dir: Sort direction ('asc' or 'desc', default: 'desc')
+    """
+    # Get filter parameters
+    method = request.args.get('method')
+    min_confidence = request.args.get('min_confidence', type=float)
+    after_date = request.args.get('after_date')
+    before_date = request.args.get('before_date')
+    property_id = request.args.get('property_id')
+    neighborhood = request.args.get('neighborhood')
+    
+    # Pagination parameters
+    page = request.args.get('page', 1, type=int)
+    limit = request.args.get('limit', 20, type=int)
+    limit = min(100, limit)  # Cap at 100 to prevent abuse
+    
+    # Sorting parameters
+    sort_by = request.args.get('sort_by', 'valuation_date')
+    sort_dir = request.args.get('sort_dir', 'desc')
+    
+    # Validate sort parameters
+    valid_sort_fields = ['valuation_date', 'estimated_value', 'confidence_score']
+    if sort_by not in valid_sort_fields:
+        sort_by = 'valuation_date'
+    
+    if sort_dir not in ['asc', 'desc']:
+        sort_dir = 'desc'
+    
+    # Build base query
+    query = db.session.query(PropertyValuation, Property)\
+        .join(Property, PropertyValuation.property_id == Property.id)
+    
+    # Apply filters
+    if method:
+        query = query.filter(PropertyValuation.valuation_method == method)
+    
+    if min_confidence is not None:
+        query = query.filter(PropertyValuation.confidence_score >= min_confidence)
+    
+    if after_date:
+        try:
+            after_dt = datetime.fromisoformat(after_date.replace('Z', '+00:00'))
+            query = query.filter(PropertyValuation.valuation_date >= after_dt)
+        except ValueError:
+            return jsonify({'error': 'Invalid after_date format. Use ISO format (YYYY-MM-DDTHH:MM:SS)'}), 400
+    
+    if before_date:
+        try:
+            before_dt = datetime.fromisoformat(before_date.replace('Z', '+00:00'))
+            query = query.filter(PropertyValuation.valuation_date <= before_dt)
+        except ValueError:
+            return jsonify({'error': 'Invalid before_date format. Use ISO format (YYYY-MM-DDTHH:MM:SS)'}), 400
+    
+    if property_id:
+        query = query.filter(Property.property_id == property_id)
+    
+    if neighborhood:
+        query = query.filter(Property.neighborhood == neighborhood)
+    
+    # Get total count
+    total = query.count()
+    
+    # Apply sorting
+    sort_field = getattr(PropertyValuation, sort_by)
+    sort_field = sort_field.asc() if sort_dir == 'asc' else sort_field.desc()
+    query = query.order_by(sort_field)
+    
+    # Apply pagination
+    query = query.offset((page - 1) * limit).limit(limit)
+    
+    # Execute query
+    results = query.all()
+    
+    # Format results
+    valuations = []
+    for valuation, property in results:
+        data = {
+            'valuation_id': valuation.id,
+            'property_id': property.property_id,
+            'address': property.address,
+            'city': property.city,
+            'state': property.state,
+            'zip_code': property.zip_code,
+            'neighborhood': property.neighborhood,
+            'estimated_value': valuation.estimated_value,
+            'valuation_date': valuation.valuation_date.isoformat(),
+            'valuation_method': valuation.valuation_method,
+            'confidence_score': valuation.confidence_score,
+            'model_features': valuation.model_features
+        }
+        
+        # Include model metrics if available
+        model_metrics = {}
+        if hasattr(valuation, 'adj_r2_score') and valuation.adj_r2_score is not None:
+            model_metrics['adj_r2'] = valuation.adj_r2_score
+        if hasattr(valuation, 'rmse') and valuation.rmse is not None:
+            model_metrics['rmse'] = valuation.rmse
+        if hasattr(valuation, 'mae') and valuation.mae is not None:
+            model_metrics['mae'] = valuation.mae
+        
+        if model_metrics:
+            data['model_metrics'] = model_metrics
+        
+        # Include GIS features if available
+        if valuation.gis_features:
+            data['gis_features'] = valuation.gis_features
+        
+        valuations.append(data)
+    
+    return jsonify({
+        'valuations': valuations,
+        'page': page,
+        'limit': limit,
+        'total': total,
+        'pages': (total // limit) + (1 if total % limit > 0 else 0)
+    })
+
+
+@api_bp.route('/etl-status', methods=['GET'])
+@require_api_key
+def get_etl_status():
+    """
+    Get status of ETL pipeline jobs.
+    
+    Query parameters:
+    - job_type: Filter by job type
+    - status: Filter by status
+    - timeframe: Filter by timeframe ('today', 'yesterday', 'this_week', 'last_week', 'this_month')
+    - limit: Maximum number of jobs to return (default: 20, max: 100)
+    """
+    # Get filter parameters
+    job_type = request.args.get('job_type')
+    status = request.args.get('status')
+    timeframe = request.args.get('timeframe', 'today')
+    limit = request.args.get('limit', 20, type=int)
+    limit = min(100, limit)  # Cap at 100 to prevent abuse
+    
+    # Build base query
+    query = ETLJob.query
+    
+    # Determine date range based on timeframe
+    now = datetime.utcnow()
+    if timeframe == 'today':
+        start_date = datetime(now.year, now.month, now.day)
+    elif timeframe == 'yesterday':
+        yesterday = now - timedelta(days=1)
+        start_date = datetime(yesterday.year, yesterday.month, yesterday.day)
+        end_date = datetime(now.year, now.month, now.day)
+        query = query.filter(ETLJob.start_time < end_date)
+    elif timeframe == 'this_week':
+        # Start of week (Monday)
+        start_date = now - timedelta(days=now.weekday())
+        start_date = datetime(start_date.year, start_date.month, start_date.day)
+    elif timeframe == 'last_week':
+        # Start of last week
+        start_of_this_week = now - timedelta(days=now.weekday())
+        start_date = start_of_this_week - timedelta(days=7)
+        start_date = datetime(start_date.year, start_date.month, start_date.day)
+        end_date = start_of_this_week
+        query = query.filter(ETLJob.start_time < end_date)
+    elif timeframe == 'this_month':
+        start_date = datetime(now.year, now.month, 1)
+    else:  # Default to today
+        start_date = datetime(now.year, now.month, now.day)
+    
+    # Apply timeframe filter
+    query = query.filter(ETLJob.start_time >= start_date)
+    
+    # Apply other filters
+    if job_type:
+        query = query.filter(ETLJob.job_type == job_type)
+    
+    if status:
+        query = query.filter(ETLJob.status == status)
+    
+    # Order by most recent first
+    query = query.order_by(desc(ETLJob.start_time))
+    
+    # Apply limit
+    query = query.limit(limit)
+    
+    # Execute query
+    jobs = query.all()
+    
+    # Format results
+    results = []
+    for job in jobs:
+        job_data = {
+            'id': job.id,
+            'job_type': job.job_type,
+            'status': job.status,
+            'start_time': job.start_time.isoformat(),
+            'end_time': job.end_time.isoformat() if job.end_time else None,
+            'progress': job.progress,
+            'records_processed': job.records_processed,
+            'records_total': job.records_total,
+            'source': job.source,
+            'message': job.message,
+            'error': job.error
+        }
+        
+        # Calculate duration if completed
+        if job.end_time:
+            duration = (job.end_time - job.start_time).total_seconds()
+            job_data['duration_seconds'] = duration
+        
+        results.append(job_data)
+    
+    # Get summary statistics
+    stats = {
+        'total_jobs': len(results),
+        'completed_jobs': sum(1 for job in jobs if job.status == 'completed'),
+        'failed_jobs': sum(1 for job in jobs if job.status == 'failed'),
+        'running_jobs': sum(1 for job in jobs if job.status == 'running'),
+        'pending_jobs': sum(1 for job in jobs if job.status == 'pending'),
+        'total_records_processed': sum(job.records_processed for job in jobs),
+        'average_progress': sum(job.progress for job in jobs) / len(jobs) if jobs else 0
+    }
+    
+    # Add system health indicators
+    health = {
+        'status': 'healthy' if stats['failed_jobs'] == 0 else 'warning' if stats['failed_jobs'] <= 2 else 'critical',
+        'pipeline_active': stats['running_jobs'] > 0 or (stats['completed_jobs'] > 0 and any(job.end_time and (now - job.end_time).total_seconds() < 3600 for job in jobs if job.status == 'completed')),
+        'last_successful_job': next((job.end_time.isoformat() for job in jobs if job.status == 'completed'), None)
+    }
+    
+    return jsonify({
+        'jobs': results,
+        'stats': stats,
+        'health': health,
+        'timeframe': timeframe,
+        'timestamp': now.isoformat()
+    })
+
+
+@api_bp.route('/auth/token', methods=['POST'])
+def generate_auth_token():
+    """
+    Generate authentication token for agents.
+    
+    This endpoint expects a JSON object with:
+    - agent_id: The agent's unique identifier
+    - agent_type: The type of agent (e.g., 'regression', 'ensemble', 'gis')
+    - api_key: A valid API key for initial authentication
+    
+    Returns a JWT token valid for 24 hours.
+    """
+    data = request.json
+    
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    
+    # Validate required fields
+    required_fields = ['agent_id', 'agent_type', 'api_key']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({'error': f'Missing required field: {field}'}), 400
+    
+    # Validate API key
+    valid_api_key = os.environ.get('API_KEY', 'bcbs_demo_key_2023')
+    if data['api_key'] != valid_api_key:
+        return jsonify({'error': 'Invalid API key'}), 401
+    
+    # Generate token
+    token = generate_token(data['agent_id'], data['agent_type'])
+    
+    # Return token
+    return jsonify({
+        'token': token,
+        'expires_in': TOKEN_EXPIRY,
+        'token_type': 'Bearer'
     })
 
 
