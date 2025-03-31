@@ -41,7 +41,7 @@ ChartJS.register(
  * - Auto-refresh capability with configurable intervals
  * - Detailed property and agent information in modal views
  * 
- * @version 2.0.0
+ * @version 3.0.0
  * @author BCBS Dash Team
  * @last-updated 2025-03-31
  */
@@ -152,7 +152,93 @@ const Dashboard = () => {
     if (savedApiKey) {
       setApiKey(savedApiKey);
     }
-  }, [fetchPropertyValuations, fetchEtlStatus, fetchAgentStatus]);
+
+    // Setup auto-refresh timer if enabled
+    if (refreshSettings.autoRefresh) {
+      startAutoRefreshTimer();
+    }
+
+    // Setup intersection observer for chart animations
+    setupIntersectionObserver();
+
+    // Cleanup function for component unmount
+    return () => {
+      if (refreshTimerRef.current) {
+        clearInterval(refreshTimerRef.current);
+      }
+      if (metricsObserverRef.current) {
+        metricsObserverRef.current.disconnect();
+      }
+    };
+  }, []);
+
+  /**
+   * Effect to handle changes to auto-refresh settings
+   */
+  useEffect(() => {
+    if (refreshSettings.autoRefresh) {
+      startAutoRefreshTimer();
+    } else if (refreshTimerRef.current) {
+      clearInterval(refreshTimerRef.current);
+    }
+
+    return () => {
+      if (refreshTimerRef.current) {
+        clearInterval(refreshTimerRef.current);
+      }
+    };
+  }, [refreshSettings.autoRefresh, refreshSettings.interval]);
+
+  /**
+   * Set up the auto-refresh timer for periodic data updates
+   */
+  const startAutoRefreshTimer = () => {
+    if (refreshTimerRef.current) {
+      clearInterval(refreshTimerRef.current);
+    }
+
+    refreshTimerRef.current = setInterval(() => {
+      console.log('Auto-refreshing dashboard data...');
+      refreshAllData();
+    }, refreshSettings.interval);
+  };
+
+  /**
+   * Set up intersection observer for triggering animations when charts come into view
+   */
+  const setupIntersectionObserver = () => {
+    const options = {
+      root: null,
+      rootMargin: '0px',
+      threshold: 0.1
+    };
+
+    metricsObserverRef.current = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          // Trigger chart animation when it becomes visible
+          const chartId = entry.target.id;
+          if (chartId === 'value-distribution-chart' && valueDistributionChartRef.current) {
+            valueDistributionChartRef.current.update();
+          } else if (chartId === 'neighborhood-chart' && neighborhoodChartRef.current) {
+            neighborhoodChartRef.current.update();
+          } else if (chartId === 'trend-chart' && trendChartRef.current) {
+            trendChartRef.current.update();
+          } else if (chartId === 'etl-progress-chart' && etlProgressChartRef.current) {
+            etlProgressChartRef.current.update();
+          } else if (chartId === 'agent-performance-chart' && agentPerformanceChartRef.current) {
+            agentPerformanceChartRef.current.update();
+          }
+        }
+      });
+    }, options);
+
+    // Observe each chart container
+    const chartContainers = document.querySelectorAll('.chart-container');
+    chartContainers.forEach(container => {
+      metricsObserverRef.current.observe(container);
+    });
+  };
 
   /**
    * Function to fetch property valuations from the enhanced API endpoint
@@ -182,6 +268,9 @@ const Dashboard = () => {
       queryParams.append('page', pagination.currentPage);
       queryParams.append('per_page', pagination.itemsPerPage);
       
+      // Add a timestamp to prevent caching
+      queryParams.append('_t', Date.now());
+      
       // Headers for the API request including the API key
       const headers = {
         'Content-Type': 'application/json'
@@ -194,10 +283,14 @@ const Dashboard = () => {
       
       // Make the API request to the enhanced valuations endpoint
       console.log(`Fetching from /api/valuations?${queryParams.toString()}`);
+      const startTime = performance.now();
       const response = await fetch(`/api/valuations?${queryParams.toString()}`, {
         method: 'GET',
         headers: headers
       });
+      
+      const endTime = performance.now();
+      console.log(`API request completed in ${(endTime - startTime).toFixed(2)}ms`);
       
       if (!response.ok) {
         throw new Error(`API request failed with status ${response.status}: ${response.statusText}`);
@@ -258,7 +351,7 @@ const Dashboard = () => {
       }));
     }
   }, [filters, pagination.currentPage, pagination.itemsPerPage, apiKey]);
-
+  
   /**
    * Extract unique neighborhoods from the property data
    * @param {Array} propertyData - Array of property objects
@@ -275,7 +368,7 @@ const Dashboard = () => {
     
     setAvailableNeighborhoods(neighborhoods);
   }, []);
-
+  
   /**
    * Function to extract neighborhood from address if needed
    * @param {string} address - The property address
@@ -293,7 +386,7 @@ const Dashboard = () => {
     
     return '';
   };
-
+  
   /**
    * Function to handle filter changes
    * @param {Event} e - The input change event
@@ -319,7 +412,7 @@ const Dashboard = () => {
       debouncedSearch(value);
     }
   };
-
+  
   /**
    * Debounced search function to prevent excessive API calls while typing
    */
@@ -338,7 +431,7 @@ const Dashboard = () => {
     }, 500),
     [fetchPropertyValuations]
   );
-
+  
   /**
    * Function to apply filters (for form submission)
    * @param {Event} e - The form submit event
@@ -355,7 +448,7 @@ const Dashboard = () => {
     // Fetch with current filters
     fetchPropertyValuations();
   };
-
+  
   /**
    * Function to reset all filters to default values
    */
@@ -381,7 +474,7 @@ const Dashboard = () => {
     // Fetch with cleared filters (deferred to next render cycle)
     setTimeout(() => fetchPropertyValuations(), 0);
   };
-
+  
   /**
    * Function to handle sorting column clicks
    * @param {string} columnName - The name of the column to sort by
@@ -402,7 +495,7 @@ const Dashboard = () => {
     // Fetch data with new sort settings (deferred to next render cycle)
     setTimeout(() => fetchPropertyValuations(), 0);
   };
-
+  
   /**
    * Function to handle pagination changes
    * @param {number} newPage - The new page number to navigate to
@@ -418,7 +511,7 @@ const Dashboard = () => {
       setTimeout(() => fetchPropertyValuations(), 0);
     }
   };
-
+  
   /**
    * Handle items per page change
    * @param {Event} e - The change event
@@ -435,7 +528,7 @@ const Dashboard = () => {
     // Fetch data with new pagination settings
     setTimeout(() => fetchPropertyValuations(), 0);
   };
-
+  
   /**
    * Handle property row click to view detailed information
    * @param {Object} property - The property to view in detail
@@ -443,14 +536,14 @@ const Dashboard = () => {
   const handlePropertyClick = (property) => {
     setSelectedProperty(property);
   };
-
+  
   /**
    * Close the property detail modal
    */
   const closePropertyDetail = () => {
     setSelectedProperty(null);
   };
-
+  
   /**
    * Function to fetch ETL pipeline status data
    * @returns {Promise<void>}
@@ -470,10 +563,14 @@ const Dashboard = () => {
       }
       
       // Make the API request to the ETL status endpoint
+      const startTime = performance.now();
       const response = await fetch('/api/etl-status', {
         method: 'GET',
         headers: headers
       });
+      
+      const endTime = performance.now();
+      console.log(`ETL status API request completed in ${(endTime - startTime).toFixed(2)}ms`);
       
       if (!response.ok) {
         throw new Error(`ETL status API request failed with status ${response.status}: ${response.statusText}`);
@@ -506,18 +603,16 @@ const Dashboard = () => {
         ...prev,
         lastRefreshTime: new Date()
       }));
-      
-      console.log('ETL status data loaded successfully.');
     } catch (err) {
       console.error('Error fetching ETL status:', err);
-      setEtlStatus(prev => ({
-        ...prev,
-        isLoading: false,
-        error: `Failed to load ETL status: ${err.message}. Please try again later.`
+      setEtlStatus(prev => ({ 
+        ...prev, 
+        isLoading: false, 
+        error: `Failed to load ETL status: ${err.message}. Please try again later.` 
       }));
     }
   }, [apiKey]);
-
+  
   /**
    * Function to fetch agent status data
    * @returns {Promise<void>}
@@ -537,10 +632,14 @@ const Dashboard = () => {
       }
       
       // Make the API request to the agent status endpoint
+      const startTime = performance.now();
       const response = await fetch('/api/agent-status', {
         method: 'GET',
         headers: headers
       });
+      
+      const endTime = performance.now();
+      console.log(`Agent status API request completed in ${(endTime - startTime).toFixed(2)}ms`);
       
       if (!response.ok) {
         throw new Error(`Agent status API request failed with status ${response.status}: ${response.statusText}`);
@@ -548,9 +647,9 @@ const Dashboard = () => {
       
       const data = await response.json();
       
-      // Transform API response to our state format
       setAgentStatus({
-        agents: Array.isArray(data.agents) ? data.agents : [],
+        agents: Array.isArray(data.agents) ? data.agents : 
+                (Array.isArray(data) ? data : []),
         isLoading: false,
         error: null,
         lastUpdate: new Date()
@@ -561,18 +660,16 @@ const Dashboard = () => {
         ...prev,
         lastRefreshTime: new Date()
       }));
-      
-      console.log(`Loaded status for ${data.agents?.length || 0} agents.`);
     } catch (err) {
       console.error('Error fetching agent status:', err);
-      setAgentStatus(prev => ({
-        ...prev,
-        isLoading: false,
-        error: `Failed to load agent status: ${err.message}. Please try again later.`
+      setAgentStatus(prev => ({ 
+        ...prev, 
+        isLoading: false, 
+        error: `Failed to load agent status: ${err.message}. Please try again later.` 
       }));
     }
   }, [apiKey]);
-
+  
   /**
    * Function to fetch detailed information for a specific agent
    * @param {string} agentId - The ID of the agent to retrieve detailed information for
@@ -580,6 +677,8 @@ const Dashboard = () => {
    */
   const fetchAgentDetails = useCallback(async (agentId) => {
     if (!agentId) return;
+    
+    setSelectedAgent(prev => prev ? { ...prev, isLoading: true, error: null } : { id: agentId, isLoading: true, error: null });
     
     try {
       // Headers for the API request including the API key
@@ -592,61 +691,55 @@ const Dashboard = () => {
         headers['X-API-Key'] = apiKey;
       }
       
-      // Make the API request to the agent logs endpoint
-      const response = await fetch(`/api/agent-logs/${agentId}`, {
+      // Make the API request to the agent details endpoint
+      const response = await fetch(`/api/agent-status/${agentId}`, {
         method: 'GET',
         headers: headers
       });
       
       if (!response.ok) {
-        throw new Error(`Agent logs API request failed with status ${response.status}: ${response.statusText}`);
+        throw new Error(`Agent details API request failed with status ${response.status}: ${response.statusText}`);
       }
       
       const data = await response.json();
       
-      // Find the agent in our current state
-      const agent = agentStatus.agents.find(a => a.agent_id === agentId);
-      
-      if (agent) {
-        // Set selected agent with the logs from the API
-        setSelectedAgent({
-          ...agent,
-          logs: data.logs || []
-        });
-      } else {
-        throw new Error(`Agent ${agentId} not found in current state`);
-      }
-      
-      console.log(`Loaded ${data.logs?.length || 0} logs for agent ${agentId}`);
+      // Update the selected agent with detailed information
+      setSelectedAgent({
+        ...data,
+        isLoading: false,
+        error: null
+      });
     } catch (err) {
-      console.error(`Error fetching agent logs for ${agentId}:`, err);
-      // Set error in selected agent
-      setSelectedAgent(prev => ({
-        ...prev,
-        logsError: `Failed to load agent logs: ${err.message}. Please try again later.`
+      console.error(`Error fetching agent details for ${agentId}:`, err);
+      setSelectedAgent(prev => ({ 
+        ...prev, 
+        isLoading: false, 
+        error: `Failed to load agent details: ${err.message}. Please try again later.` 
       }));
     }
-  }, [apiKey, agentStatus.agents]);
-
+  }, [apiKey]);
+  
   /**
    * Function to refresh all dashboard data
    * This will fetch property valuations, ETL status, and agent status
    */
   const refreshAllData = useCallback(() => {
-    console.log('Refreshing all dashboard data...');
+    fetchPropertyValuations();
+    fetchEtlStatus();
+    fetchAgentStatus();
     
-    // Update refresh timestamp
+    // If an agent is selected, also refresh its details
+    if (selectedAgent?.id) {
+      fetchAgentDetails(selectedAgent.id);
+    }
+    
+    // Update last refresh time
     setRefreshSettings(prev => ({
       ...prev,
       lastRefreshTime: new Date()
     }));
-    
-    // Fetch all data
-    fetchPropertyValuations();
-    fetchEtlStatus();
-    fetchAgentStatus();
-  }, [fetchPropertyValuations, fetchEtlStatus, fetchAgentStatus]);
-
+  }, [fetchPropertyValuations, fetchEtlStatus, fetchAgentStatus, fetchAgentDetails, selectedAgent]);
+  
   /**
    * Handle auto-refresh interval change
    * @param {Event} e - The change event
@@ -659,7 +752,7 @@ const Dashboard = () => {
       interval: newInterval
     }));
   };
-
+  
   /**
    * Toggle auto-refresh on/off
    */
@@ -669,25 +762,22 @@ const Dashboard = () => {
       autoRefresh: !prev.autoRefresh
     }));
   };
-
+  
   /**
    * Handle selecting an agent for detailed view
    * @param {Object} agent - The agent object to view in detail
    */
-  const handleAgentSelect = (agent) => {
-    setSelectedAgent(agent);
-    
-    // Fetch detailed information for this agent
-    fetchAgentDetails(agent.agent_id);
+  const handleAgentClick = (agent) => {
+    fetchAgentDetails(agent.id);
   };
-
+  
   /**
    * Close the agent detail view
    */
   const closeAgentDetail = () => {
     setSelectedAgent(null);
   };
-
+  
   /**
    * Handle switching between dashboard tabs
    * @param {string} tabName - The name of the tab to switch to
@@ -695,53 +785,39 @@ const Dashboard = () => {
   const handleDashboardTabChange = (tabName) => {
     setActiveDashboardTab(tabName);
   };
-
-  // --- Utility functions ---
   
-  /**
-   * Format currency values for display
-   * @param {number} value - The numeric value to format as currency
-   * @returns {string} - Formatted currency string
-   */
-  const formatCurrency = (value) => {
-    if (value === null || value === undefined) return 'N/A';
-    
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: 0
-    }).format(value);
-  };
-
   /**
    * Format percentage values for display
    * @param {number} value - Value to format as percentage
    * @returns {string} - Formatted percentage string
    */
   const formatPercentage = (value) => {
-    if (value === null || value === undefined) return 'N/A';
+    if (value === undefined || value === null) return '0%';
     
-    return `${(value * 100).toFixed(1)}%`;
+    // Ensure value is a number
+    const numValue = parseFloat(value);
+    if (isNaN(numValue)) return '0%';
+    
+    // Format as percentage with 1 decimal place
+    return (numValue * 100).toFixed(1) + '%';
   };
-
+  
   /**
    * Format date values for display
    * @param {string} dateString - ISO date string
    * @returns {string} - Formatted date string
    */
   const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
+    if (!dateString) return '';
     
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      });
-    } catch (e) {
-      return 'Invalid Date';
-    }
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
+    
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric' 
+    });
   };
   
   /**
@@ -750,592 +826,431 @@ const Dashboard = () => {
    * @returns {string} - Formatted date and time string
    */
   const formatDateTime = (dateTimeValue) => {
-    if (!dateTimeValue) return 'N/A';
+    if (!dateTimeValue) return '';
     
-    try {
-      const date = dateTimeValue instanceof Date ? dateTimeValue : new Date(dateTimeValue);
-      return date.toLocaleString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      });
-    } catch (e) {
-      return 'Invalid Date';
-    }
+    const date = dateTimeValue instanceof Date ? dateTimeValue : new Date(dateTimeValue);
+    if (isNaN(date.getTime())) return '';
+    
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
   };
-
+  
   /**
    * Helper function to get status color class based on status string
    * @param {string} status - Status string
    * @returns {string} - Tailwind CSS color class
    */
   const getStatusColorClass = (status) => {
-    if (!status) return 'bg-gray-500';
+    if (!status) return 'bg-gray-300';
     
     const statusLower = status.toLowerCase();
     
-    if (statusLower === 'active' || statusLower === 'online' || statusLower === 'completed' || statusLower === 'success') {
-      return 'bg-green-500';
-    } else if (statusLower === 'idle' || statusLower === 'pending' || statusLower === 'waiting') {
-      return 'bg-blue-500';
-    } else if (statusLower === 'warning' || statusLower === 'busy') {
-      return 'bg-yellow-500';
-    } else if (statusLower === 'error' || statusLower === 'failed' || statusLower === 'offline') {
+    if (statusLower.includes('error') || statusLower.includes('fail') || statusLower === 'down') {
       return 'bg-red-500';
+    } else if (statusLower.includes('warn') || statusLower === 'degraded' || statusLower === 'partial') {
+      return 'bg-yellow-500';
+    } else if (statusLower.includes('success') || statusLower === 'up' || statusLower === 'active' || statusLower === 'completed') {
+      return 'bg-green-500';
+    } else if (statusLower.includes('process') || statusLower === 'running' || statusLower === 'pending') {
+      return 'bg-blue-500';
     }
     
     return 'bg-gray-500';
   };
-
-  // --- Initialize charts and load data on component mount ---
-  useEffect(() => {
-    // Set up intersection observer for animations
-    const observerOptions = {
-      root: null,
-      rootMargin: '0px',
-      threshold: 0.1,
-    };
-    
-    const handleIntersection = (entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          // Add animation class when element is visible
-          entry.target.classList.add('animate-fade-in-up');
-        }
-      });
-    };
-    
-    metricsObserverRef.current = new IntersectionObserver(handleIntersection, observerOptions);
-    
-    // Observe dashboard metric elements
-    document.querySelectorAll('.metric-card').forEach(card => {
-      metricsObserverRef.current.observe(card);
-    });
-    
-    // Initial data loading
-    refreshAllData();
-    
-    // Set up auto-refresh interval
-    if (refreshSettings.autoRefresh) {
-      refreshTimerRef.current = setInterval(() => {
-        refreshAllData();
-      }, refreshSettings.interval);
-    }
-    
-    // Cleanup function
-    return () => {
-      // Disconnect intersection observer
-      if (metricsObserverRef.current) {
-        metricsObserverRef.current.disconnect();
-      }
-      
-      // Clear refresh interval
-      if (refreshTimerRef.current) {
-        clearInterval(refreshTimerRef.current);
-      }
-    };
-  }, [refreshSettings.autoRefresh, refreshSettings.interval, refreshAllData]);
-
-  // Update refresh timer when settings change
-  useEffect(() => {
-    // Clear existing interval
-    if (refreshTimerRef.current) {
-      clearInterval(refreshTimerRef.current);
-      refreshTimerRef.current = null;
-    }
-    
-    // Set up new interval if auto-refresh is enabled
-    if (refreshSettings.autoRefresh) {
-      refreshTimerRef.current = setInterval(() => {
-        refreshAllData();
-      }, refreshSettings.interval);
-    }
-    
-    // Cleanup function
-    return () => {
-      if (refreshTimerRef.current) {
-        clearInterval(refreshTimerRef.current);
-      }
-    };
-  }, [refreshSettings.autoRefresh, refreshSettings.interval, refreshAllData]);
-  
-  // --- Filter properties client-side (as a backup to API filtering) ---
-  const filteredProperties = useMemo(() => {
-    return properties.filter(property => {
-      // Skip client-side filtering if the searchQuery is empty (API handles all filtering)
-      if (!filters.searchQuery) return true;
-      
-      // Apply search query filter on address, property_id, or neighborhood
-      const searchLower = filters.searchQuery.toLowerCase();
-      
-      return (
-        (property.address && property.address.toLowerCase().includes(searchLower)) ||
-        (property.property_id && property.property_id.toLowerCase().includes(searchLower)) ||
-        (property.neighborhood && property.neighborhood.toLowerCase().includes(searchLower))
-      );
-    });
-  }, [properties, filters.searchQuery]);
-  
-  // --- Prepare chart data ---
   
   /**
-   * Calculate summary metrics for the dashboard based on filtered properties
+   * Format currency values for display
+   * @param {number} value - Value to format as currency
+   * @returns {string} - Formatted currency string
    */
-  const summaryMetrics = useMemo(() => {
-    if (!properties.length) {
-      return {
-        totalProperties: 0,
-        averageValue: 0,
-        minValue: 0,
-        maxValue: 0,
-        medianValue: 0
-      };
-    }
+  const formatCurrency = (value) => {
+    if (value === undefined || value === null) return '$0';
     
-    const propertyValues = properties
-      .map(p => p.estimated_value)
-      .filter(v => v !== undefined && v !== null)
-      .sort((a, b) => a - b);
+    // Ensure value is a number
+    const numValue = parseFloat(value);
+    if (isNaN(numValue)) return '$0';
     
-    const medianIndex = Math.floor(propertyValues.length / 2);
-    
-    return {
-      totalProperties: properties.length,
-      averageValue: propertyValues.length ? 
-        propertyValues.reduce((sum, value) => sum + value, 0) / propertyValues.length : 
-        0,
-      minValue: propertyValues.length ? propertyValues[0] : 0,
-      maxValue: propertyValues.length ? propertyValues[propertyValues.length - 1] : 0,
-      medianValue: propertyValues.length ? 
-        (propertyValues.length % 2 === 0 ? 
-          (propertyValues[medianIndex - 1] + propertyValues[medianIndex]) / 2 : 
-          propertyValues[medianIndex]) : 
-        0
-    };
-  }, [properties]);
-  
+    // Format as USD currency
+    return new Intl.NumberFormat('en-US', { 
+      style: 'currency', 
+      currency: 'USD',
+      maximumFractionDigits: 0
+    }).format(numValue);
+  };
+
+  // --- Chart Data Preparation ---
+
   /**
    * Prepare value distribution chart data
    */
-  const valueDistributionData = useMemo(() => {
-    if (!properties.length) return { labels: [], datasets: [] };
-    
-    // Define value ranges
-    const ranges = [
-      { min: 0, max: 100000, label: 'Under $100K' },
-      { min: 100000, max: 200000, label: '$100K-$200K' },
-      { min: 200000, max: 300000, label: '$200K-$300K' },
-      { min: 300000, max: 400000, label: '$300K-$400K' },
-      { min: 400000, max: 500000, label: '$400K-$500K' },
-      { min: 500000, max: 750000, label: '$500K-$750K' },
-      { min: 750000, max: 1000000, label: '$750K-$1M' },
-      { min: 1000000, max: Infinity, label: 'Over $1M' }
-    ];
-    
-    // Count properties in each range
-    const rangeCounts = ranges.map(range => {
-      return properties.filter(p => 
-        p.estimated_value >= range.min && p.estimated_value < range.max
-      ).length;
+  const valueDistributionChartData = useMemo(() => {
+    if (!properties || properties.length === 0) {
+      return {
+        labels: [],
+        datasets: [{
+          label: 'No data available',
+          data: [],
+          backgroundColor: 'rgba(200, 200, 200, 0.5)'
+        }]
+      };
+    }
+
+    // Create value buckets
+    const bucketSize = 100000; // $100k buckets
+    const buckets = {};
+    const minValue = 0;
+    const maxValue = 2000000; // $2M cap
+
+    // Initialize buckets
+    for (let i = minValue; i < maxValue; i += bucketSize) {
+      buckets[i] = 0;
+    }
+
+    // Count properties in each bucket
+    properties.forEach(property => {
+      const value = property.estimated_value || property.value || 0;
+      const bucketIndex = Math.floor(value / bucketSize) * bucketSize;
+      if (bucketIndex < maxValue) {
+        buckets[bucketIndex] = (buckets[bucketIndex] || 0) + 1;
+      }
     });
-    
+
+    // Convert to chart format
+    const labels = Object.keys(buckets).map(bucket => formatCurrency(parseInt(bucket)));
+    const data = Object.values(buckets);
+
     return {
-      labels: ranges.map(r => r.label),
+      labels,
       datasets: [{
-        label: 'Properties',
-        data: rangeCounts,
-        backgroundColor: 'rgba(52, 152, 219, 0.8)',
-        borderColor: 'rgba(52, 152, 219, 1)',
+        label: 'Property Count',
+        data,
+        backgroundColor: 'rgba(59, 130, 246, 0.5)',
+        borderColor: 'rgba(59, 130, 246, 1)',
         borderWidth: 1
       }]
     };
   }, [properties]);
-  
+
   /**
    * Prepare neighborhood comparison chart data
    */
-  const neighborhoodComparisonData = useMemo(() => {
-    if (!properties.length) return { labels: [], datasets: [] };
-    
-    // Group properties by neighborhood and calculate average values
-    const neighborhoodGroups = {};
-    
+  const neighborhoodChartData = useMemo(() => {
+    if (!properties || properties.length === 0) {
+      return {
+        labels: [],
+        datasets: [{
+          label: 'No data available',
+          data: [],
+          backgroundColor: 'rgba(200, 200, 200, 0.5)'
+        }]
+      };
+    }
+
+    // Group properties by neighborhood and calculate average value
+    const neighborhoodData = {};
     properties.forEach(property => {
-      const neighborhood = property.neighborhood || 'Unknown';
-      
-      if (!neighborhoodGroups[neighborhood]) {
-        neighborhoodGroups[neighborhood] = {
-          count: 0,
-          totalValue: 0
+      const neighborhood = property.neighborhood || extractNeighborhoodFromAddress(property.address) || 'Unknown';
+      if (!neighborhoodData[neighborhood]) {
+        neighborhoodData[neighborhood] = {
+          total: 0,
+          count: 0
         };
       }
-      
-      neighborhoodGroups[neighborhood].count++;
-      neighborhoodGroups[neighborhood].totalValue += property.estimated_value || 0;
+      neighborhoodData[neighborhood].total += property.estimated_value || property.value || 0;
+      neighborhoodData[neighborhood].count += 1;
     });
-    
-    // Calculate averages and sort by value (descending)
-    const neighborhoods = Object.keys(neighborhoodGroups)
-      .map(name => ({
-        name,
-        avgValue: neighborhoodGroups[name].totalValue / neighborhoodGroups[name].count,
-        count: neighborhoodGroups[name].count
-      }))
-      .sort((a, b) => b.avgValue - a.avgValue)
-      .slice(0, 10); // Top 10 neighborhoods
-    
+
+    // Calculate averages and sort by average value
+    const neighborhoods = Object.keys(neighborhoodData).map(name => ({
+      name,
+      average: neighborhoodData[name].count > 0 
+        ? neighborhoodData[name].total / neighborhoodData[name].count 
+        : 0
+    }));
+
+    // Sort by average value (descending)
+    neighborhoods.sort((a, b) => b.average - a.average);
+
+    // Take top 10 neighborhoods
+    const top10 = neighborhoods.slice(0, 10);
+
     return {
-      labels: neighborhoods.map(n => n.name),
+      labels: top10.map(n => n.name),
       datasets: [{
-        label: 'Average Value',
-        data: neighborhoods.map(n => n.avgValue),
-        backgroundColor: 'rgba(46, 204, 113, 0.8)',
-        borderColor: 'rgba(46, 204, 113, 1)',
+        label: 'Avg. Property Value',
+        data: top10.map(n => n.average),
+        backgroundColor: 'rgba(16, 185, 129, 0.5)',
+        borderColor: 'rgba(16, 185, 129, 1)',
         borderWidth: 1
       }]
     };
   }, [properties]);
-  
+
   /**
    * Prepare value trend chart data (by valuation date)
    */
-  const valueTrendData = useMemo(() => {
-    if (!properties.length) return { labels: [], datasets: [] };
-    
-    // Group properties by month
-    const monthlyData = {};
-    
+  const valueTrendChartData = useMemo(() => {
+    if (!properties || properties.length === 0) {
+      return {
+        labels: [],
+        datasets: [{
+          label: 'No data available',
+          data: [],
+          backgroundColor: 'rgba(200, 200, 200, 0.5)'
+        }]
+      };
+    }
+
+    // Group properties by valuation date and calculate average value
+    const dateMap = {};
     properties.forEach(property => {
       if (!property.valuation_date) return;
       
-      const date = new Date(property.valuation_date);
-      const monthKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
-      
-      if (!monthlyData[monthKey]) {
-        monthlyData[monthKey] = {
-          count: 0,
-          totalValue: 0,
-          date: new Date(date.getFullYear(), date.getMonth(), 1)
+      const date = formatDate(property.valuation_date);
+      if (!dateMap[date]) {
+        dateMap[date] = {
+          total: 0,
+          count: 0
         };
       }
-      
-      monthlyData[monthKey].count++;
-      monthlyData[monthKey].totalValue += property.estimated_value || 0;
+      dateMap[date].total += property.estimated_value || property.value || 0;
+      dateMap[date].count += 1;
     });
-    
-    // Calculate averages and sort by date
-    const monthlyAverages = Object.values(monthlyData)
-      .map(month => ({
-        date: month.date,
-        avgValue: month.totalValue / month.count
-      }))
-      .sort((a, b) => a.date - b.date);
-    
+
+    // Convert to arrays for chart
+    const dates = Object.keys(dateMap).sort();
+    const averages = dates.map(date => 
+      dateMap[date].count > 0 ? dateMap[date].total / dateMap[date].count : 0
+    );
+
     return {
-      labels: monthlyAverages.map(m => m.date),
+      labels: dates,
       datasets: [{
-        label: 'Average Value',
-        data: monthlyAverages.map(m => ({ x: m.date, y: m.avgValue })),
-        backgroundColor: 'rgba(52, 152, 219, 0.2)',
-        borderColor: 'rgba(52, 152, 219, 1)',
-        borderWidth: 2,
-        fill: true,
-        tension: 0.4
+        label: 'Avg. Valuation',
+        data: averages,
+        fill: false,
+        borderColor: 'rgba(139, 92, 246, 1)',
+        backgroundColor: 'rgba(139, 92, 246, 0.5)',
+        tension: 0.1
       }]
     };
   }, [properties]);
-  
+
   /**
    * Prepare model distribution pie chart data
    */
-  const modelDistributionData = useMemo(() => {
-    if (!properties.length) return { labels: [], datasets: [] };
-    
-    // Count properties by valuation method
-    const methodCounts = {};
-    
+  const modelDistributionChartData = useMemo(() => {
+    if (!properties || properties.length === 0) {
+      return {
+        labels: ['No data'],
+        datasets: [{
+          data: [1],
+          backgroundColor: ['rgba(200, 200, 200, 0.5)'],
+          borderColor: ['rgba(200, 200, 200, 1)'],
+          borderWidth: 1
+        }]
+      };
+    }
+
+    // Count properties by model type
+    const modelCounts = {};
     properties.forEach(property => {
-      const method = property.valuation_method || 'unknown';
-      methodCounts[method] = (methodCounts[method] || 0) + 1;
+      const model = property.valuation_model || 'Unknown';
+      modelCounts[model] = (modelCounts[model] || 0) + 1;
     });
-    
-    // Prepare chart data
+
+    // Convert to arrays for chart
+    const models = Object.keys(modelCounts);
+    const counts = models.map(model => modelCounts[model]);
+
+    // Colors for each model type
+    const backgroundColors = [
+      'rgba(59, 130, 246, 0.6)',
+      'rgba(16, 185, 129, 0.6)',
+      'rgba(245, 158, 11, 0.6)',
+      'rgba(239, 68, 68, 0.6)',
+      'rgba(139, 92, 246, 0.6)',
+      'rgba(236, 72, 153, 0.6)',
+      'rgba(75, 85, 99, 0.6)'
+    ];
+
     return {
-      labels: Object.keys(methodCounts),
+      labels: models,
       datasets: [{
-        label: 'Valuation Methods',
-        data: Object.values(methodCounts),
-        backgroundColor: [
-          'rgba(52, 152, 219, 0.8)', // Blue
-          'rgba(46, 204, 113, 0.8)', // Green
-          'rgba(155, 89, 182, 0.8)', // Purple
-          'rgba(52, 73, 94, 0.8)',   // Dark Blue
-          'rgba(22, 160, 133, 0.8)', // Teal
-          'rgba(39, 174, 96, 0.8)',  // Emerald
-          'rgba(41, 128, 185, 0.8)'  // Light Blue
-        ],
-        borderColor: [
-          'rgba(52, 152, 219, 1)',
-          'rgba(46, 204, 113, 1)',
-          'rgba(155, 89, 182, 1)',
-          'rgba(52, 73, 94, 1)',
-          'rgba(22, 160, 133, 1)',
-          'rgba(39, 174, 96, 1)',
-          'rgba(41, 128, 185, 1)'
-        ],
+        data: counts,
+        backgroundColor: backgroundColors.slice(0, models.length),
+        borderColor: backgroundColors.map(color => color.replace('0.6', '1')),
         borderWidth: 1
       }]
     };
   }, [properties]);
-  
+
   /**
    * Prepare agent status chart data
    */
-  const agentStatusData = useMemo(() => {
-    if (!agentStatus.agents.length) return { labels: [], datasets: [] };
-    
+  const agentStatusChartData = useMemo(() => {
+    if (!agentStatus.agents || agentStatus.agents.length === 0) {
+      return {
+        labels: ['No data'],
+        datasets: [{
+          data: [1],
+          backgroundColor: ['rgba(200, 200, 200, 0.5)'],
+          borderColor: ['rgba(200, 200, 200, 1)'],
+          borderWidth: 1
+        }]
+      };
+    }
+
     // Count agents by status
     const statusCounts = {};
-    
     agentStatus.agents.forEach(agent => {
-      const status = agent.status || 'unknown';
+      const status = agent.status || 'Unknown';
       statusCounts[status] = (statusCounts[status] || 0) + 1;
     });
-    
-    // Prepare chart data
+
+    // Convert to arrays for chart
+    const statuses = Object.keys(statusCounts);
+    const counts = statuses.map(status => statusCounts[status]);
+
+    // Status-specific colors
+    const statusColors = {
+      'active': 'rgba(16, 185, 129, 0.6)',
+      'idle': 'rgba(59, 130, 246, 0.6)',
+      'processing': 'rgba(245, 158, 11, 0.6)',
+      'error': 'rgba(239, 68, 68, 0.6)',
+      'offline': 'rgba(75, 85, 99, 0.6)',
+      'unknown': 'rgba(200, 200, 200, 0.6)'
+    };
+
+    const backgroundColors = statuses.map(status => 
+      statusColors[status.toLowerCase()] || 'rgba(200, 200, 200, 0.6)'
+    );
+
     return {
-      labels: Object.keys(statusCounts),
+      labels: statuses,
       datasets: [{
-        label: 'Agent Status',
-        data: Object.values(statusCounts),
-        backgroundColor: [
-          'rgba(46, 204, 113, 0.8)',  // Green (idle/active)
-          'rgba(52, 152, 219, 0.8)',  // Blue (waiting/busy)
-          'rgba(243, 156, 18, 0.8)',  // Yellow (warning)
-          'rgba(231, 76, 60, 0.8)',   // Red (error/offline)
-          'rgba(149, 165, 166, 0.8)'  // Gray (unknown)
-        ],
-        borderColor: [
-          'rgba(46, 204, 113, 1)',
-          'rgba(52, 152, 219, 1)',
-          'rgba(243, 156, 18, 1)',
-          'rgba(231, 76, 60, 1)',
-          'rgba(149, 165, 166, 1)'
-        ],
+        data: counts,
+        backgroundColor: backgroundColors,
+        borderColor: backgroundColors.map(color => color.replace('0.6', '1')),
         borderWidth: 1
       }]
     };
   }, [agentStatus.agents]);
-  
-  // --- Chart Options ---
-  
-  /**
-   * Options for Value Distribution chart
-   */
-  const valueDistributionOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        display: false
-      },
-      tooltip: {
-        callbacks: {
-          label: (context) => {
-            return `${context.dataset.label}: ${context.raw} (${((context.raw / properties.length) * 100).toFixed(1)}%)`;
-          }
-        }
-      },
-      title: {
-        display: true,
-        text: 'Property Value Distribution',
-        font: {
-          size: 16
-        }
-      }
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
-        title: {
-          display: true,
-          text: 'Number of Properties'
-        }
-      },
-      x: {
-        title: {
-          display: true,
-          text: 'Value Range'
-        }
-      }
-    }
-  };
-  
+
   /**
    * Options for Neighborhood Comparison chart
    */
-  const neighborhoodOptions = {
+  const neighborhoodChartOptions = {
     responsive: true,
-    maintainAspectRatio: false,
     plugins: {
       legend: {
-        display: false
-      },
-      tooltip: {
-        callbacks: {
-          label: (context) => {
-            return `${context.dataset.label}: ${formatCurrency(context.raw)}`;
-          }
-        }
+        position: 'top',
       },
       title: {
         display: true,
-        text: 'Average Value by Neighborhood',
+        text: 'Average Property Value by Neighborhood',
         font: {
           size: 16
+        }
+      },
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            return `Avg. Value: ${formatCurrency(context.raw)}`;
+          }
         }
       }
     },
     scales: {
       y: {
         beginAtZero: true,
-        title: {
-          display: true,
-          text: 'Average Value'
-        },
         ticks: {
-          callback: (value) => {
+          callback: function(value) {
             return formatCurrency(value);
           }
-        }
-      },
-      x: {
-        title: {
-          display: true,
-          text: 'Neighborhood'
         }
       }
     }
   };
-  
+
   /**
    * Options for Value Trend chart
    */
-  const trendOptions = {
+  const valueTrendChartOptions = {
     responsive: true,
-    maintainAspectRatio: false,
     plugins: {
       legend: {
-        display: false
-      },
-      tooltip: {
-        callbacks: {
-          label: (context) => {
-            return `${context.dataset.label}: ${formatCurrency(context.raw.y)}`;
-          },
-          title: (tooltipItems) => {
-            const date = new Date(tooltipItems[0].raw.x);
-            return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
-          }
-        }
+        position: 'top',
       },
       title: {
         display: true,
-        text: 'Value Trends Over Time',
+        text: 'Valuation Trends Over Time',
         font: {
           size: 16
+        }
+      },
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            return `Avg. Value: ${formatCurrency(context.raw)}`;
+          }
         }
       }
     },
     scales: {
       y: {
         beginAtZero: true,
-        title: {
-          display: true,
-          text: 'Average Value'
-        },
         ticks: {
-          callback: (value) => {
+          callback: function(value) {
             return formatCurrency(value);
           }
         }
-      },
-      x: {
-        type: 'time',
-        time: {
-          unit: 'month',
-          tooltipFormat: 'MMM yyyy',
-          displayFormats: {
-            month: 'MMM yyyy'
-          }
-        },
-        title: {
-          display: true,
-          text: 'Month'
-        }
       }
     }
   };
-  
+
   /**
    * Options for Model Distribution pie chart
    */
-  const modelDistributionOptions = {
+  const modelDistributionChartOptions = {
     responsive: true,
-    maintainAspectRatio: false,
     plugins: {
       legend: {
-        position: 'right',
-        labels: {
-          boxWidth: 15,
-          padding: 15
+        position: 'top',
+      },
+      title: {
+        display: true,
+        text: 'Property Valuations by Model Type',
+        font: {
+          size: 16
         }
       },
       tooltip: {
         callbacks: {
-          label: (context) => {
-            const value = context.raw;
-            const percentage = ((value / properties.length) * 100).toFixed(1);
-            return `${context.label}: ${value} (${percentage}%)`;
+          label: function(context) {
+            const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
+            const percentage = ((context.raw / total) * 100).toFixed(1);
+            return `${context.label}: ${context.raw} (${percentage}%)`;
           }
-        }
-      },
-      title: {
-        display: true,
-        text: 'Valuation Methods Used',
-        font: {
-          size: 16
         }
       }
     }
   };
-  
+
   /**
    * Options for Agent Status doughnut chart
    */
-  const agentStatusOptions = {
+  const agentStatusChartOptions = {
     responsive: true,
-    maintainAspectRatio: false,
-    cutout: '50%',
     plugins: {
       legend: {
-        position: 'right',
-        labels: {
-          boxWidth: 15,
-          padding: 15
-        }
-      },
-      tooltip: {
-        callbacks: {
-          label: (context) => {
-            const value = context.raw;
-            const percentage = ((value / agentStatus.agents.length) * 100).toFixed(1);
-            return `${context.label}: ${value} (${percentage}%)`;
-          }
-        }
+        position: 'top',
       },
       title: {
         display: true,
@@ -1343,48 +1258,60 @@ const Dashboard = () => {
         font: {
           size: 16
         }
+      },
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
+            const percentage = ((context.raw / total) * 100).toFixed(1);
+            return `${context.label}: ${context.raw} (${percentage}%)`;
+          }
+        }
       }
     }
   };
-  
+
   /**
    * Options for ETL Progress gauge chart
    */
-  const etlProgressOptions = {
+  const etlProgressChartOptions = {
     responsive: true,
-    maintainAspectRatio: false,
     plugins: {
+      legend: {
+        display: false
+      },
+      title: {
+        display: true,
+        text: 'ETL Pipeline Progress',
+        font: {
+          size: 16
+        }
+      },
       tooltip: {
         callbacks: {
-          label: (context) => {
-            return `Progress: ${(context.raw * 100).toFixed(1)}%`;
+          label: function(context) {
+            return `Progress: ${context.raw}%`;
           }
         }
       }
     },
-    scales: {
-      r: {
-        angleLines: {
-          display: false
-        },
-        suggestedMin: 0,
-        suggestedMax: 1
-      }
-    }
+    circumference: 180,
+    rotation: -90,
+    cutout: '70%'
   };
-  
-  // --- Render UI Components ---
-  
+
+  // --- UI Rendering Functions ---
+
   /**
-   * Render the filter section
-   * @returns {JSX.Element} - The filter section component
+   * Render the filter section with all filter inputs
    */
   const renderFilterSection = () => (
     <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-      <h2 className="text-xl font-semibold mb-4">Filters</h2>
+      <h2 className="text-lg font-semibold text-gray-800 mb-4">Filters</h2>
+      
       <form onSubmit={applyFilters} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Neighborhood filter */}
-        <div>
+        <div className="mb-3">
           <label htmlFor="neighborhood" className="block text-sm font-medium text-gray-700 mb-1">
             Neighborhood
           </label>
@@ -1393,17 +1320,50 @@ const Dashboard = () => {
             name="neighborhood"
             value={filters.neighborhood}
             onChange={handleFilterChange}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="">All Neighborhoods</option>
-            {availableNeighborhoods.map((neighborhood, index) => (
-              <option key={index} value={neighborhood}>{neighborhood}</option>
+            {availableNeighborhoods.map(neighborhood => (
+              <option key={neighborhood} value={neighborhood}>
+                {neighborhood}
+              </option>
             ))}
           </select>
         </div>
         
-        {/* Property Type filter */}
-        <div>
+        {/* Price range filters */}
+        <div className="mb-3">
+          <label htmlFor="minValue" className="block text-sm font-medium text-gray-700 mb-1">
+            Minimum Value
+          </label>
+          <input
+            type="number"
+            id="minValue"
+            name="minValue"
+            value={filters.minValue}
+            onChange={handleFilterChange}
+            placeholder="Min Value"
+            className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+          />
+        </div>
+        
+        <div className="mb-3">
+          <label htmlFor="maxValue" className="block text-sm font-medium text-gray-700 mb-1">
+            Maximum Value
+          </label>
+          <input
+            type="number"
+            id="maxValue"
+            name="maxValue"
+            value={filters.maxValue}
+            onChange={handleFilterChange}
+            placeholder="Max Value"
+            className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+          />
+        </div>
+        
+        {/* Property type filter */}
+        <div className="mb-3">
           <label htmlFor="propertyType" className="block text-sm font-medium text-gray-700 mb-1">
             Property Type
           </label>
@@ -1412,704 +1372,916 @@ const Dashboard = () => {
             name="propertyType"
             value={filters.propertyType}
             onChange={handleFilterChange}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
           >
-            <option value="">All Property Types</option>
-            {availablePropertyTypes.map((type, index) => (
-              <option key={index} value={type}>
+            <option value="">All Types</option>
+            {availablePropertyTypes.map(type => (
+              <option key={type} value={type}>
                 {type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
               </option>
             ))}
           </select>
         </div>
         
-        {/* Price Range filters */}
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label htmlFor="minValue" className="block text-sm font-medium text-gray-700 mb-1">
-              Min Value
-            </label>
-            <input
-              type="number"
-              id="minValue"
-              name="minValue"
-              value={filters.minValue}
-              onChange={handleFilterChange}
-              placeholder="Min $"
-              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label htmlFor="maxValue" className="block text-sm font-medium text-gray-700 mb-1">
-              Max Value
-            </label>
-            <input
-              type="number"
-              id="maxValue"
-              name="maxValue"
-              value={filters.maxValue}
-              onChange={handleFilterChange}
-              placeholder="Max $"
-              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+        {/* Date range filters */}
+        <div className="mb-3">
+          <label htmlFor="fromDate" className="block text-sm font-medium text-gray-700 mb-1">
+            From Date
+          </label>
+          <input
+            type="date"
+            id="fromDate"
+            name="fromDate"
+            value={filters.fromDate}
+            onChange={handleFilterChange}
+            className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+          />
         </div>
         
-        {/* Date Range filters */}
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label htmlFor="fromDate" className="block text-sm font-medium text-gray-700 mb-1">
-              From Date
-            </label>
-            <input
-              type="date"
-              id="fromDate"
-              name="fromDate"
-              value={filters.fromDate}
-              onChange={handleFilterChange}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <label htmlFor="toDate" className="block text-sm font-medium text-gray-700 mb-1">
-              To Date
-            </label>
-            <input
-              type="date"
-              id="toDate"
-              name="toDate"
-              value={filters.toDate}
-              onChange={handleFilterChange}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+        <div className="mb-3">
+          <label htmlFor="toDate" className="block text-sm font-medium text-gray-700 mb-1">
+            To Date
+          </label>
+          <input
+            type="date"
+            id="toDate"
+            name="toDate"
+            value={filters.toDate}
+            onChange={handleFilterChange}
+            className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+          />
         </div>
         
-        {/* Search filter */}
-        <div className="md:col-span-2 lg:col-span-1">
+        {/* Search query */}
+        <div className="mb-3">
           <label htmlFor="searchQuery" className="block text-sm font-medium text-gray-700 mb-1">
             Search
           </label>
-          <div className="relative">
-            <input
-              type="text"
-              id="searchQuery"
-              name="searchQuery"
-              value={filters.searchQuery}
-              onChange={handleFilterChange}
-              placeholder="Search address, ID, etc."
-              className="w-full border border-gray-300 rounded-md pl-10 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <i className="fas fa-search text-gray-400"></i>
-            </div>
-          </div>
+          <input
+            type="text"
+            id="searchQuery"
+            name="searchQuery"
+            value={filters.searchQuery}
+            onChange={handleFilterChange}
+            placeholder="Search by address, ID, etc."
+            className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+          />
         </div>
         
-        {/* Action buttons */}
-        <div className="md:col-span-2 lg:col-span-3 flex justify-end gap-2 mt-2">
-          <button
-            type="button"
-            onClick={resetFilters}
-            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500"
-          >
-            Reset Filters
-          </button>
+        {/* Filter actions */}
+        <div className="mb-3 flex items-end space-x-2 col-span-full">
           <button
             type="submit"
-            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50"
           >
             Apply Filters
           </button>
+          
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50"
+          >
+            Reset
+          </button>
+          
+          <button
+            type="button"
+            onClick={refreshAllData}
+            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 ml-auto"
+          >
+            <span className="flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+              </svg>
+              Refresh
+            </span>
+          </button>
         </div>
       </form>
+      
+      {/* Auto-refresh controls */}
+      <div className="flex items-center justify-end space-x-4 mt-2 text-sm text-gray-600">
+        <div className="flex items-center">
+          <input
+            type="checkbox"
+            id="autoRefresh"
+            checked={refreshSettings.autoRefresh}
+            onChange={toggleAutoRefresh}
+            className="mr-2"
+          />
+          <label htmlFor="autoRefresh">Auto-refresh</label>
+        </div>
+        
+        <div className="flex items-center">
+          <select
+            value={refreshSettings.interval}
+            onChange={handleRefreshIntervalChange}
+            disabled={!refreshSettings.autoRefresh}
+            className="p-1 border border-gray-300 rounded-md"
+          >
+            <option value={10000}>10 seconds</option>
+            <option value={30000}>30 seconds</option>
+            <option value={60000}>1 minute</option>
+            <option value={300000}>5 minutes</option>
+          </select>
+        </div>
+        
+        {refreshSettings.lastRefreshTime && (
+          <span className="text-xs">
+            Last updated: {formatDateTime(refreshSettings.lastRefreshTime)}
+          </span>
+        )}
+      </div>
     </div>
   );
-  
+
   /**
    * Render the property table
    * @returns {JSX.Element} - The property table component
    */
   const renderPropertyTable = () => (
-    <div className="bg-white rounded-lg shadow-md overflow-hidden mb-6">
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th 
-                scope="col" 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                onClick={() => handleSortColumn('property_id')}
-              >
-                ID
-                {filters.sortBy === 'property_id' && (
-                  <span className="ml-1">
-                    {filters.sortDirection === 'asc' ? '↑' : '↓'}
-                  </span>
-                )}
-              </th>
-              <th 
-                scope="col" 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                onClick={() => handleSortColumn('address')}
-              >
-                Address
-                {filters.sortBy === 'address' && (
-                  <span className="ml-1">
-                    {filters.sortDirection === 'asc' ? '↑' : '↓'}
-                  </span>
-                )}
-              </th>
-              <th 
-                scope="col" 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                onClick={() => handleSortColumn('property_type')}
-              >
-                Type
-                {filters.sortBy === 'property_type' && (
-                  <span className="ml-1">
-                    {filters.sortDirection === 'asc' ? '↑' : '↓'}
-                  </span>
-                )}
-              </th>
-              <th 
-                scope="col" 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                onClick={() => handleSortColumn('estimated_value')}
-              >
-                Estimated Value
-                {filters.sortBy === 'estimated_value' && (
-                  <span className="ml-1">
-                    {filters.sortDirection === 'asc' ? '↑' : '↓'}
-                  </span>
-                )}
-              </th>
-              <th 
-                scope="col" 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                onClick={() => handleSortColumn('valuation_date')}
-              >
-                Valuation Date
-                {filters.sortBy === 'valuation_date' && (
-                  <span className="ml-1">
-                    {filters.sortDirection === 'asc' ? '↑' : '↓'}
-                  </span>
-                )}
-              </th>
-              <th 
-                scope="col" 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                onClick={() => handleSortColumn('valuation_method')}
-              >
-                Method
-                {filters.sortBy === 'valuation_method' && (
-                  <span className="ml-1">
-                    {filters.sortDirection === 'asc' ? '↑' : '↓'}
-                  </span>
-                )}
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {loading ? (
+    <div className="bg-white rounded-lg shadow-md p-4 mb-6 overflow-x-auto">
+      <h2 className="text-lg font-semibold text-gray-800 mb-4">Property Valuations</h2>
+      
+      {loading ? (
+        <div className="flex justify-center items-center py-8">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          <span className="ml-3">Loading property data...</span>
+        </div>
+      ) : error ? (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          <p>{error}</p>
+          <button
+            onClick={fetchPropertyValuations}
+            className="mt-2 px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm"
+          >
+            Retry
+          </button>
+        </div>
+      ) : properties.length === 0 ? (
+        <div className="text-center py-8 text-gray-500">
+          <p>No properties found matching your criteria.</p>
+          <button
+            onClick={resetFilters}
+            className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
+          >
+            Reset Filters
+          </button>
+        </div>
+      ) : (
+        <>
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
               <tr>
-                <td colSpan="6" className="px-6 py-4 text-center">
-                  <div className="flex justify-center items-center">
-                    <svg className="animate-spin h-5 w-5 mr-3 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Loading properties...
-                  </div>
-                </td>
-              </tr>
-            ) : error ? (
-              <tr>
-                <td colSpan="6" className="px-6 py-4 text-center text-red-500">
-                  {error}
-                </td>
-              </tr>
-            ) : filteredProperties.length === 0 ? (
-              <tr>
-                <td colSpan="6" className="px-6 py-4 text-center">
-                  No properties found with the current filters. Try adjusting your criteria.
-                </td>
-              </tr>
-            ) : (
-              filteredProperties.map((property, index) => (
-                <tr 
-                  key={property.property_id || index} 
-                  className="hover:bg-gray-50 cursor-pointer transition-colors"
-                  onClick={() => handlePropertyClick(property)}
+                <th 
+                  scope="col" 
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                  onClick={() => handleSortColumn('property_id')}
                 >
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{property.property_id}</div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm text-gray-900">{property.address}</div>
-                    <div className="text-xs text-gray-500">
-                      {property.neighborhood && `${property.neighborhood}, `}
-                      {property.city && `${property.city}, `}
-                      {property.state} {property.zip_code}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
-                      {property.property_type?.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">
-                      {formatCurrency(property.estimated_value)}
-                    </div>
-                    {property.confidence_score !== undefined && (
-                      <div className="text-xs text-gray-500">
-                        {formatPercentage(property.confidence_score)} confidence
-                      </div>
+                  <div className="flex items-center">
+                    ID
+                    {filters.sortBy === 'property_id' && (
+                      <span className="ml-1">
+                        {filters.sortDirection === 'asc' ? '↑' : '↓'}
+                      </span>
                     )}
+                  </div>
+                </th>
+                <th 
+                  scope="col" 
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                  onClick={() => handleSortColumn('address')}
+                >
+                  <div className="flex items-center">
+                    Address
+                    {filters.sortBy === 'address' && (
+                      <span className="ml-1">
+                        {filters.sortDirection === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </div>
+                </th>
+                <th 
+                  scope="col" 
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                  onClick={() => handleSortColumn('estimated_value')}
+                >
+                  <div className="flex items-center">
+                    Estimated Value
+                    {filters.sortBy === 'estimated_value' && (
+                      <span className="ml-1">
+                        {filters.sortDirection === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </div>
+                </th>
+                <th 
+                  scope="col" 
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                  onClick={() => handleSortColumn('confidence')}
+                >
+                  <div className="flex items-center">
+                    Confidence
+                    {filters.sortBy === 'confidence' && (
+                      <span className="ml-1">
+                        {filters.sortDirection === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </div>
+                </th>
+                <th 
+                  scope="col" 
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                  onClick={() => handleSortColumn('valuation_date')}
+                >
+                  <div className="flex items-center">
+                    Date
+                    {filters.sortBy === 'valuation_date' && (
+                      <span className="ml-1">
+                        {filters.sortDirection === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </div>
+                </th>
+                <th 
+                  scope="col" 
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                  onClick={() => handleSortColumn('valuation_model')}
+                >
+                  <div className="flex items-center">
+                    Model
+                    {filters.sortBy === 'valuation_model' && (
+                      <span className="ml-1">
+                        {filters.sortDirection === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </div>
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {properties.map((property) => (
+                <tr 
+                  key={property.id || property.property_id}
+                  onClick={() => handlePropertyClick(property)}
+                  className="hover:bg-gray-100 cursor-pointer transition duration-150"
+                >
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {property.id || property.property_id}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
-                      {formatDate(property.valuation_date)}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {property.address}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {formatCurrency(property.estimated_value || property.value)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <div className="flex items-center">
+                      <div className="w-full bg-gray-200 rounded-full h-2.5 mr-2">
+                        <div
+                          className="bg-blue-600 h-2.5 rounded-full"
+                          style={{ width: `${(property.confidence || 0) * 100}%` }}
+                        ></div>
+                      </div>
+                      <span>{formatPercentage(property.confidence)}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
-                      {property.valuation_method?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {formatDate(property.valuation_date)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      {property.valuation_model || 'Unknown'}
                     </span>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-      
-      {/* Pagination */}
-      <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
-        <div className="flex-1 flex justify-between items-center">
-          <div>
-            <p className="text-sm text-gray-700">
-              Showing <span className="font-medium">{filteredProperties.length > 0 ? ((pagination.currentPage - 1) * pagination.itemsPerPage) + 1 : 0}</span> to <span className="font-medium">{Math.min(pagination.currentPage * pagination.itemsPerPage, pagination.totalItems)}</span> of <span className="font-medium">{pagination.totalItems}</span> properties
-            </p>
-          </div>
-          <div className="flex items-center">
-            <label htmlFor="itemsPerPage" className="mr-2 text-sm text-gray-700">Items per page:</label>
-            <select
-              id="itemsPerPage"
-              value={pagination.itemsPerPage}
-              onChange={handleItemsPerPageChange}
-              className="border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="10">10</option>
-              <option value="25">25</option>
-              <option value="50">50</option>
-              <option value="100">100</option>
-            </select>
+              ))}
+            </tbody>
+          </table>
+          
+          {/* Pagination */}
+          <div className="flex items-center justify-between mt-4">
+            <div className="flex items-center">
+              <span className="text-sm text-gray-700">
+                Showing {((pagination.currentPage - 1) * pagination.itemsPerPage) + 1} to {Math.min(pagination.currentPage * pagination.itemsPerPage, pagination.totalItems)} of {pagination.totalItems} properties
+              </span>
+              
+              <div className="ml-4">
+                <label htmlFor="itemsPerPage" className="mr-2 text-sm text-gray-700">Per page:</label>
+                <select
+                  id="itemsPerPage"
+                  value={pagination.itemsPerPage}
+                  onChange={handleItemsPerPageChange}
+                  className="p-1 border border-gray-300 rounded-md text-sm"
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
+            </div>
             
-            <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px ml-4" aria-label="Pagination">
-              <button
-                onClick={() => handlePageChange(pagination.currentPage - 1)}
-                disabled={pagination.currentPage === 1}
-                className={`relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium ${pagination.currentPage === 1 ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:bg-gray-50'}`}
-              >
-                <span className="sr-only">Previous</span>
-                <i className="fas fa-chevron-left"></i>
-              </button>
-              
-              {/* Page buttons */}
-              {[...Array(Math.min(pagination.totalPages, 5))].map((_, i) => {
-                let pageNumber;
+            <div>
+              <nav className="flex items-center">
+                <button
+                  onClick={() => handlePageChange(1)}
+                  disabled={pagination.currentPage === 1}
+                  className="px-3 py-1 rounded-md text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed mr-1"
+                >
+                  First
+                </button>
+                <button
+                  onClick={() => handlePageChange(pagination.currentPage - 1)}
+                  disabled={pagination.currentPage === 1}
+                  className="px-3 py-1 rounded-md text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed mr-1"
+                >
+                  Previous
+                </button>
                 
-                // For small page counts or first pages
-                if (pagination.totalPages <= 5 || pagination.currentPage <= 3) {
-                  pageNumber = i + 1;
-                } else if (pagination.currentPage >= pagination.totalPages - 2) {
-                  // For last pages
-                  pageNumber = pagination.totalPages - 4 + i;
-                } else {
-                  // For middle pages
-                  pageNumber = pagination.currentPage - 2 + i;
-                }
+                <span className="mx-2 text-sm text-gray-700">
+                  Page {pagination.currentPage} of {pagination.totalPages}
+                </span>
                 
-                return (
-                  <button
-                    key={pageNumber}
-                    onClick={() => handlePageChange(pageNumber)}
-                    className={`relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium ${pagination.currentPage === pageNumber ? 'bg-blue-50 text-blue-600 z-10' : 'text-gray-500 hover:bg-gray-50'}`}
-                  >
-                    {pageNumber}
-                  </button>
-                );
-              })}
-              
-              <button
-                onClick={() => handlePageChange(pagination.currentPage + 1)}
-                disabled={pagination.currentPage === pagination.totalPages || pagination.totalPages === 0}
-                className={`relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium ${pagination.currentPage === pagination.totalPages || pagination.totalPages === 0 ? 'text-gray-300 cursor-not-allowed' : 'text-gray-500 hover:bg-gray-50'}`}
-              >
-                <span className="sr-only">Next</span>
-                <i className="fas fa-chevron-right"></i>
-              </button>
-            </nav>
+                <button
+                  onClick={() => handlePageChange(pagination.currentPage + 1)}
+                  disabled={pagination.currentPage === pagination.totalPages}
+                  className="px-3 py-1 rounded-md text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed ml-1"
+                >
+                  Next
+                </button>
+                <button
+                  onClick={() => handlePageChange(pagination.totalPages)}
+                  disabled={pagination.currentPage === pagination.totalPages}
+                  className="px-3 py-1 rounded-md text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed ml-1"
+                >
+                  Last
+                </button>
+              </nav>
+            </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
-  
+
   /**
    * Render dashboard summary metrics
    * @returns {JSX.Element} - The dashboard summary component
    */
   const renderSummaryMetrics = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-      <div className="metric-card bg-white rounded-lg shadow-md p-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      {/* Total Properties */}
+      <div className="bg-white rounded-lg shadow-md p-4">
         <div className="flex items-center">
-          <div className="p-3 rounded-full bg-blue-100 text-blue-500 mr-4">
-            <i className="fas fa-home text-xl"></i>
+          <div className="flex-shrink-0 bg-blue-500 rounded-full p-3">
+            <svg className="h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            </svg>
           </div>
-          <div>
-            <p className="text-sm text-gray-500">Total Properties</p>
-            <p className="text-2xl font-semibold">{summaryMetrics.totalProperties.toLocaleString()}</p>
+          <div className="ml-4">
+            <div className="text-sm font-medium text-gray-500">Total Properties</div>
+            <div className="text-xl font-semibold text-gray-900">
+              {loading ? (
+                <div className="animate-pulse w-16 h-6 bg-gray-200 rounded"></div>
+              ) : (
+                pagination.totalItems.toLocaleString()
+              )}
+            </div>
           </div>
         </div>
       </div>
       
-      <div className="metric-card bg-white rounded-lg shadow-md p-4">
+      {/* Average Value */}
+      <div className="bg-white rounded-lg shadow-md p-4">
         <div className="flex items-center">
-          <div className="p-3 rounded-full bg-green-100 text-green-500 mr-4">
-            <i className="fas fa-dollar-sign text-xl"></i>
+          <div className="flex-shrink-0 bg-green-500 rounded-full p-3">
+            <svg className="h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
           </div>
-          <div>
-            <p className="text-sm text-gray-500">Average Value</p>
-            <p className="text-2xl font-semibold">{formatCurrency(summaryMetrics.averageValue)}</p>
+          <div className="ml-4">
+            <div className="text-sm font-medium text-gray-500">Average Value</div>
+            <div className="text-xl font-semibold text-gray-900">
+              {loading ? (
+                <div className="animate-pulse w-24 h-6 bg-gray-200 rounded"></div>
+              ) : (
+                formatCurrency(
+                  properties.length > 0
+                    ? properties.reduce((sum, property) => sum + (property.estimated_value || property.value || 0), 0) / properties.length
+                    : 0
+                )
+              )}
+            </div>
           </div>
         </div>
       </div>
       
-      <div className="metric-card bg-white rounded-lg shadow-md p-4">
+      {/* Average Confidence */}
+      <div className="bg-white rounded-lg shadow-md p-4">
         <div className="flex items-center">
-          <div className="p-3 rounded-full bg-purple-100 text-purple-500 mr-4">
-            <i className="fas fa-chart-pie text-xl"></i>
+          <div className="flex-shrink-0 bg-yellow-500 rounded-full p-3">
+            <svg className="h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
           </div>
-          <div>
-            <p className="text-sm text-gray-500">Median Value</p>
-            <p className="text-2xl font-semibold">{formatCurrency(summaryMetrics.medianValue)}</p>
+          <div className="ml-4">
+            <div className="text-sm font-medium text-gray-500">Average Confidence</div>
+            <div className="text-xl font-semibold text-gray-900">
+              {loading ? (
+                <div className="animate-pulse w-16 h-6 bg-gray-200 rounded"></div>
+              ) : (
+                formatPercentage(
+                  properties.length > 0
+                    ? properties.reduce((sum, property) => sum + (property.confidence || 0), 0) / properties.length
+                    : 0
+                )
+              )}
+            </div>
           </div>
         </div>
       </div>
       
-      <div className="metric-card bg-white rounded-lg shadow-md p-4">
+      {/* Neighborhoods */}
+      <div className="bg-white rounded-lg shadow-md p-4">
         <div className="flex items-center">
-          <div className="p-3 rounded-full bg-yellow-100 text-yellow-500 mr-4">
-            <i className="fas fa-history text-xl"></i>
+          <div className="flex-shrink-0 bg-purple-500 rounded-full p-3">
+            <svg className="h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
           </div>
-          <div>
-            <p className="text-sm text-gray-500">Last Refresh</p>
-            <p className="text-2xl font-semibold">
-              {refreshSettings.lastRefreshTime ? 
-                new Date(refreshSettings.lastRefreshTime).toLocaleTimeString() : 
-                'Never'}
-            </p>
+          <div className="ml-4">
+            <div className="text-sm font-medium text-gray-500">Neighborhoods</div>
+            <div className="text-xl font-semibold text-gray-900">
+              {loading ? (
+                <div className="animate-pulse w-16 h-6 bg-gray-200 rounded"></div>
+              ) : (
+                availableNeighborhoods.length
+              )}
+            </div>
           </div>
-        </div>
-        <div className="mt-1 text-xs text-gray-500 flex items-center">
-          <span className={`mr-1 h-2 w-2 rounded-full ${refreshSettings.autoRefresh ? 'bg-green-500' : 'bg-gray-400'}`}></span>
-          <span>Auto-refresh: {refreshSettings.autoRefresh ? 'On' : 'Off'}</span>
         </div>
       </div>
     </div>
   );
-  
+
   /**
    * Render property data visualization charts
    * @returns {JSX.Element} - The charts component
    */
-  const renderPropertyCharts = () => (
-    <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-      <div className="flex border-b mb-4">
-        <button
-          className={`px-4 py-2 font-medium ${activeTab === 'distribution' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-700'}`}
-          onClick={() => setActiveTab('distribution')}
-        >
-          Value Distribution
-        </button>
-        <button
-          className={`px-4 py-2 font-medium ${activeTab === 'neighborhood' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-700'}`}
-          onClick={() => setActiveTab('neighborhood')}
-        >
-          Neighborhood Comparison
-        </button>
-        <button
-          className={`px-4 py-2 font-medium ${activeTab === 'trend' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-700'}`}
-          onClick={() => setActiveTab('trend')}
-        >
-          Value Trends
-        </button>
-        <button
-          className={`px-4 py-2 font-medium ${activeTab === 'models' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-700'}`}
-          onClick={() => setActiveTab('models')}
-        >
-          Valuation Models
-        </button>
-      </div>
+  const renderCharts = () => (
+    <div className="mb-6">
+      <h2 className="text-lg font-semibold text-gray-800 mb-4">Data Visualization</h2>
       
-      <div className="h-80">
-        {loading ? (
-          <div className="h-full flex justify-center items-center">
-            <svg className="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-          </div>
-        ) : error ? (
-          <div className="h-full flex justify-center items-center text-red-500">
-            {error}
-          </div>
-        ) : properties.length === 0 ? (
-          <div className="h-full flex justify-center items-center text-gray-500">
-            No data available for visualization.
-          </div>
-        ) : (
-          <>
-            {/* Value Distribution Chart */}
-            {activeTab === 'distribution' && (
-              <div className="h-full" ref={valueDistributionChartRef}>
-                <Bar data={valueDistributionData} options={valueDistributionOptions} />
-              </div>
-            )}
-            
-            {/* Neighborhood Comparison Chart */}
-            {activeTab === 'neighborhood' && (
-              <div className="h-full" ref={neighborhoodChartRef}>
-                <Bar data={neighborhoodComparisonData} options={neighborhoodOptions} />
-              </div>
-            )}
-            
-            {/* Value Trend Chart */}
-            {activeTab === 'trend' && (
-              <div className="h-full" ref={trendChartRef}>
-                <Line data={valueTrendData} options={trendOptions} />
-              </div>
-            )}
-            
-            {/* Model Distribution Chart */}
-            {activeTab === 'models' && (
-              <div className="h-full flex justify-center">
-                <div className="w-3/4 h-full">
-                  <Pie data={modelDistributionData} options={modelDistributionOptions} />
-                </div>
-              </div>
-            )}
-          </>
-        )}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Value Distribution Chart */}
+        <div className="bg-white rounded-lg shadow-md p-4 chart-container" id="value-distribution-chart">
+          <h3 className="text-md font-semibold text-gray-700 mb-2">Value Distribution</h3>
+          {loading ? (
+            <div className="animate-pulse flex flex-col items-center justify-center h-64 bg-gray-100 rounded">
+              <div className="w-12 h-12 rounded-full bg-gray-300"></div>
+              <div className="mt-2 w-24 h-4 bg-gray-300 rounded"></div>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center h-64 bg-red-50 rounded">
+              <p className="text-red-500">Error loading chart data</p>
+            </div>
+          ) : (
+            <Bar 
+              data={valueDistributionChartData} 
+              options={{
+                responsive: true,
+                plugins: {
+                  legend: {
+                    position: 'top',
+                  },
+                  title: {
+                    display: true,
+                    text: 'Property Value Distribution',
+                    font: {
+                      size: 16
+                    }
+                  },
+                  tooltip: {
+                    callbacks: {
+                      label: function(context) {
+                        return `Count: ${context.raw}`;
+                      }
+                    }
+                  }
+                },
+                scales: {
+                  x: {
+                    title: {
+                      display: true,
+                      text: 'Property Value'
+                    }
+                  },
+                  y: {
+                    title: {
+                      display: true,
+                      text: 'Number of Properties'
+                    },
+                    beginAtZero: true
+                  }
+                }
+              }}
+              ref={valueDistributionChartRef}
+            />
+          )}
+        </div>
+        
+        {/* Neighborhood Comparison Chart */}
+        <div className="bg-white rounded-lg shadow-md p-4 chart-container" id="neighborhood-chart">
+          <h3 className="text-md font-semibold text-gray-700 mb-2">Neighborhood Comparison</h3>
+          {loading ? (
+            <div className="animate-pulse flex flex-col items-center justify-center h-64 bg-gray-100 rounded">
+              <div className="w-12 h-12 rounded-full bg-gray-300"></div>
+              <div className="mt-2 w-24 h-4 bg-gray-300 rounded"></div>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center h-64 bg-red-50 rounded">
+              <p className="text-red-500">Error loading chart data</p>
+            </div>
+          ) : (
+            <Bar 
+              data={neighborhoodChartData} 
+              options={neighborhoodChartOptions}
+              ref={neighborhoodChartRef}
+            />
+          )}
+        </div>
+        
+        {/* Valuation Trend Chart */}
+        <div className="bg-white rounded-lg shadow-md p-4 chart-container" id="trend-chart">
+          <h3 className="text-md font-semibold text-gray-700 mb-2">Valuation Trends</h3>
+          {loading ? (
+            <div className="animate-pulse flex flex-col items-center justify-center h-64 bg-gray-100 rounded">
+              <div className="w-12 h-12 rounded-full bg-gray-300"></div>
+              <div className="mt-2 w-24 h-4 bg-gray-300 rounded"></div>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center h-64 bg-red-50 rounded">
+              <p className="text-red-500">Error loading chart data</p>
+            </div>
+          ) : (
+            <Line 
+              data={valueTrendChartData} 
+              options={valueTrendChartOptions}
+              ref={trendChartRef}
+            />
+          )}
+        </div>
+        
+        {/* Model Distribution Chart */}
+        <div className="bg-white rounded-lg shadow-md p-4 chart-container" id="model-distribution-chart">
+          <h3 className="text-md font-semibold text-gray-700 mb-2">Model Distribution</h3>
+          {loading ? (
+            <div className="animate-pulse flex flex-col items-center justify-center h-64 bg-gray-100 rounded">
+              <div className="w-12 h-12 rounded-full bg-gray-300"></div>
+              <div className="mt-2 w-24 h-4 bg-gray-300 rounded"></div>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center h-64 bg-red-50 rounded">
+              <p className="text-red-500">Error loading chart data</p>
+            </div>
+          ) : (
+            <Pie 
+              data={modelDistributionChartData} 
+              options={modelDistributionChartOptions}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
-  
+
   /**
    * Render ETL status section
    * @returns {JSX.Element} - The ETL status component
    */
   const renderEtlStatus = () => (
     <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-      <h2 className="text-xl font-semibold mb-4">ETL Pipeline Status</h2>
+      <h2 className="text-lg font-semibold text-gray-800 mb-4">ETL Pipeline Status</h2>
       
       {etlStatus.isLoading ? (
-        <div className="flex justify-center items-center h-40">
-          <svg className="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
+        <div className="flex justify-center items-center py-8">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          <span className="ml-3">Loading ETL status...</span>
         </div>
       ) : etlStatus.error ? (
-        <div className="bg-red-50 text-red-500 p-4 rounded-md">
-          {etlStatus.error}
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          <p>{etlStatus.error}</p>
+          <button
+            onClick={fetchEtlStatus}
+            className="mt-2 px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm"
+          >
+            Retry
+          </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* ETL Status Summary */}
+          <div className="md:col-span-2">
             <div className="mb-4">
-              <div className="flex justify-between mb-1">
-                <span className="text-sm font-medium">Status: </span>
-                <span className={`text-sm font-semibold ${
-                  etlStatus.status === 'running' ? 'text-green-500' :
-                  etlStatus.status === 'pending' ? 'text-blue-500' :
-                  etlStatus.status === 'failed' ? 'text-red-500' :
-                  etlStatus.status === 'completed' ? 'text-green-700' :
-                  'text-gray-500'
+              <div className="flex items-center mb-2">
+                <h3 className="text-md font-semibold text-gray-700">Current Status</h3>
+                <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${
+                  etlStatus.status.toLowerCase() === 'completed' ? 'bg-green-100 text-green-800' :
+                  etlStatus.status.toLowerCase() === 'running' ? 'bg-blue-100 text-blue-800' :
+                  etlStatus.status.toLowerCase() === 'failed' ? 'bg-red-100 text-red-800' :
+                  'bg-gray-100 text-gray-800'
                 }`}>
-                  {etlStatus.status?.charAt(0).toUpperCase() + etlStatus.status?.slice(1) || 'Unknown'}
+                  {etlStatus.status}
                 </span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
-                  className={`h-2 rounded-full ${
-                    etlStatus.status === 'failed' ? 'bg-red-500' :
-                    etlStatus.status === 'completed' ? 'bg-green-500' :
-                    'bg-blue-500'
-                  }`}
-                  style={{ width: `${Math.round(etlStatus.progress * 100)}%` }}
-                ></div>
-              </div>
-              <div className="text-right text-xs text-gray-500 mt-1">
-                {Math.round(etlStatus.progress * 100)}% complete
-              </div>
-            </div>
-            
-            <div className="text-sm text-gray-600 mb-4">
-              <div><span className="font-medium">Last Updated:</span> {formatDateTime(etlStatus.lastUpdate)}</div>
-              <div><span className="font-medium">Records Processed:</span> {etlStatus.metrics.recordsProcessed.toLocaleString()}</div>
-              <div><span className="font-medium">Success Rate:</span> {formatPercentage(etlStatus.metrics.successRate)}</div>
-              <div><span className="font-medium">Avg. Processing Time:</span> {etlStatus.metrics.averageProcessingTime.toFixed(2)}ms</div>
-            </div>
-            
-            <div className="mb-2">
-              <h3 className="text-sm font-semibold mb-2">Data Quality Metrics</h3>
-              <div className="space-y-2">
+              
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span>Completeness</span>
+                  <p className="text-sm text-gray-500">Last Update</p>
+                  <p className="text-base font-medium text-gray-900">
+                    {etlStatus.lastUpdate ? formatDateTime(etlStatus.lastUpdate) : 'N/A'}
+                  </p>
+                </div>
+                
+                <div>
+                  <p className="text-sm text-gray-500">Progress</p>
+                  <div className="flex items-center">
+                    <div className="w-full bg-gray-200 rounded-full h-2.5 mr-2">
+                      <div
+                        className={`h-2.5 rounded-full ${
+                          etlStatus.status.toLowerCase() === 'completed' ? 'bg-green-500' :
+                          etlStatus.status.toLowerCase() === 'running' ? 'bg-blue-500' :
+                          etlStatus.status.toLowerCase() === 'failed' ? 'bg-red-500' :
+                          'bg-gray-500'
+                        }`}
+                        style={{ width: `${etlStatus.progress * 100}%` }}
+                      ></div>
+                    </div>
+                    <span>{(etlStatus.progress * 100).toFixed(0)}%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="mb-4">
+              <h3 className="text-md font-semibold text-gray-700 mb-2">Processing Metrics</h3>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <p className="text-sm text-gray-500">Records Processed</p>
+                  <p className="text-base font-medium text-gray-900">
+                    {etlStatus.metrics.recordsProcessed.toLocaleString()}
+                  </p>
+                </div>
+                
+                <div>
+                  <p className="text-sm text-gray-500">Success Rate</p>
+                  <p className="text-base font-medium text-gray-900">
+                    {formatPercentage(etlStatus.metrics.successRate)}
+                  </p>
+                </div>
+                
+                <div>
+                  <p className="text-sm text-gray-500">Avg. Processing Time</p>
+                  <p className="text-base font-medium text-gray-900">
+                    {etlStatus.metrics.averageProcessingTime.toFixed(2)}ms
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div>
+              <h3 className="text-md font-semibold text-gray-700 mb-2">Data Quality</h3>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <p className="text-sm text-gray-500">Completeness</p>
+                  <div className="flex items-center">
+                    <div className="w-full bg-gray-200 rounded-full h-2.5 mr-2">
+                      <div
+                        className="bg-green-500 h-2.5 rounded-full"
+                        style={{ width: `${etlStatus.dataQuality.completeness * 100}%` }}
+                      ></div>
+                    </div>
                     <span>{formatPercentage(etlStatus.dataQuality.completeness)}</span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-1.5">
-                    <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${etlStatus.dataQuality.completeness * 100}%` }}></div>
-                  </div>
                 </div>
+                
                 <div>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span>Accuracy</span>
+                  <p className="text-sm text-gray-500">Accuracy</p>
+                  <div className="flex items-center">
+                    <div className="w-full bg-gray-200 rounded-full h-2.5 mr-2">
+                      <div
+                        className="bg-green-500 h-2.5 rounded-full"
+                        style={{ width: `${etlStatus.dataQuality.accuracy * 100}%` }}
+                      ></div>
+                    </div>
                     <span>{formatPercentage(etlStatus.dataQuality.accuracy)}</span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-1.5">
-                    <div className="bg-green-500 h-1.5 rounded-full" style={{ width: `${etlStatus.dataQuality.accuracy * 100}%` }}></div>
-                  </div>
                 </div>
+                
                 <div>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span>Timeliness</span>
+                  <p className="text-sm text-gray-500">Timeliness</p>
+                  <div className="flex items-center">
+                    <div className="w-full bg-gray-200 rounded-full h-2.5 mr-2">
+                      <div
+                        className="bg-green-500 h-2.5 rounded-full"
+                        style={{ width: `${etlStatus.dataQuality.timeliness * 100}%` }}
+                      ></div>
+                    </div>
                     <span>{formatPercentage(etlStatus.dataQuality.timeliness)}</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-1.5">
-                    <div className="bg-purple-500 h-1.5 rounded-full" style={{ width: `${etlStatus.dataQuality.timeliness * 100}%` }}></div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
           
-          <div>
-            <h3 className="text-sm font-semibold mb-2">Data Sources</h3>
-            {etlStatus.sources && etlStatus.sources.length > 0 ? (
-              <div className="overflow-y-auto max-h-60">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Records</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {etlStatus.sources.map((source, index) => (
-                      <tr key={index}>
-                        <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">{source.name}</td>
-                        <td className="px-3 py-2 whitespace-nowrap text-sm">
-                          <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                            source.status === 'completed' ? 'bg-green-100 text-green-800' :
-                            source.status === 'running' ? 'bg-blue-100 text-blue-800' :
-                            source.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                            source.status === 'failed' ? 'bg-red-100 text-red-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
-                            {source.status}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{source.records?.toLocaleString() || 0}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500">No data sources available.</p>
-            )}
+          {/* ETL Progress Chart */}
+          <div className="chart-container flex flex-col items-center justify-center" id="etl-progress-chart">
+            <Doughnut
+              data={{
+                labels: ['Complete', 'Remaining'],
+                datasets: [{
+                  data: [etlStatus.progress * 100, 100 - (etlStatus.progress * 100)],
+                  backgroundColor: [
+                    etlStatus.status.toLowerCase() === 'completed' ? 'rgba(16, 185, 129, 0.6)' :
+                    etlStatus.status.toLowerCase() === 'running' ? 'rgba(59, 130, 246, 0.6)' :
+                    etlStatus.status.toLowerCase() === 'failed' ? 'rgba(239, 68, 68, 0.6)' :
+                    'rgba(107, 114, 128, 0.6)',
+                    'rgba(229, 231, 235, 0.6)'
+                  ],
+                  borderColor: [
+                    etlStatus.status.toLowerCase() === 'completed' ? 'rgba(16, 185, 129, 1)' :
+                    etlStatus.status.toLowerCase() === 'running' ? 'rgba(59, 130, 246, 1)' :
+                    etlStatus.status.toLowerCase() === 'failed' ? 'rgba(239, 68, 68, 1)' :
+                    'rgba(107, 114, 128, 1)',
+                    'rgba(229, 231, 235, 1)'
+                  ],
+                  borderWidth: 1
+                }]
+              }}
+              options={etlProgressChartOptions}
+              ref={etlProgressChartRef}
+            />
+            <div className="text-center mt-2">
+              <p className="text-xl font-bold">{(etlStatus.progress * 100).toFixed(0)}%</p>
+              <p className="text-sm text-gray-500">ETL Pipeline Progress</p>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* ETL Data Sources */}
+      {!etlStatus.isLoading && !etlStatus.error && etlStatus.sources.length > 0 && (
+        <div className="mt-6">
+          <h3 className="text-md font-semibold text-gray-700 mb-2">Data Sources</h3>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Source
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Records
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Last Update
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {etlStatus.sources.map((source, index) => (
+                  <tr key={index}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {source.name}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColorClass(source.status)} bg-opacity-20`}>
+                        {source.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {source.records.toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {formatDateTime(source.last_update)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
     </div>
   );
-  
+
   /**
    * Render agent status section
    * @returns {JSX.Element} - The agent status component
    */
   const renderAgentStatus = () => (
     <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-      <h2 className="text-xl font-semibold mb-4">Agent Status</h2>
+      <h2 className="text-lg font-semibold text-gray-800 mb-4">Agent Status</h2>
       
       {agentStatus.isLoading ? (
-        <div className="flex justify-center items-center h-40">
-          <svg className="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
+        <div className="flex justify-center items-center py-8">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          <span className="ml-3">Loading agent status...</span>
         </div>
       ) : agentStatus.error ? (
-        <div className="bg-red-50 text-red-500 p-4 rounded-md">
-          {agentStatus.error}
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          <p>{agentStatus.error}</p>
+          <button
+            onClick={fetchAgentStatus}
+            className="mt-2 px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm"
+          >
+            Retry
+          </button>
         </div>
       ) : agentStatus.agents.length === 0 ? (
-        <p className="text-center text-gray-500 py-8">No agent data available.</p>
+        <div className="text-center py-8 text-gray-500">
+          <p>No agent data available.</p>
+          <button
+            onClick={fetchAgentStatus}
+            className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
+          >
+            Refresh
+          </button>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Agent Status Summary */}
           <div className="md:col-span-2">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Agent</th>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Queue</th>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Success Rate</th>
-                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Update</th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Agent
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Type
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Success Rate
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Last Activity
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {agentStatus.agents.map((agent, index) => (
+                  {agentStatus.agents.map((agent) => (
                     <tr 
-                      key={agent.agent_id || index}
-                      onClick={() => handleAgentSelect(agent)}
-                      className="hover:bg-gray-50 cursor-pointer transition-colors"
+                      key={agent.id}
+                      onClick={() => handleAgentClick(agent)}
+                      className="hover:bg-gray-100 cursor-pointer transition duration-150"
                     >
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{agent.agent_name}</div>
-                        <div className="text-xs text-gray-500">{agent.agent_id}</div>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {agent.name}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{agent.agent_type}</div>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                          {agent.type}
+                        </span>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          agent.status === 'idle' ? 'bg-green-100 text-green-800' :
-                          agent.status === 'busy' ? 'bg-blue-100 text-blue-800' :
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          agent.status === 'active' ? 'bg-green-100 text-green-800' :
+                          agent.status === 'idle' ? 'bg-blue-100 text-blue-800' :
+                          agent.status === 'processing' ? 'bg-yellow-100 text-yellow-800' :
                           agent.status === 'error' ? 'bg-red-100 text-red-800' :
-                          agent.status === 'offline' ? 'bg-gray-100 text-gray-800' :
-                          'bg-yellow-100 text-yellow-800'
+                          'bg-gray-100 text-gray-800'
                         }`}>
                           {agent.status}
                         </span>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                        {agent.queue_size || 0}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <div className="flex items-center">
+                          <div className="w-full bg-gray-200 rounded-full h-2.5 mr-2">
+                            <div
+                              className={`h-2.5 rounded-full ${
+                                (agent.success_rate || 0) > 0.9 ? 'bg-green-500' :
+                                (agent.success_rate || 0) > 0.8 ? 'bg-yellow-500' :
+                                'bg-red-500'
+                              }`}
+                              style={{ width: `${(agent.success_rate || 0) * 100}%` }}
+                            ></div>
+                          </div>
+                          <span>{formatPercentage(agent.success_rate)}</span>
+                        </div>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                        {formatPercentage(agent.success_rate || 0)}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                        {formatDateTime(agent.last_heartbeat)}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {formatDateTime(agent.last_activity)}
                       </td>
                     </tr>
                   ))}
@@ -2118,19 +2290,20 @@ const Dashboard = () => {
             </div>
           </div>
           
-          <div>
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h3 className="text-sm font-semibold mb-3">Agent Status Distribution</h3>
-              <div className="h-48">
-                <Doughnut data={agentStatusData} options={agentStatusOptions} />
-              </div>
-            </div>
+          {/* Agent Status Chart */}
+          <div className="chart-container" id="agent-performance-chart">
+            <h3 className="text-md font-semibold text-gray-700 mb-2">Agent Status Distribution</h3>
+            <Doughnut
+              data={agentStatusChartData}
+              options={agentStatusChartOptions}
+              ref={agentPerformanceChartRef}
+            />
           </div>
         </div>
       )}
     </div>
   );
-  
+
   /**
    * Render property detail modal
    * @returns {JSX.Element|null} - The property detail modal or null if no property is selected
@@ -2139,152 +2312,133 @@ const Dashboard = () => {
     if (!selectedProperty) return null;
     
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-        <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-full overflow-hidden">
-          <div className="flex justify-between items-center p-4 border-b">
-            <h2 className="text-xl font-semibold">Property Details</h2>
-            <button 
-              onClick={closePropertyDetail}
-              className="text-gray-500 hover:text-gray-700 focus:outline-none"
-            >
-              <i className="fas fa-times text-xl"></i>
-            </button>
-          </div>
-          
-          <div className="p-4 overflow-y-auto max-h-[calc(100vh-10rem)]">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="p-6">
+            <div className="flex justify-between items-start">
+              <h2 className="text-xl font-semibold text-gray-800">Property Details</h2>
+              <button
+                onClick={closePropertyDetail}
+                className="text-gray-500 hover:text-gray-700 focus:outline-none"
+              >
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Property Info */}
               <div>
-                <h3 className="text-lg font-semibold mb-2">Property Information</h3>
+                <h3 className="text-lg font-medium text-gray-800 mb-2">Basic Information</h3>
                 <div className="space-y-2">
-                  <p><span className="font-medium">ID:</span> {selectedProperty.property_id}</p>
+                  <p><span className="font-medium">ID:</span> {selectedProperty.id || selectedProperty.property_id}</p>
                   <p><span className="font-medium">Address:</span> {selectedProperty.address}</p>
-                  <p><span className="font-medium">Location:</span> {selectedProperty.city}, {selectedProperty.state} {selectedProperty.zip_code}</p>
-                  <p><span className="font-medium">Neighborhood:</span> {selectedProperty.neighborhood || 'Not specified'}</p>
-                  <p><span className="font-medium">Property Type:</span> {selectedProperty.property_type?.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</p>
+                  <p><span className="font-medium">Neighborhood:</span> {selectedProperty.neighborhood || extractNeighborhoodFromAddress(selectedProperty.address) || 'N/A'}</p>
+                  <p><span className="font-medium">Property Type:</span> {selectedProperty.property_type?.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'N/A'}</p>
+                  <p><span className="font-medium">Living Area:</span> {selectedProperty.living_area ? `${selectedProperty.living_area.toLocaleString()} sq ft` : 'N/A'}</p>
                   <p><span className="font-medium">Bedrooms:</span> {selectedProperty.bedrooms || 'N/A'}</p>
                   <p><span className="font-medium">Bathrooms:</span> {selectedProperty.bathrooms || 'N/A'}</p>
-                  <p><span className="font-medium">Square Feet:</span> {selectedProperty.square_feet ? `${selectedProperty.square_feet.toLocaleString()} sq ft` : 'N/A'}</p>
                   <p><span className="font-medium">Year Built:</span> {selectedProperty.year_built || 'N/A'}</p>
-                  <p><span className="font-medium">Lot Size:</span> {selectedProperty.lot_size ? `${selectedProperty.lot_size.toLocaleString()} acres` : 'N/A'}</p>
-                  {selectedProperty.latitude && selectedProperty.longitude && (
-                    <p><span className="font-medium">Coordinates:</span> {selectedProperty.latitude.toFixed(6)}, {selectedProperty.longitude.toFixed(6)}</p>
-                  )}
+                  <p><span className="font-medium">Lot Size:</span> {selectedProperty.lot_size ? `${selectedProperty.lot_size.toLocaleString()} sq ft` : 'N/A'}</p>
                 </div>
               </div>
               
+              {/* Valuation Info */}
               <div>
-                <h3 className="text-lg font-semibold mb-2">Valuation Details</h3>
-                <div className="mb-3">
-                  <span className="text-sm text-gray-600">Estimated Value</span>
-                  <div className="text-3xl font-bold text-blue-600">
-                    {formatCurrency(selectedProperty.estimated_value)}
-                  </div>
-                  <span className="text-sm text-gray-500">
-                    as of {formatDate(selectedProperty.valuation_date)}
-                  </span>
-                </div>
-                
+                <h3 className="text-lg font-medium text-gray-800 mb-2">Valuation Details</h3>
                 <div className="space-y-2">
-                  <p><span className="font-medium">Valuation Method:</span> {selectedProperty.valuation_method?.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</p>
-                  <p><span className="font-medium">Confidence Score:</span> {formatPercentage(selectedProperty.confidence_score)}</p>
-                  
-                  {selectedProperty.adj_r2_score !== undefined && (
-                    <p><span className="font-medium">Adjusted R² Score:</span> {selectedProperty.adj_r2_score.toFixed(4)}</p>
-                  )}
-                  
-                  {selectedProperty.rmse !== undefined && (
-                    <p><span className="font-medium">RMSE:</span> {selectedProperty.rmse.toLocaleString()}</p>
-                  )}
-                  
-                  {selectedProperty.mae !== undefined && (
-                    <p><span className="font-medium">MAE:</span> {selectedProperty.mae.toLocaleString()}</p>
-                  )}
-                  
-                  {selectedProperty.last_sale_price && (
-                    <p>
-                      <span className="font-medium">Last Sale Price:</span> {formatCurrency(selectedProperty.last_sale_price)}
-                      {selectedProperty.last_sale_date && ` (${formatDate(selectedProperty.last_sale_date)})`}
+                  <div className="mb-4">
+                    <p className="text-sm text-gray-500">Estimated Value</p>
+                    <p className="text-2xl font-bold text-blue-600">
+                      {formatCurrency(selectedProperty.estimated_value || selectedProperty.value)}
                     </p>
-                  )}
-                </div>
-                
-                {selectedProperty.gis_adjustments && (
-                  <div className="mt-4">
-                    <h4 className="text-md font-semibold mb-2">GIS Adjustments</h4>
-                    <div className="space-y-2">
-                      <p><span className="font-medium">Base Value:</span> {formatCurrency(selectedProperty.gis_adjustments.base_value)}</p>
-                      <p><span className="font-medium">Neighborhood Quality:</span> {formatPercentage(selectedProperty.gis_adjustments.quality_adjustment)}</p>
-                      <p><span className="font-medium">Proximity Factors:</span> {formatPercentage(selectedProperty.gis_adjustments.proximity_adjustment)}</p>
+                  </div>
+                  
+                  <div className="mb-4">
+                    <p className="text-sm text-gray-500">Confidence Score</p>
+                    <div className="flex items-center">
+                      <div className="w-full bg-gray-200 rounded-full h-2.5 mr-2">
+                        <div
+                          className="bg-blue-600 h-2.5 rounded-full"
+                          style={{ width: `${(selectedProperty.confidence || 0) * 100}%` }}
+                        ></div>
+                      </div>
+                      <span>{formatPercentage(selectedProperty.confidence)}</span>
                     </div>
                   </div>
-                )}
+                  
+                  <p><span className="font-medium">Valuation Date:</span> {formatDate(selectedProperty.valuation_date) || 'N/A'}</p>
+                  <p><span className="font-medium">Valuation Model:</span> {selectedProperty.valuation_model || 'N/A'}</p>
+                  
+                  {selectedProperty.price_range && (
+                    <p><span className="font-medium">Price Range:</span> {formatCurrency(selectedProperty.price_range.min)} - {formatCurrency(selectedProperty.price_range.max)}</p>
+                  )}
+                  
+                  {/* Comparable properties if available */}
+                  {selectedProperty.comparables && selectedProperty.comparables.length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="text-md font-medium text-gray-700 mb-2">Comparable Properties</h4>
+                      <ul className="space-y-2">
+                        {selectedProperty.comparables.map((comp, idx) => (
+                          <li key={idx} className="text-sm">
+                            {comp.address}: {formatCurrency(comp.value)} ({formatDate(comp.sale_date)})
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {/* Feature importance if available */}
+                  {selectedProperty.feature_importance && Object.keys(selectedProperty.feature_importance).length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="text-md font-medium text-gray-700 mb-2">Feature Importance</h4>
+                      <div className="space-y-2">
+                        {Object.entries(selectedProperty.feature_importance)
+                          .sort(([, a], [, b]) => b - a)
+                          .map(([feature, importance]) => (
+                            <div key={feature} className="flex items-center">
+                              <span className="w-1/3 text-sm">{feature.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
+                              <div className="w-2/3 flex items-center">
+                                <div className="w-full bg-gray-200 rounded-full h-2 mr-2">
+                                  <div
+                                    className="bg-purple-500 h-2 rounded-full"
+                                    style={{ width: `${importance * 100}%` }}
+                                  ></div>
+                                </div>
+                                <span className="text-xs">{(importance * 100).toFixed(1)}%</span>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
             
-            {selectedProperty.feature_importance && (
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold mb-2">Feature Importance</h3>
-                <div className="space-y-2">
-                  {Object.entries(selectedProperty.feature_importance)
-                    .sort(([, a], [, b]) => b - a)
-                    .map(([feature, importance], index) => (
-                      <div key={index}>
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="text-sm">{feature.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
-                          <span className="text-sm font-medium">{formatPercentage(importance)}</span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${importance * 100}%` }}></div>
-                        </div>
-                      </div>
-                    ))}
-                </div>
+            {/* Additional notes if available */}
+            {selectedProperty.notes && (
+              <div className="mt-6">
+                <h3 className="text-lg font-medium text-gray-800 mb-2">Notes</h3>
+                <p className="text-gray-700">{selectedProperty.notes}</p>
               </div>
             )}
             
-            {selectedProperty.comparable_properties && selectedProperty.comparable_properties.length > 0 && (
-              <div>
-                <h3 className="text-lg font-semibold mb-2">Comparable Properties</h3>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Address</th>
-                        <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Value</th>
-                        <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Distance</th>
-                        <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Similarity</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {selectedProperty.comparable_properties.map((comp, index) => (
-                        <tr key={index}>
-                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">{comp.address}</td>
-                          <td className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{formatCurrency(comp.value)}</td>
-                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{comp.distance ? `${comp.distance.toFixed(2)} miles` : 'N/A'}</td>
-                          <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-500">{formatPercentage(comp.similarity)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-          
-          <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse border-t">
-            <button
-              type="button"
-              className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
-              onClick={closePropertyDetail}
-            >
-              Close
-            </button>
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={closePropertyDetail}
+                className="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       </div>
     );
   };
-  
+
   /**
    * Render agent detail modal
    * @returns {JSX.Element|null} - The agent detail modal or null if no agent is selected
@@ -2293,272 +2447,265 @@ const Dashboard = () => {
     if (!selectedAgent) return null;
     
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-        <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-full overflow-hidden">
-          <div className="flex justify-between items-center p-4 border-b">
-            <h2 className="text-xl font-semibold">Agent Details: {selectedAgent.agent_name}</h2>
-            <button 
-              onClick={closeAgentDetail}
-              className="text-gray-500 hover:text-gray-700 focus:outline-none"
-            >
-              <i className="fas fa-times text-xl"></i>
-            </button>
-          </div>
-          
-          <div className="p-4 overflow-y-auto max-h-[calc(100vh-10rem)]">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              <div>
-                <h3 className="text-lg font-semibold mb-2">Agent Information</h3>
-                <div className="space-y-2">
-                  <p><span className="font-medium">ID:</span> {selectedAgent.agent_id}</p>
-                  <p><span className="font-medium">Type:</span> {selectedAgent.agent_type}</p>
-                  <p>
-                    <span className="font-medium">Status:</span> 
-                    <span className={`ml-2 px-2 py-0.5 text-xs font-medium rounded-full ${
-                      selectedAgent.status === 'idle' ? 'bg-green-100 text-green-800' :
-                      selectedAgent.status === 'busy' ? 'bg-blue-100 text-blue-800' :
-                      selectedAgent.status === 'error' ? 'bg-red-100 text-red-800' :
-                      selectedAgent.status === 'offline' ? 'bg-gray-100 text-gray-800' :
-                      'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {selectedAgent.status}
-                    </span>
-                  </p>
-                  <p><span className="font-medium">Last Heartbeat:</span> {formatDateTime(selectedAgent.last_heartbeat)}</p>
-                  <p><span className="font-medium">Current Task:</span> {selectedAgent.current_task || 'None'}</p>
-                  <p><span className="font-medium">Queue Size:</span> {selectedAgent.queue_size || 0}</p>
-                  <p><span className="font-medium">Success Rate:</span> {formatPercentage(selectedAgent.success_rate)}</p>
-                  <p><span className="font-medium">Error Count:</span> {selectedAgent.error_count || 0}</p>
-                </div>
-              </div>
-              
-              <div>
-                <h3 className="text-lg font-semibold mb-2">Performance Metrics</h3>
-                
-                {/* Agent Success Rate Visual */}
-                <div className="mb-4">
-                  <div className="flex justify-between mb-1">
-                    <span className="text-sm font-medium">Success Rate</span>
-                    <span className="text-sm font-medium">{formatPercentage(selectedAgent.success_rate)}</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2.5">
-                    <div 
-                      className={`h-2.5 rounded-full ${
-                        selectedAgent.success_rate >= 0.9 ? 'bg-green-500' :
-                        selectedAgent.success_rate >= 0.7 ? 'bg-yellow-500' :
-                        'bg-red-500'
-                      }`}
-                      style={{ width: `${(selectedAgent.success_rate || 0) * 100}%` }}
-                    ></div>
-                  </div>
-                </div>
-                
-                {/* Agent Queue Size Visual */}
-                <div className="mb-4">
-                  <div className="flex justify-between mb-1">
-                    <span className="text-sm font-medium">Queue Utilization</span>
-                    <span className="text-sm font-medium">{selectedAgent.queue_size || 0} tasks</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2.5">
-                    <div 
-                      className={`h-2.5 rounded-full ${
-                        (selectedAgent.queue_size || 0) >= 10 ? 'bg-red-500' :
-                        (selectedAgent.queue_size || 0) >= 5 ? 'bg-yellow-500' :
-                        'bg-blue-500'
-                      }`}
-                      style={{ width: `${Math.min((selectedAgent.queue_size || 0) * 10, 100)}%` }}
-                    ></div>
-                  </div>
-                </div>
-                
-                {selectedAgent.metrics && (
-                  <div className="grid grid-cols-2 gap-4 mt-4">
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <div className="text-sm text-gray-500">Avg. Response Time</div>
-                      <div className="text-xl font-semibold">{selectedAgent.metrics.avg_response_time?.toFixed(2) || 'N/A'} ms</div>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <div className="text-sm text-gray-500">Tasks Completed</div>
-                      <div className="text-xl font-semibold">{selectedAgent.metrics.tasks_completed?.toLocaleString() || 'N/A'}</div>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <div className="text-sm text-gray-500">Memory Usage</div>
-                      <div className="text-xl font-semibold">{selectedAgent.metrics.memory_usage ? `${(selectedAgent.metrics.memory_usage / (1024 * 1024)).toFixed(1)} MB` : 'N/A'}</div>
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <div className="text-sm text-gray-500">CPU Usage</div>
-                      <div className="text-xl font-semibold">{selectedAgent.metrics.cpu_usage ? `${(selectedAgent.metrics.cpu_usage * 100).toFixed(1)}%` : 'N/A'}</div>
-                    </div>
-                  </div>
-                )}
-              </div>
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="p-6">
+            <div className="flex justify-between items-start">
+              <h2 className="text-xl font-semibold text-gray-800">Agent Details</h2>
+              <button
+                onClick={closeAgentDetail}
+                className="text-gray-500 hover:text-gray-700 focus:outline-none"
+              >
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
             
-            <h3 className="text-lg font-semibold mb-2">Agent Logs</h3>
-            {selectedAgent.logsError ? (
-              <div className="bg-red-50 text-red-500 p-4 rounded-md">
-                {selectedAgent.logsError}
+            {selectedAgent.isLoading ? (
+              <div className="flex justify-center items-center py-8">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+                <span className="ml-3">Loading agent details...</span>
               </div>
-            ) : selectedAgent.logs && selectedAgent.logs.length > 0 ? (
-              <div className="bg-gray-50 rounded-lg overflow-hidden border border-gray-200">
-                <div className="max-h-80 overflow-y-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-100 sticky top-0">
-                      <tr>
-                        <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
-                        <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level</th>
-                        <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Message</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {selectedAgent.logs.map((log, index) => (
-                        <tr key={index}>
-                          <td className="px-4 py-2 whitespace-nowrap text-xs text-gray-500">
-                            {formatDateTime(log.timestamp)}
-                          </td>
-                          <td className="px-4 py-2 whitespace-nowrap">
-                            <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                              log.level === 'error' ? 'bg-red-100 text-red-800' :
-                              log.level === 'warning' ? 'bg-yellow-100 text-yellow-800' :
-                              log.level === 'info' ? 'bg-blue-100 text-blue-800' :
-                              log.level === 'debug' ? 'bg-gray-100 text-gray-800' :
-                              'bg-purple-100 text-purple-800'
-                            }`}>
-                              {log.level}
-                            </span>
-                          </td>
-                          <td className="px-4 py-2 text-xs text-gray-900">
-                            {log.message}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+            ) : selectedAgent.error ? (
+              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded my-4">
+                <p>{selectedAgent.error}</p>
+                <button
+                  onClick={() => fetchAgentDetails(selectedAgent.id)}
+                  className="mt-2 px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm"
+                >
+                  Retry
+                </button>
               </div>
             ) : (
-              <p className="text-gray-500 text-center py-4">No logs available for this agent.</p>
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Agent Info */}
+                <div>
+                  <h3 className="text-lg font-medium text-gray-800 mb-2">Basic Information</h3>
+                  <div className="space-y-2">
+                    <p><span className="font-medium">ID:</span> {selectedAgent.id}</p>
+                    <p><span className="font-medium">Name:</span> {selectedAgent.name}</p>
+                    <p><span className="font-medium">Type:</span> {selectedAgent.type}</p>
+                    <p>
+                      <span className="font-medium">Status:</span>
+                      <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${
+                        selectedAgent.status === 'active' ? 'bg-green-100 text-green-800' :
+                        selectedAgent.status === 'idle' ? 'bg-blue-100 text-blue-800' :
+                        selectedAgent.status === 'processing' ? 'bg-yellow-100 text-yellow-800' :
+                        selectedAgent.status === 'error' ? 'bg-red-100 text-red-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {selectedAgent.status}
+                      </span>
+                    </p>
+                    <p><span className="font-medium">Version:</span> {selectedAgent.version || 'N/A'}</p>
+                    <p><span className="font-medium">Last Activity:</span> {formatDateTime(selectedAgent.last_activity) || 'N/A'}</p>
+                    <p><span className="font-medium">Success Rate:</span> {formatPercentage(selectedAgent.success_rate)}</p>
+                    <p><span className="font-medium">Uptime:</span> {selectedAgent.uptime ? `${(selectedAgent.uptime / 3600).toFixed(1)} hours` : 'N/A'}</p>
+                  </div>
+                </div>
+                
+                {/* Performance Metrics */}
+                <div>
+                  <h3 className="text-lg font-medium text-gray-800 mb-2">Performance Metrics</h3>
+                  
+                  {selectedAgent.metrics ? (
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-sm text-gray-500">Requests Processed</p>
+                        <p className="text-xl font-medium text-gray-900">
+                          {selectedAgent.metrics.requests_processed?.toLocaleString() || 0}
+                        </p>
+                      </div>
+                      
+                      <div>
+                        <p className="text-sm text-gray-500">Average Response Time</p>
+                        <p className="text-xl font-medium text-gray-900">
+                          {selectedAgent.metrics.avg_response_time?.toFixed(2) || 0} ms
+                        </p>
+                      </div>
+                      
+                      <div>
+                        <p className="text-sm text-gray-500">Error Rate</p>
+                        <div className="flex items-center">
+                          <div className="w-full bg-gray-200 rounded-full h-2.5 mr-2">
+                            <div
+                              className={`h-2.5 rounded-full ${
+                                (selectedAgent.metrics.error_rate || 0) < 0.01 ? 'bg-green-500' :
+                                (selectedAgent.metrics.error_rate || 0) < 0.05 ? 'bg-yellow-500' :
+                                'bg-red-500'
+                              }`}
+                              style={{ width: `${(selectedAgent.metrics.error_rate || 0) * 100}%` }}
+                            ></div>
+                          </div>
+                          <span>{formatPercentage(selectedAgent.metrics.error_rate)}</span>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <p className="text-sm text-gray-500">Resource Utilization</p>
+                        <div className="grid grid-cols-2 gap-2 mt-1">
+                          <div>
+                            <p className="text-xs text-gray-500">CPU</p>
+                            <div className="flex items-center">
+                              <div className="w-full bg-gray-200 rounded-full h-2 mr-2">
+                                <div
+                                  className={`h-2 rounded-full ${
+                                    (selectedAgent.metrics.cpu_utilization || 0) < 50 ? 'bg-green-500' :
+                                    (selectedAgent.metrics.cpu_utilization || 0) < 80 ? 'bg-yellow-500' :
+                                    'bg-red-500'
+                                  }`}
+                                  style={{ width: `${selectedAgent.metrics.cpu_utilization || 0}%` }}
+                                ></div>
+                              </div>
+                              <span className="text-xs">{selectedAgent.metrics.cpu_utilization || 0}%</span>
+                            </div>
+                          </div>
+                          
+                          <div>
+                            <p className="text-xs text-gray-500">Memory</p>
+                            <div className="flex items-center">
+                              <div className="w-full bg-gray-200 rounded-full h-2 mr-2">
+                                <div
+                                  className={`h-2 rounded-full ${
+                                    (selectedAgent.metrics.memory_utilization || 0) < 50 ? 'bg-green-500' :
+                                    (selectedAgent.metrics.memory_utilization || 0) < 80 ? 'bg-yellow-500' :
+                                    'bg-red-500'
+                                  }`}
+                                  style={{ width: `${selectedAgent.metrics.memory_utilization || 0}%` }}
+                                ></div>
+                              </div>
+                              <span className="text-xs">{selectedAgent.metrics.memory_utilization || 0}%</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-gray-500">No performance metrics available for this agent.</p>
+                  )}
+                </div>
+              </div>
             )}
-          </div>
-          
-          <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse border-t">
-            <button
-              type="button"
-              className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
-              onClick={closeAgentDetail}
-            >
-              Close
-            </button>
+            
+            {/* Agent Logs */}
+            {selectedAgent && selectedAgent.logs && selectedAgent.logs.length > 0 && (
+              <div className="mt-6">
+                <h3 className="text-lg font-medium text-gray-800 mb-2">Recent Logs</h3>
+                <div className="bg-gray-900 text-gray-200 p-4 rounded-md h-64 overflow-y-auto font-mono text-sm">
+                  {selectedAgent.logs.map((log, idx) => (
+                    <div key={idx} className={`mb-1 ${
+                      log.level === 'error' ? 'text-red-400' :
+                      log.level === 'warn' ? 'text-yellow-400' :
+                      log.level === 'info' ? 'text-blue-400' :
+                      'text-gray-400'
+                    }`}>
+                      <span className="mr-2">[{formatDateTime(log.timestamp)}]</span>
+                      <span className="mr-2">[{log.level.toUpperCase()}]</span>
+                      <span>{log.message}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => fetchAgentDetails(selectedAgent.id)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 mr-2"
+              >
+                Refresh
+              </button>
+              <button
+                onClick={closeAgentDetail}
+                className="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       </div>
     );
   };
-  
+
   /**
    * Render dashboard tabs navigation
    * @returns {JSX.Element} - The dashboard tabs component
    */
   const renderDashboardTabs = () => (
-    <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-      <div className="flex flex-wrap border-b mb-4">
-        <button
-          className={`px-4 py-2 font-medium ${activeDashboardTab === 'properties' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-700'}`}
-          onClick={() => handleDashboardTabChange('properties')}
-        >
-          <i className="fas fa-home mr-2"></i>
-          Properties
-        </button>
-        <button
-          className={`px-4 py-2 font-medium ${activeDashboardTab === 'etl' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-700'}`}
-          onClick={() => handleDashboardTabChange('etl')}
-        >
-          <i className="fas fa-database mr-2"></i>
-          ETL Status
-        </button>
-        <button
-          className={`px-4 py-2 font-medium ${activeDashboardTab === 'agents' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-700'}`}
-          onClick={() => handleDashboardTabChange('agents')}
-        >
-          <i className="fas fa-robot mr-2"></i>
-          Agents
-        </button>
-        
-        {/* Push to right */}
-        <div className="flex-grow"></div>
-        
-        {/* Refresh controls */}
-        <div className="flex items-center">
-          <div className="mr-2">
-            <select
-              value={refreshSettings.interval}
-              onChange={handleRefreshIntervalChange}
-              className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="30000">Refresh: 30s</option>
-              <option value="60000">Refresh: 1m</option>
-              <option value="300000">Refresh: 5m</option>
-              <option value="600000">Refresh: 10m</option>
-            </select>
-          </div>
-          
+    <div className="mb-6">
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
           <button
-            onClick={toggleAutoRefresh}
-            className={`mr-2 px-2 py-1 text-sm rounded-md ${refreshSettings.autoRefresh ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}
-            title={refreshSettings.autoRefresh ? 'Auto-refresh is on' : 'Auto-refresh is off'}
+            onClick={() => handleDashboardTabChange('properties')}
+            className={`pb-4 px-1 ${
+              activeDashboardTab === 'properties'
+                ? 'border-b-2 border-blue-500 text-blue-600 font-medium'
+                : 'border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            } focus:outline-none transition duration-150 ease-in-out`}
           >
-            <i className={`fas fa-${refreshSettings.autoRefresh ? 'sync' : 'sync-alt'} mr-1`}></i>
-            {refreshSettings.autoRefresh ? 'Auto' : 'Manual'}
+            Properties
           </button>
-          
           <button
-            onClick={refreshAllData}
-            className="px-2 py-1 text-sm bg-blue-100 text-blue-700 rounded-md"
-            title="Refresh all data now"
+            onClick={() => handleDashboardTabChange('etl')}
+            className={`pb-4 px-1 ${
+              activeDashboardTab === 'etl'
+                ? 'border-b-2 border-blue-500 text-blue-600 font-medium'
+                : 'border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            } focus:outline-none transition duration-150 ease-in-out`}
           >
-            <i className="fas fa-redo-alt"></i>
+            ETL Pipeline
           </button>
-        </div>
+          <button
+            onClick={() => handleDashboardTabChange('agents')}
+            className={`pb-4 px-1 ${
+              activeDashboardTab === 'agents'
+                ? 'border-b-2 border-blue-500 text-blue-600 font-medium'
+                : 'border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            } focus:outline-none transition duration-150 ease-in-out`}
+          >
+            Agents
+          </button>
+        </nav>
       </div>
     </div>
   );
-  
-  // --- Main Render ---
+
+  // Main component render
   return (
-    <div className="bg-gray-100 min-h-screen p-4">
-      <h1 className="text-2xl font-bold mb-6">Property Valuation Dashboard</h1>
-      
-      {/* Dashboard tabs */}
-      {renderDashboardTabs()}
-      
-      {/* Summary metrics */}
-      {renderSummaryMetrics()}
-      
-      {/* Properties view */}
-      {activeDashboardTab === 'properties' && (
-        <>
-          {/* Filters */}
-          {renderFilterSection()}
-          
-          {/* Charts */}
-          {renderPropertyCharts()}
-          
-          {/* Property Table */}
-          {renderPropertyTable()}
-        </>
-      )}
-      
-      {/* ETL Status view */}
-      {activeDashboardTab === 'etl' && renderEtlStatus()}
-      
-      {/* Agent Status view */}
-      {activeDashboardTab === 'agents' && renderAgentStatus()}
-      
-      {/* Property Detail Modal */}
-      {renderPropertyDetailModal()}
-      
-      {/* Agent Detail Modal */}
-      {renderAgentDetailModal()}
+    <div className="min-h-screen bg-gray-100 p-4 md:p-6">
+      <div className="max-w-7xl mx-auto">
+        <header className="mb-8">
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">BCBS Property Valuation Dashboard</h1>
+          <p className="mt-2 text-sm text-gray-600">
+            Real-time property valuation metrics and analysis
+          </p>
+        </header>
+        
+        {/* Filter section for all views */}
+        {renderFilterSection()}
+        
+        {/* Dashboard tabs */}
+        {renderDashboardTabs()}
+        
+        {/* Dashboard content based on active tab */}
+        {activeDashboardTab === 'properties' && (
+          <>
+            {renderSummaryMetrics()}
+            {renderCharts()}
+            {renderPropertyTable()}
+          </>
+        )}
+        
+        {activeDashboardTab === 'etl' && renderEtlStatus()}
+        
+        {activeDashboardTab === 'agents' && renderAgentStatus()}
+        
+        {/* Modals */}
+        {renderPropertyDetailModal()}
+        {renderAgentDetailModal()}
+      </div>
     </div>
   );
 };
