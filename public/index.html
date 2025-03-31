@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BCBS Values - Property Valuation Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+  <script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+  <style>
+    .text-primary { color: #4338CA; }
+    .bg-primary { background-color: #4338CA; }
+    .border-primary { border-color: #4338CA; }
+    .hover\:bg-primary-dark:hover { background-color: #3730A3; }
+    .focus\:ring-primary:focus { --tw-ring-color: #4338CA; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div id="root"></div>
+
+  <script type="text/babel" src="Dashboard.js"></script>
+  <script type="text/babel">
+    // Render the Dashboard component
+    ReactDOM.render(
+      <Dashboard />,
+      document.getElementById('root')
+    );
+  </script>
+</body>
+</html>

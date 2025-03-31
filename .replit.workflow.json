@@ -48,5 +48,30 @@
         "export": true
       }
     ]
+  },
+  "NodeServer": {
+    "displayName": "Node.js Server",
+    "description": "Runs the Node.js Express server for the dashboard",
+    "icon": "server",
+    "colorIndex": 1,
+    "entrypoint": "run.js",
+    "ignorePorts": false,
+    "detached": true,
+    "terminalDarkTheme": true,
+    "showCommand": true,
+    "commands": ["node run.js"],
+    "interpreter": {
+      "type": "nodejs",
+      "module": {}
+    },
+    "ports": [
+      {
+        "internalPort": 5002,
+        "externalPort": 5002,
+        "description": "Node.js Server",
+        "label": "NodeServer",
+        "export": true
+      }
+    ]
   }
 }

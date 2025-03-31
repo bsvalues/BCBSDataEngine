@@ -1,6 +1,6 @@
 {
   "commandInfo": "Start Web Application",
-  "startCommand": "python start_webapp.py",
+  "startCommand": "node run.js",
   "runOnBoot": true,
   "autostart": true,
   "ports": [

@@ -1,0 +1,15 @@
+{
+  "commandInfo": "Start Node.js Server",
+  "startCommand": "node run.js",
+  "runOnBoot": true,
+  "autostart": true,
+  "ports": [
+    {
+      "port": 5002,
+      "description": "Node.js Server",
+      "label": "NodeServer",
+      "export": true,
+      "internalPort": 5002
+    }
+  ]
+}

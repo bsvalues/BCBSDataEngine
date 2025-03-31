@@ -22,22 +22,28 @@ ChartJS.register(
 );
 
 /**
- * Dashboard Component
+ * Enhanced Dashboard Component for BCBS Dash Project
  * 
- * This component fetches property valuation data from the API and displays it in a
- * filterable table and interactive visualizations. It includes options for filtering 
- * by neighborhood, price range, property type, and date, and handles loading states 
- * and errors gracefully.
+ * This component fetches real-time property valuation data from various API endpoints
+ * and displays it in interactive visualizations and filterable tables. It handles
+ * data fetching, filtering, pagination, error handling, and responsive display.
  * 
  * Key Features:
- * - Data fetching with loading indicators and error handling
+ * - Real-time data fetching from "/api/valuations", "/api/etl-status", and "/api/agent-status" endpoints
  * - Interactive filtering by neighborhood, price range, property type, and date
- * - Real-time search functionality with debounce optimization
- * - Tabular display of property valuations with sortable columns
- * - Advanced data visualization with Chart.js showing trends and distributions
- * - Responsive design with Tailwind CSS
- * - Detailed property information with advanced metrics
- * - ETL and agent status monitoring
+ * - Dynamic table with sortable columns and pagination
+ * - Advanced data visualization with Chart.js showing trends, distributions, and comparisons
+ * - Comprehensive error handling with meaningful user feedback
+ * - Loading indicators for all asynchronous operations
+ * - ETL pipeline monitoring with progress visualization
+ * - Agent status monitoring with detailed agent metrics
+ * - Fully responsive design using Tailwind CSS
+ * - Auto-refresh capability with configurable intervals
+ * - Detailed property and agent information in modal views
+ * 
+ * @version 2.0.0
+ * @author BCBS Dash Team
+ * @last-updated 2025-03-31
  */
 const Dashboard = () => {
   // --- State Management ---
@@ -128,6 +134,25 @@ const Dashboard = () => {
   const agentPerformanceChartRef = useRef(null);
   const metricsObserverRef = useRef(null); // For animation triggering with Intersection Observer
   const refreshTimerRef = useRef(null); // For tracking auto-refresh interval
+  
+  /**
+   * Initialization effect - Fetch all data on component mount
+   * This effect runs only once when the component is first loaded
+   */
+  useEffect(() => {
+    console.log('Initializing dashboard data...');
+    
+    // Initial data fetch
+    fetchPropertyValuations();
+    fetchEtlStatus();
+    fetchAgentStatus();
+    
+    // Set API key from localStorage if available
+    const savedApiKey = localStorage.getItem('bcbs_api_key');
+    if (savedApiKey) {
+      setApiKey(savedApiKey);
+    }
+  }, [fetchPropertyValuations, fetchEtlStatus, fetchAgentStatus]);
 
   /**
    * Function to fetch property valuations from the enhanced API endpoint
