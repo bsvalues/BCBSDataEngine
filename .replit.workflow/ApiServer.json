@@ -1,0 +1,26 @@
+{
+  "name": "ApiServer",
+  "display": "API Server",
+  "description": "Start BCBS Values API Server",
+  "run": "python3 api.py",
+  "language": "python",
+  "onBoot": false,
+  "restartable": true,
+  "restart": "always",
+  "exclusive": true,
+  "permissions": {
+    "allowNetwork": true,
+    "allowFile": true,
+    "allowEnv": true
+  },
+  "colorIndex": 2,
+  "ports": [
+    {
+      "port": 5001,
+      "description": "API Server",
+      "label": "ApiServer",
+      "export": true,
+      "internalPort": 5001
+    }
+  ]
+}

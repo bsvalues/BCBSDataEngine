@@ -1,8 +1,8 @@
 {
   "name": "FlaskWebApp",
   "display": "Flask Web App",
-  "description": "Start Flask Web Application",
-  "run": "python3 server.py",
+  "description": "Start BCBS Values Flask Web Application",
+  "run": "python3 start_webapp.py",
   "language": "python",
   "onBoot": false,
   "restartable": true,
