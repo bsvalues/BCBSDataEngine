@@ -1,8 +1,9 @@
 {
   "name": "WebApp",
-  "description": "Run the Flask web application",
-  "run": "python start_webapp.py",
-  "language": "python3",
+  "display": "Web App",
+  "description": "Start BCBS Values Flask Web Application",
+  "run": "python3 start_webapp.py",
+  "language": "python",
   "onBoot": false,
   "restartable": true,
   "restart": "always",
@@ -11,5 +12,15 @@
     "allowNetwork": true,
     "allowFile": true,
     "allowEnv": true
-  }
+  },
+  "colorIndex": 1,
+  "ports": [
+    {
+      "port": 5000,
+      "description": "Flask Web App",
+      "label": "WebApp",
+      "export": true,
+      "internalPort": 5000
+    }
+  ]
 }

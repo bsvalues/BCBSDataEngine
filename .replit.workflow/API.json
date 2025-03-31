@@ -1,15 +1,26 @@
 {
-  "run": {
-    "internalCmd": "python api.py",
-    "description": "Run the BCBS Values API server",
-    "label": "API"
+  "name": "API",
+  "display": "API Server",
+  "description": "Start BCBS Values API Server",
+  "run": "python3 api.py",
+  "language": "python",
+  "onBoot": false,
+  "restartable": true,
+  "restart": "always",
+  "exclusive": true,
+  "permissions": {
+    "allowNetwork": true,
+    "allowFile": true,
+    "allowEnv": true
   },
-  "display": {
-    "port": 5001,
-    "protocol": "http"
-  },
-  "environment": {
-    "pythonPath": "python -m",
-    "DATABASE_URL": "$DATABASE_URL"
-  }
+  "colorIndex": 2,
+  "ports": [
+    {
+      "port": 5001,
+      "description": "API Server",
+      "label": "API",
+      "export": true,
+      "internalPort": 5001
+    }
+  ]
 }
