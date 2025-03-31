@@ -36,9 +36,9 @@ on:
 # These variables standardize the versions used across all workflow jobs
 env:
   # System & Runtime Dependencies
-  PYTHON_VERSION: '3.11'    # Latest stable Python version with long-term support
-  POSTGRES_VERSION: '14'    # PostgreSQL version for database testing
-  NODE_VERSION: '18'        # Node.js version for frontend/JavaScript tests
+  PYTHON_VERSION: '3.12'    # Latest stable Python version (updated from 3.11)
+  POSTGRES_VERSION: '15'    # PostgreSQL version for database testing (updated from 14)
+  NODE_VERSION: '20'        # Node.js version for frontend/JavaScript tests (updated from 18)
   
   # Test Configuration Parameters
   TEST_TIMEOUT: '300'       # Timeout for test execution in seconds (5 minutes)
@@ -183,45 +183,84 @@ jobs:
             echo "No package.json found, skipping Node.js dependencies."
           fi
 
-      # Set up environment variables securely
+      # ==========================================================================
+      # SECURE ENVIRONMENT SETUP
+      # ==========================================================================
+      # This step securely loads environment variables from GitHub Secrets and 
+      # sets up the test environment configuration. It properly handles sensitive
+      # credentials and API keys required for integration testing.
       - name: Set up environment variables
         # Use GitHub Secrets to set environment variables securely
-        # The || syntax provides fallback values for testing when secrets aren't available
+        # The syntax ${{ secrets.SECRET_NAME || 'fallback' }} provides default values
+        # for testing when secrets aren't available in the CI environment
         env:
-          # Database connection strings
+          # Database connection strings for test environment
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_bcbs
           TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_bcbs
           
-          # Application secrets
+          # Application security secrets - used for session management and JWT tokens
+          # These secrets should be rotated regularly and never exposed in logs
           SESSION_SECRET: ${{ secrets.SESSION_SECRET || 'test-session-secret-for-ci-only' }}
           JWT_SECRET: ${{ secrets.JWT_SECRET || 'test-jwt-secret-for-ci-only' }}
+          API_SECRET_KEY: ${{ secrets.API_SECRET_KEY || 'test-api-secret-key-for-ci-only' }}
           
-          # External API credentials
+          # External API credentials for integration testing
+          # Real credentials are stored in GitHub Secrets and used for production tests
           NARRPR_USERNAME: ${{ secrets.NARRPR_USERNAME || 'test-username' }}
           NARRPR_PASSWORD: ${{ secrets.NARRPR_PASSWORD || 'test-password' }}
           PACS_API_KEY: ${{ secrets.PACS_API_KEY || 'test-api-key' }}
           BCBS_VALUES_API_KEY: ${{ secrets.BCBS_VALUES_API_KEY || 'test-api-key' }}
           
-          # External service URLs
+          # External service URLs for API integration
           MLS_API_URL: ${{ secrets.MLS_API_URL || 'https://test-mls-api.example.com' }}
           GIS_SERVICE_URL: ${{ secrets.GIS_SERVICE_URL || 'https://test-gis-service.example.com' }}
           
-          # Feature flags for testing
+          # Feature flags for test environment configuration
           ENABLE_ADVANCED_FEATURES: 'true'
-          USE_MOCK_SERVICES: 'true'  # Use mock services in CI environment
+          USE_MOCK_SERVICES: 'true'  # Use mock services in CI environment for external dependencies
+          ENABLE_ENHANCED_VALIDATION: 'true'  # Enable advanced validation features in tests
           
-          # Test configuration
-          LOG_LEVEL: 'DEBUG'
-          TESTING: 'true'
+          # Test configuration settings
+          LOG_LEVEL: 'DEBUG'  # Detailed logging for test diagnosis
+          TESTING: 'true'     # Enable test mode for all components
+          CI_PIPELINE: 'true' # Flag to indicate running in CI environment
         run: |
           echo "Environment variables set for CI/CD pipeline"
           
-          # Create a .env file for applications that use dotenv
-          echo "DATABASE_URL=$DATABASE_URL" > .env
-          echo "TEST_DATABASE_URL=$TEST_DATABASE_URL" >> .env
-          echo "SESSION_SECRET=$SESSION_SECRET" >> .env
-          echo "JWT_SECRET=$JWT_SECRET" >> .env
-          echo "TESTING=true" >> .env
+          # Create a comprehensive .env file for applications that use dotenv
+          # This ensures consistent environment variables across all test scenarios
+          cat > .env << EOL
+          # Database Configuration
+          DATABASE_URL=${DATABASE_URL}
+          TEST_DATABASE_URL=${TEST_DATABASE_URL}
+          
+          # Security Configuration
+          SESSION_SECRET=${SESSION_SECRET}
+          JWT_SECRET=${JWT_SECRET}
+          API_SECRET_KEY=${API_SECRET_KEY}
+          
+          # External API Configuration
+          NARRPR_USERNAME=${NARRPR_USERNAME}
+          NARRPR_PASSWORD=${NARRPR_PASSWORD}
+          PACS_API_KEY=${PACS_API_KEY}
+          BCBS_VALUES_API_KEY=${BCBS_VALUES_API_KEY}
+          
+          # Service URLs
+          MLS_API_URL=${MLS_API_URL}
+          GIS_SERVICE_URL=${GIS_SERVICE_URL}
+          
+          # Feature Flags
+          ENABLE_ADVANCED_FEATURES=true
+          USE_MOCK_SERVICES=true
+          ENABLE_ENHANCED_VALIDATION=true
+          
+          # Test Configuration
+          LOG_LEVEL=DEBUG
+          TESTING=true
+          CI_PIPELINE=true
+          EOL
+          
+          echo "Created comprehensive .env file with all required variables"
           
           # Initialize database schema
           echo "Setting up database schema..."
@@ -416,7 +455,12 @@ except Exception as e:
           # API endpoints and authentication configuration
           cp configs/api_config.json artifacts/configs/ || echo "⚠️ api_config.json not found"
           # BCBS Cascade operator configuration - essential for integration testing
-          find . -name "bcbs-cascade-operator.json" -exec cp {} artifacts/configs/ \; || echo "⚠️ bcbs-cascade-operator.json not found"
+          find . -name "bcbs-cascade-operator*.json" -exec cp {} artifacts/configs/ \; || echo "⚠️ bcbs-cascade-operator.json not found"
+          # Specifically ensure the updated operator configuration is included (important for deployment)
+          if [ -f "agents/bcbs-cascade-operator-updated.json" ]; then
+            cp agents/bcbs-cascade-operator-updated.json artifacts/configs/
+            echo "✅ Updated BCBS Cascade Operator configuration archived"
+          fi
           
           # ==========================================================================
           # TEST REPORTS AND COVERAGE DATA
@@ -510,16 +554,32 @@ except Exception as e:
       # These artifacts provide the essential configuration files and test evidence
       # needed for deployment and validation
       
-      # Upload key configuration files first for quick access
+      # ==========================================================================
+      # KEY CONFIGURATION ARTIFACT UPLOAD
+      # ==========================================================================
+      # Upload the most critical config files needed for deployment and system validation
+      # These files are essential for proper system functioning and are uploaded separately
+      # for quick access during deployment and debugging
       - name: Upload key configuration files
         if: success()
         uses: actions/upload-artifact@v3
         with:
-          name: key-config-files
+          name: bcbs-essential-configs
           path: |
+            # Core configuration files
             configs/module_config.json
+            configs/api_config.json
+            configs/database_config.json
             artifacts/configs/module_config.json
-            agents/bcbs-cascade-operator*.json
+            
+            # Essential agent configuration files
+            agents/bcbs-cascade-operator.json
+            agents/bcbs-cascade-operator-updated.json
+            agents/bcbs-bootstrap-commander.json  
+            agents/god-tier-builder.json
+            
+            # API and integration test references
+            tests/test_integration_advanced.py
           if-no-files-found: warn
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
       
