@@ -64,18 +64,23 @@ except ImportError as e:
 
 # Import valuation components with fallbacks
 try:
-    from src.valuation import ValuationEngine, AdvancedValuationEngine, EnhancedGISValuationEngine
+    from src.valuation import perform_valuation
     VALUATION_AVAILABLE = True
 except ImportError as e:
     VALUATION_AVAILABLE = False
     logging.error(f"Valuation module import error: {str(e)}")
     
     # Create minimal mocks for essential functionality
-    class BaseValuationEngine:
-        def predict(self, *args, **kwargs): 
-            return {"value": 250000, "confidence": 0.75}
-        
-    ValuationEngine = AdvancedValuationEngine = EnhancedGISValuationEngine = BaseValuationEngine
+    def perform_valuation(property_obj, valuation_method='enhanced_regression'):
+        """Mock implementation when the actual valuation module is not available"""
+        return {
+            "estimated_value": 250000, 
+            "confidence_score": 0.75,
+            "valuation_method": valuation_method,
+            "performance_metrics": {
+                "error": "Valuation module not available"
+            }
+        }
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -105,8 +110,8 @@ bearer_scheme = HTTPBearer(auto_error=False)
 JWT_SECRET = os.environ.get('JWT_SECRET', secrets.token_hex(32))
 TOKEN_EXPIRY = 24 * 60 * 60  # 24 hours in seconds
 
-# Initialize valuation engine
-valuation_engine = EnhancedGISValuationEngine() if VALUATION_AVAILABLE else BaseValuationEngine()
+# Initialize valuation module
+# Note: perform_valuation is now imported directly and doesn't need instantiation
 
 # ==========================================
 # Pydantic Models for Request/Response
@@ -620,8 +625,45 @@ async def create_valuation(
         
         # Use valuation engine to generate valuation
         if VALUATION_AVAILABLE:
-            # Predict using the enhanced valuation engine
-            valuation_result = valuation_engine.predict(property_data, include_metrics=request.include_metrics)
+            # Create a Property-like object for the valuation function
+            # This adapts the property data to be compatible with perform_valuation
+            class PropertyAdapter:
+                def __init__(self, data):
+                    if isinstance(data, dict):
+                        for key, value in data.items():
+                            setattr(self, key, value)
+                        # Extract features if present
+                        if 'features' in data:
+                            for feat_key, feat_value in data['features'].items():
+                                setattr(self, feat_key, feat_value)
+                    else:
+                        # For database objects, copy attributes
+                        for key in ['property_id', 'address', 'city', 'state', 'zip_code', 'latitude', 
+                                   'longitude', 'bedrooms', 'bathrooms', 'square_feet', 'lot_size', 
+                                   'year_built', 'property_type', 'neighborhood']:
+                            if hasattr(data, key):
+                                setattr(self, key, getattr(data, key))
+            
+            # Create adapter for the valuation function
+            property_obj = PropertyAdapter(property_data)
+            
+            # Use the direct perform_valuation function from src.valuation
+            valuation_method = request.features.get('valuation_method', 'enhanced_regression') if request.features else 'enhanced_regression'
+            valuation_result = perform_valuation(property_obj, valuation_method=valuation_method)
+            
+            # Format metrics to be compatible with the expected output
+            if request.include_metrics and 'performance_metrics' in valuation_result:
+                metrics = valuation_result.get('performance_metrics', {})
+            else:
+                metrics = {}
+                
+            # Create compatible result format
+            valuation_result = {
+                "value": valuation_result.get("estimated_value", 0.0),
+                "confidence": valuation_result.get("confidence_score", 0.0),
+                "method": valuation_result.get("valuation_method", "enhanced_regression"),
+                "metrics": metrics
+            }
         else:
             # Mock valuation if engine not available
             valuation_result = {
