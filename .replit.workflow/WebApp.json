@@ -1,15 +1,15 @@
 {
-  "run": {
-    "internalCmd": "python start_webapp.py",
-    "description": "Run the BCBS Values web application",
-    "label": "WebApp"
-  },
-  "display": {
-    "port": 5002,
-    "protocol": "http"
-  },
-  "environment": {
-    "pythonPath": "python -m",
-    "DATABASE_URL": "$DATABASE_URL"
-  }
+  "commandInfo": "Start Web Application",
+  "startCommand": "python start_webapp.py",
+  "runOnBoot": true,
+  "autostart": true,
+  "ports": [
+    {
+      "port": 5000,
+      "description": "Web user interface",
+      "label": "WebApp",
+      "export": true,
+      "internalPort": 5000
+    }
+  ]
 }

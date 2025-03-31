@@ -1,13 +1,26 @@
 {
-  "version": 1,
-  "workflowConfig": {
-    "environments": [
+  "run": {
+    "displayName": "Run Flask App",
+    "description": "Starts the BCBS Values Flask web application",
+    "icon": "server",
+    "colorIndex": 3,
+    "entrypoint": "start_webapp.py",
+    "ignorePorts": false,
+    "detached": true,
+    "terminalDarkTheme": true,
+    "showCommand": true,
+    "commands": ["python3 start_webapp.py"],
+    "interpreter": {
+      "type": "python3",
+      "module": {}
+    },
+    "ports": [
       {
-        "name": "Dashboard",
-        "description": "Serve the Dashboard Demo",
-        "modules": ["nodejs-20"],
-        "run": "node simple_http_server.js",
-        "port": 5000
+        "internalPort": 5000,
+        "externalPort": 5000,
+        "description": "Web user interface",
+        "label": "WebApp",
+        "export": true
       }
     ]
   }

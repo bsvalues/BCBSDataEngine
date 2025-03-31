@@ -1,0 +1,7 @@
+{
+  "commandInfo": "Test Enhanced Valuation",
+  "startCommand": "python test_enhanced_valuation.py",
+  "runOnBoot": false,
+  "autostart": false,
+  "ports": []
+}

@@ -1,5 +1,5 @@
 {
-  "displayName": "Flask Web Application",
+  "display": "Flask Web App",
   "description": "Starts the BCBS Values Flask web application",
   "icon": "server",
   "colorIndex": 3,
@@ -8,15 +8,15 @@
   "detached": true,
   "terminalDarkTheme": true,
   "showCommand": true,
-  "commands": ["python start_webapp.py"],
+  "commands": ["python3 start_webapp.py"],
   "interpreter": {
     "type": "python3",
     "module": {}
   },
   "ports": [
     {
-      "internalPort": 5002,
-      "externalPort": 5002,
+      "internalPort": 5000,
+      "externalPort": 5000,
       "description": "Web user interface",
       "label": "WebApp",
       "export": true
