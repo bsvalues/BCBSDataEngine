@@ -1,7 +1,23 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, ArcElement, TimeScale, Filler, RadialLinearScale, DoughnutController } from 'chart.js';
+import { 
+  Chart as ChartJS, 
+  CategoryScale, 
+  LinearScale, 
+  PointElement, 
+  LineElement, 
+  BarElement, 
+  Title, 
+  Tooltip, 
+  Legend, 
+  ArcElement, 
+  TimeScale, 
+  Filler, 
+  RadialLinearScale, 
+  DoughnutController 
+} from 'chart.js';
 import { Line, Bar, Pie, Doughnut } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns'; // For time scale
+import { format } from 'date-fns'; // For date formatting
 import { debounce } from 'lodash'; // For search optimization
 
 // Register Chart.js components
@@ -865,6 +881,34 @@ const Dashboard = () => {
   };
   
   /**
+   * Format a future date as a relative time string (e.g., "in 3 hours")
+   * @param {Date} date - The future date to format
+   * @returns {string} - Formatted relative time string
+   */
+  const formatRelativeTime = (date) => {
+    if (!date || isNaN(date.getTime())) return 'Unknown';
+    
+    const now = new Date();
+    const diffMs = date - now;
+    
+    // Invalid if in the past or too far in the future
+    if (diffMs < 0) return 'Already completed';
+    if (diffMs > 1000 * 60 * 60 * 24 * 30) return 'Over a month';
+    
+    const diffMinutes = Math.round(diffMs / (1000 * 60));
+    const diffHours = Math.round(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffMinutes < 60) {
+      return `in ${diffMinutes} minute${diffMinutes === 1 ? '' : 's'}`;
+    } else if (diffHours < 24) {
+      return `in ${diffHours} hour${diffHours === 1 ? '' : 's'}`;
+    } else {
+      return `in ${diffDays} day${diffDays === 1 ? '' : 's'}`;
+    }
+  };
+  
+  /**
    * Format currency values for display
    * @param {number} value - Value to format as currency
    * @returns {string} - Formatted currency string
@@ -1007,7 +1051,7 @@ const Dashboard = () => {
       };
     }
 
-    // Group properties by valuation date and calculate average value
+    // Group properties by valuation date and calculate average value and confidence
     const dateMap = {};
     properties.forEach(property => {
       if (!property.valuation_date) return;
@@ -1016,10 +1060,12 @@ const Dashboard = () => {
       if (!dateMap[date]) {
         dateMap[date] = {
           total: 0,
-          count: 0
+          count: 0,
+          confidenceTotal: 0
         };
       }
       dateMap[date].total += property.estimated_value || property.value || 0;
+      dateMap[date].confidenceTotal += property.confidence_score || 0;
       dateMap[date].count += 1;
     });
 
@@ -1028,17 +1074,33 @@ const Dashboard = () => {
     const averages = dates.map(date => 
       dateMap[date].count > 0 ? dateMap[date].total / dateMap[date].count : 0
     );
+    const confidenceScores = dates.map(date => 
+      dateMap[date].count > 0 ? (dateMap[date].confidenceTotal / dateMap[date].count) * 100 : 0
+    );
 
     return {
       labels: dates,
-      datasets: [{
-        label: 'Avg. Valuation',
-        data: averages,
-        fill: false,
-        borderColor: 'rgba(139, 92, 246, 1)',
-        backgroundColor: 'rgba(139, 92, 246, 0.5)',
-        tension: 0.1
-      }]
+      datasets: [
+        {
+          label: 'Avg. Valuation',
+          data: averages,
+          fill: false,
+          borderColor: 'rgba(139, 92, 246, 1)',
+          backgroundColor: 'rgba(139, 92, 246, 0.5)',
+          tension: 0.1,
+          yAxisID: 'y'
+        },
+        {
+          label: 'Confidence Score (%)', 
+          data: confidenceScores,
+          fill: false,
+          borderColor: 'rgba(16, 185, 129, 1)',
+          backgroundColor: 'rgba(16, 185, 129, 0.5)',
+          borderDash: [5, 5],
+          tension: 0.1,
+          yAxisID: 'y1'
+        }
+      ]
     };
   }, [properties]);
 
@@ -1181,6 +1243,7 @@ const Dashboard = () => {
 
   /**
    * Options for Value Trend chart
+   * Enhanced with dual y-axis for valuation and confidence score
    */
   const valueTrendChartOptions = {
     responsive: true,
@@ -1190,7 +1253,7 @@ const Dashboard = () => {
       },
       title: {
         display: true,
-        text: 'Valuation Trends Over Time',
+        text: 'Valuation Trends & Confidence Over Time',
         font: {
           size: 16
         }
@@ -1198,18 +1261,56 @@ const Dashboard = () => {
       tooltip: {
         callbacks: {
           label: function(context) {
-            return `Avg. Value: ${formatCurrency(context.raw)}`;
+            if (context.dataset.label === 'Avg. Valuation') {
+              return `Avg. Value: ${formatCurrency(context.raw)}`;
+            } else if (context.dataset.label === 'Confidence Score (%)') {
+              return `Confidence: ${context.raw.toFixed(1)}%`;
+            }
+            return context.dataset.label + ': ' + context.raw;
           }
         }
       }
     },
     scales: {
       y: {
+        type: 'linear',
+        display: true,
+        position: 'left',
         beginAtZero: true,
+        title: {
+          display: true,
+          text: 'Valuation ($)',
+          color: 'rgba(139, 92, 246, 1)'
+        },
         ticks: {
           callback: function(value) {
             return formatCurrency(value);
-          }
+          },
+          color: 'rgba(139, 92, 246, 1)'
+        },
+        grid: {
+          drawOnChartArea: true
+        }
+      },
+      y1: {
+        type: 'linear',
+        display: true,
+        position: 'right',
+        beginAtZero: true,
+        max: 100,
+        title: {
+          display: true,
+          text: 'Confidence Score (%)',
+          color: 'rgba(16, 185, 129, 1)'
+        },
+        ticks: {
+          callback: function(value) {
+            return value + '%';
+          },
+          color: 'rgba(16, 185, 129, 1)'
+        },
+        grid: {
+          drawOnChartArea: false
         }
       }
     }
@@ -2034,6 +2135,12 @@ const Dashboard = () => {
                   <p className="text-base font-medium text-gray-900">
                     {etlStatus.metrics.recordsProcessed.toLocaleString()}
                   </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {etlStatus.status.toLowerCase() === 'running' && 
+                      `~${Math.round(etlStatus.metrics.recordsProcessed / 
+                        (((new Date()) - new Date(etlStatus.lastUpdate)) / 60000) || 1)} records/min`
+                    }
+                  </p>
                 </div>
                 
                 <div>
@@ -2041,12 +2148,26 @@ const Dashboard = () => {
                   <p className="text-base font-medium text-gray-900">
                     {formatPercentage(etlStatus.metrics.successRate)}
                   </p>
+                  <p className={`text-xs ${etlStatus.metrics.successRate < 0.9 ? 'text-yellow-500' : 
+                    etlStatus.metrics.successRate < 0.8 ? 'text-red-500' : 'text-green-500'} mt-1`}>
+                    {etlStatus.metrics.successRate < 0.9 ? 'Needs Attention' : 
+                     etlStatus.metrics.successRate < 0.8 ? 'Critical' : 'Good'}
+                  </p>
                 </div>
                 
                 <div>
                   <p className="text-sm text-gray-500">Avg. Processing Time</p>
                   <p className="text-base font-medium text-gray-900">
                     {etlStatus.metrics.averageProcessingTime.toFixed(2)}ms
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {etlStatus.metrics.averageProcessingTime > 0 && 
+                      `Est. completion: ${formatRelativeTime(
+                        new Date(Date.now() + (100 - etlStatus.progress * 100) / 
+                          (etlStatus.progress * 100) * 
+                          ((new Date()) - (etlStatus.lastUpdate ? new Date(etlStatus.lastUpdate) : new Date())))
+                      )}`
+                    }
                   </p>
                 </div>
               </div>
@@ -2290,14 +2411,75 @@ const Dashboard = () => {
             </div>
           </div>
           
-          {/* Agent Status Chart */}
-          <div className="chart-container" id="agent-performance-chart">
-            <h3 className="text-md font-semibold text-gray-700 mb-2">Agent Status Distribution</h3>
-            <Doughnut
-              data={agentStatusChartData}
-              options={agentStatusChartOptions}
-              ref={agentPerformanceChartRef}
-            />
+          {/* Agent Status Chart and Summary */}
+          <div className="flex flex-col">
+            <div className="chart-container mb-4" id="agent-performance-chart">
+              <h3 className="text-md font-semibold text-gray-700 mb-2">Agent Status Distribution</h3>
+              <Doughnut
+                data={agentStatusChartData}
+                options={agentStatusChartOptions}
+                ref={agentPerformanceChartRef}
+              />
+            </div>
+            
+            {/* Agent Summary Stats */}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-md font-semibold text-gray-700 mb-2">Agent Health Summary</h3>
+              <div className="space-y-3">
+                <div>
+                  <div className="flex justify-between text-sm">
+                    <span>Active Agents</span>
+                    <span className="font-medium">{
+                      agentStatus.agents.filter(a => a.status === 'active').length
+                    }/{agentStatus.agents.length}</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5 mt-1">
+                    <div
+                      className="bg-green-500 h-2.5 rounded-full"
+                      style={{ 
+                        width: `${(agentStatus.agents.filter(a => a.status === 'active').length / 
+                          (agentStatus.agents.length || 1)) * 100}%` 
+                      }}
+                    ></div>
+                  </div>
+                </div>
+                
+                <div>
+                  <div className="flex justify-between text-sm">
+                    <span>Average Success Rate</span>
+                    <span className="font-medium">{
+                      formatPercentage(
+                        agentStatus.agents.reduce((sum, agent) => sum + (agent.success_rate || 0), 0) / 
+                        (agentStatus.agents.length || 1)
+                      )
+                    }</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5 mt-1">
+                    <div
+                      className={`h-2.5 rounded-full ${
+                        (agentStatus.agents.reduce((sum, agent) => sum + (agent.success_rate || 0), 0) / 
+                          (agentStatus.agents.length || 1)) > 0.9 ? 'bg-green-500' :
+                        (agentStatus.agents.reduce((sum, agent) => sum + (agent.success_rate || 0), 0) / 
+                          (agentStatus.agents.length || 1)) > 0.8 ? 'bg-yellow-500' :
+                        'bg-red-500'
+                      }`}
+                      style={{ 
+                        width: `${(agentStatus.agents.reduce((sum, agent) => sum + (agent.success_rate || 0), 0) / 
+                          (agentStatus.agents.length || 1)) * 100}%` 
+                      }}
+                    ></div>
+                  </div>
+                </div>
+                
+                <div className="pt-2">
+                  <p className="text-xs text-gray-500">Last Updated: {formatDateTime(agentStatus.lastUpdate)}</p>
+                  <p className="text-xs text-gray-500">
+                    {agentStatus.agents.filter(a => a.status === 'error').length > 0 && 
+                      `${agentStatus.agents.filter(a => a.status === 'error').length} agents with errors detected`}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
