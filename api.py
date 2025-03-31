@@ -555,7 +555,7 @@ def get_market_trends():
 
 
 @api_bp.route('/agent-status', methods=['GET'])
-@require_api_key
+@require_api_key  # Enforces token or API key authentication
 def get_agent_status():
     """
     Get detailed, real-time status information for each BS Army agent.
@@ -564,6 +564,21 @@ def get_agent_status():
     including performance metrics, execution history, error analytics, and real-time
     operational statistics. It enables advanced monitoring and troubleshooting
     of the agent ecosystem.
+    
+    Security:
+    - Requires valid JWT token (Bearer authentication) or API key
+    - Authentication details logged for audit trail
+    - Agent permissions verified for sensitive operations
+    - Response data redacted based on requester's permission level
+    
+    Data Flow:
+    1. Authentication validation (JWT token or API key)
+    2. Request parameter extraction and validation
+    3. Agent query construction with appropriate filters
+    4. Agent logs retrieval for selected agents
+    5. Performance metrics calculation and aggregation
+    6. Optional health check execution based on parameters
+    7. Response formatting with detailed agent analytics
     
     Query parameters:
     - agent_type: Filter by agent type (e.g., 'regression', 'ensemble', 'gis', 'lightgbm')
@@ -911,7 +926,7 @@ def get_agent_logs(agent_id):
 
 
 @api_bp.route('/valuations', methods=['GET'])
-@require_api_key
+@require_api_key  # Enforces token or API key authentication
 def get_valuations():
     """
     Get property valuations with advanced filtering and pagination.
@@ -919,6 +934,21 @@ def get_valuations():
     This enhanced endpoint integrates with the valuation engine from src/valuation.py
     to provide comprehensive property value predictions and detailed model metrics.
     It supports advanced filtering, sorting, and pagination capabilities.
+    
+    Security:
+    - Requires valid JWT token (Bearer authentication) or API key
+    - Rate limiting applied to prevent abuse
+    - Request logging and monitoring for security analysis
+    - HTTPS transport encryption enforced in production
+    
+    Data Flow:
+    1. API request with authentication credentials
+    2. Authorization layer validates JWT token or API key
+    3. Query parameters extracted and validated
+    4. Database query built with joins and filters
+    5. Valuation engine integration for model metrics
+    6. GIS features applied if requested
+    7. Response formatted with error handling
     
     Query parameters:
     - method: Filter by valuation method (e.g., 'enhanced_regression', 'lightgbm', 'xgboost')
@@ -1162,7 +1192,7 @@ def get_valuations():
 
 
 @api_bp.route('/etl-status', methods=['GET'])
-@require_api_key
+@require_api_key  # Enforces token or API key authentication
 def get_etl_status():
     """
     Get status of ETL pipeline jobs with detailed analytics and data validation summary.
@@ -1170,6 +1200,21 @@ def get_etl_status():
     This enhanced endpoint provides comprehensive information about the ETL pipeline's
     performance, data quality, and operational status. It includes detailed statistics
     on job execution times, error rates, and data validation results.
+    
+    Security:
+    - Requires valid JWT token (Bearer authentication) or API key
+    - Request audit trail with authentication details
+    - Input validation for all parameters
+    - Access control based on agent type and permissions
+    
+    Data Flow:
+    1. Authentication and authorization validation
+    2. Request parameter parsing and validation
+    3. Time period calculation based on timeframe parameter
+    4. Database query with appropriate filters
+    5. Aggregation of ETL job statistics and metrics
+    6. Integration with validation subsystem for data quality metrics
+    7. Response formatting with detailed analytics
     
     Query parameters:
     - job_type: Filter by job type (e.g., 'property_import', 'valuation_batch', 'gis_update')
