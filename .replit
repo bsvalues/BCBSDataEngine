@@ -30,7 +30,7 @@ support = true
 transport = "mp_transport"
 
 [workflows]
-runButton = "Run"
+runButton = "Project"
 
 [[workflows.workflow]]
 name = "WebApp"
@@ -42,13 +42,19 @@ task = "shell.exec"
 args = "python start_webapp.py"
 
 [[workflows.workflow]]
-name = "API"
-author = 37274620
+name = "WebApp"
+author = "agent"
 mode = "sequential"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python run_api.py"
+args = "./run_diagnosis.sh"
 
 [[workflows.workflow]]
 name = "BasicAPI"
@@ -67,3 +73,15 @@ mode = "sequential"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python start_webapp.py"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "WebApp"
+
+[deployment]
+run = ["sh", "-c", "./run_diagnosis.sh"]

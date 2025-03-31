@@ -1,128 +1,143 @@
 {
-  "etl_settings": {
-    "batch_size": 100,
-    "log_level": "INFO",
-    "retry_attempts": 3,
-    "retry_delay": 5,
-    "timeout": 30
-  },
-  "data_sources": {
-    "mls": {
+  "data_sources": [
+    {
+      "name": "narrpr",
+      "type": "api",
       "enabled": true,
-      "api_endpoint": "https://mls-api.example.com/v1",
-      "default_start_date": "first_day_current_month",
-      "default_end_date": "current_date",
-      "required_fields": [
-        "mlsId",
-        "listingId",
-        "address",
-        "city",
-        "state",
-        "zipCode",
-        "price"
+      "priority": 1,
+      "polling_interval": 3600,
+      "batch_size": 100,
+      "endpoint": "https://api.narrpr.com/v1/properties",
+      "auth_type": "api_key",
+      "params": {
+        "limit": 100,
+        "format": "json"
+      },
+      "headers": {
+        "User-Agent": "BCBSValues/1.0",
+        "Content-Type": "application/json"
+      },
+      "timeout": 60,
+      "retry_count": 3,
+      "retry_delay": 5,
+      "features": [
+        "property_basic_info",
+        "valuation_history",
+        "tax_assessment"
       ]
     },
-    "narrpr": {
+    {
+      "name": "mls",
+      "type": "api",
       "enabled": true,
-      "api_endpoint": "https://api.narrpr.com/v1",
-      "default_location": "",
-      "default_property_type": "",
-      "required_fields": [
-        "propertyId",
-        "addressLine1",
-        "city",
-        "state",
-        "zipCode"
+      "priority": 2,
+      "polling_interval": 7200,
+      "batch_size": 50,
+      "endpoint": "https://api.mlsservice.com/v2/listings",
+      "auth_type": "api_key",
+      "params": {
+        "limit": 50,
+        "status": "active,pending,sold",
+        "days_back": 30
+      },
+      "headers": {
+        "User-Agent": "BCBSValues/1.0",
+        "Content-Type": "application/json"
+      },
+      "timeout": 30,
+      "retry_count": 3,
+      "retry_delay": 10,
+      "features": [
+        "listing_details",
+        "sales_price",
+        "days_on_market"
       ]
     },
-    "pacs": {
+    {
+      "name": "pacs",
+      "type": "api",
       "enabled": true,
-      "api_endpoint": "https://pacs-api.example.com/v1",
-      "default_county": "",
-      "default_state": "",
-      "required_fields": [
-        "parcelId",
-        "propertyAddress",
-        "city",
-        "county",
-        "state",
-        "zipCode"
+      "priority": 3,
+      "polling_interval": 21600,
+      "batch_size": 200,
+      "endpoint": "https://api.pacs.gov/v1/assessments",
+      "auth_type": "api_key",
+      "params": {
+        "limit": 200,
+        "assessment_year": "current"
+      },
+      "headers": {
+        "User-Agent": "BCBSValues/1.0",
+        "Content-Type": "application/json"
+      },
+      "timeout": 120,
+      "retry_count": 5,
+      "retry_delay": 15,
+      "features": [
+        "tax_assessment",
+        "property_details",
+        "improvement_details"
       ]
     }
+  ],
+  "extraction": {
+    "property_id_field": "id",
+    "batch_processing": true,
+    "parallel_execution": true,
+    "threads": 4,
+    "timeout": 7200,
+    "error_threshold": 0.05
+  },
+  "transformation": {
+    "schema_validation": true,
+    "field_mappings": "configs/field_mappings.json",
+    "data_cleaning": true,
+    "outlier_detection": true,
+    "outlier_method": "iqr",
+    "outlier_threshold": 1.5,
+    "missing_value_strategy": "impute_mean"
+  },
+  "loading": {
+    "batch_size": 100,
+    "commit_strategy": "batch",
+    "upsert": true,
+    "id_field": "property_id",
+    "parallel_loading": true,
+    "threads": 2,
+    "error_handling": "log_and_continue"
   },
   "validation": {
-    "completeness": {
-      "enabled": true,
-      "threshold": 10,
-      "critical_fields": [
-        "address",
-        "city",
-        "state",
-        "zip_code",
-        "property_type",
-        "square_feet",
-        "year_built"
-      ]
-    },
-    "data_types": {
-      "enabled": true,
-      "threshold": 5
-    },
-    "numeric_ranges": {
-      "enabled": true,
-      "threshold": 5,
-      "ranges": {
-        "square_feet": [100, 20000],
-        "lot_size": [0.01, 100],
-        "year_built": [1800, "current_year"],
-        "bedrooms": [0, 20],
-        "bathrooms": [0, 15],
-        "list_price": [1000, 100000000],
-        "last_sale_price": [1000, 100000000]
+    "validate_output": true,
+    "log_level": "INFO",
+    "notification_channel": "api",
+    "notification_url": "/api/etl-status",
+    "validation_rules": [
+      {
+        "field": "property_value",
+        "rule": "range",
+        "min": 1000,
+        "max": 100000000
+      },
+      {
+        "field": "square_feet",
+        "rule": "range",
+        "min": 100,
+        "max": 50000
+      },
+      {
+        "field": "year_built",
+        "rule": "range",
+        "min": 1800,
+        "max": 2025
       }
-    },
-    "dates": {
-      "enabled": true,
-      "threshold": 5,
-      "min_dates": {
-        "last_sale_date": "1900-01-01",
-        "listing_date": "1900-01-01",
-        "import_date": "2020-01-01"
-      }
-    },
-    "duplicates": {
-      "enabled": true,
-      "threshold": 5
-    },
-    "cross_source": {
-      "enabled": true,
-      "threshold": 10,
-      "attributes": [
-        "square_feet",
-        "year_built",
-        "bedrooms",
-        "bathrooms"
-      ]
-    }
+    ]
   },
   "scheduling": {
-    "mls": {
-      "frequency": "daily",
-      "time": "02:00"
-    },
-    "narrpr": {
-      "frequency": "weekly",
-      "day": "Monday",
-      "time": "03:00"
-    },
-    "pacs": {
-      "frequency": "monthly",
-      "day": 1,
-      "time": "04:00"
-    },
-    "validation": {
-      "frequency": "daily",
-      "time": "05:00"
-    }
+    "cron_expression": "0 0 * * *",
+    "timezone": "America/New_York",
+    "max_concurrent_jobs": 2,
+    "retry_failed": true,
+    "max_retries": 3,
+    "backoff_factor": 1.5
   }
 }
