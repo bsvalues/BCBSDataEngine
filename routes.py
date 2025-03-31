@@ -1,1167 +1,1160 @@
-"""
-Routes for BCBS Property Valuation application.
-Includes routes for user authentication, property management, valuations,
-API endpoints, and dashboard views.
-"""
 import os
-import logging
 import json
+import secrets
+import logging
 from datetime import datetime, timedelta
 from functools import wraps
-from werkzeug.security import generate_password_hash, check_password_hash
-from flask import render_template, flash, redirect, url_for, request, jsonify, abort, g
-from flask_login import login_user, logout_user, current_user, login_required
-from sqlalchemy import or_, and_, desc, func
 
-from app import app, db
-from models import User, Property, PropertyValuation, ApiKey, EtlStatus, DataSource, Agent, AgentLog
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, abort, current_app, g
+from flask_login import login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.urls import url_parse
+import jwt
+
+from app import db
+from models import User, Property, Valuation, Agent, AgentLog, ETLJob, ApiKey, PropertyImage, MarketTrend
 from forms import (
-    LoginForm, RegistrationForm, PasswordResetRequestForm, PasswordResetForm,
-    ApiKeyForm, PropertySearchForm, PropertyForm, ValuationForm, BatchValuationForm
+    LoginForm, RegistrationForm, PropertyForm, ValuationForm, AgentForm, 
+    ApiKeyForm, SearchForm, ProfileForm, ChangePasswordForm, ContactForm
 )
+
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Helper Functions
-def require_api_key(view_function):
-    """Decorator to require API key for access to API endpoints."""
-    @wraps(view_function)
+# Create blueprints
+main_bp = Blueprint('main', __name__)
+auth_bp = Blueprint('auth', __name__)
+api_bp = Blueprint('api', __name__)
+admin_bp = Blueprint('admin', __name__)
+error_bp = Blueprint('errors', __name__)
+
+
+# Utility functions and decorators
+def admin_required(f):
+    """Decorator to require admin privileges"""
+    @wraps(f)
     def decorated_function(*args, **kwargs):
-        # Get API key from header or request args
-        api_key = request.headers.get('X-API-Key') or request.args.get('api_key')
+        if not current_user.is_authenticated or not current_user.is_admin:
+            flash("Admin privileges required to access this resource.", "danger")
+            return redirect(url_for('main.index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def api_key_required(f):
+    """Decorator to require API key authentication"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        auth_header = request.headers.get('Authorization')
+        api_key = None
         
-        if api_key is None:
+        if auth_header:
+            try:
+                auth_type, api_key = auth_header.split(' ', 1)
+                if auth_type.lower() != 'apikey':
+                    return jsonify({"error": "Invalid authorization header format. Use 'ApiKey YOUR_API_KEY'"}), 401
+            except ValueError:
+                return jsonify({"error": "Invalid authorization header format. Use 'ApiKey YOUR_API_KEY'"}), 401
+        else:
+            api_key = request.args.get('api_key')
+        
+        if not api_key:
             return jsonify({"error": "API key is required"}), 401
         
-        # Look up the API key
-        key = ApiKey.query.filter_by(key=api_key, is_active=True).first()
+        api_key_obj = ApiKey.query.filter_by(key=api_key, is_active=True).first()
         
-        if key is None:
+        if not api_key_obj:
             return jsonify({"error": "Invalid or inactive API key"}), 401
         
         # Update last used timestamp
-        key.last_used = datetime.utcnow()
+        api_key_obj.last_used = datetime.utcnow()
         db.session.commit()
         
-        # Set the user for this request
-        g.api_user = key.user
+        # Store the user associated with this API key for later use
+        g.api_user = api_key_obj.user
         
-        return view_function(*args, **kwargs)
+        return f(*args, **kwargs)
     return decorated_function
 
-def format_currency(value):
-    """Format a number as currency."""
-    if value is None:
-        return "N/A"
-    return f"${value:,.2f}"
 
-def format_percentage(value):
-    """Format a number as percentage."""
-    if value is None:
-        return "N/A"
-    return f"{value:.1%}"
-
-# Route Handlers
-
-# Home and Authentication Routes
-@app.route('/')
-def index():
-    """Home page route."""
-    return render_template('index.html', title='Home')
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    """User login route."""
-    if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
-    
-    form = LoginForm()
-    if form.validate_on_submit():
-        user = User.query.filter_by(username=form.username.data).first()
+def jwt_token_required(f):
+    """Decorator to require JWT token authentication"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        auth_header = request.headers.get('Authorization')
+        token = None
         
-        if user is None or not check_password_hash(user.password_hash, form.password.data):
-            flash('Invalid username or password', 'danger')
-            return redirect(url_for('login'))
-        
-        login_user(user, remember=form.remember_me.data)
-        next_page = request.args.get('next')
-        if not next_page or not next_page.startswith('/'):
-            next_page = url_for('dashboard')
-            
-        flash('Login successful', 'success')
-        return redirect(next_page)
-    
-    return render_template('login.html', title='Sign In', form=form)
-
-@app.route('/logout')
-def logout():
-    """User logout route."""
-    logout_user()
-    flash('You have been logged out.', 'info')
-    return redirect(url_for('index'))
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    """User registration route."""
-    if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
-    
-    form = RegistrationForm()
-    if form.validate_on_submit():
-        user = User(
-            username=form.username.data,
-            email=form.email.data,
-            password_hash=generate_password_hash(form.password.data)
-        )
-        
-        db.session.add(user)
-        db.session.commit()
-        
-        flash('Registration successful! You can now log in.', 'success')
-        return redirect(url_for('login'))
-    
-    return render_template('register.html', title='Register', form=form)
-
-@app.route('/reset-password', methods=['GET', 'POST'])
-def reset_password_request():
-    """Password reset request route."""
-    if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
-    
-    form = PasswordResetRequestForm()
-    if form.validate_on_submit():
-        user = User.query.filter_by(email=form.email.data).first()
-        
-        if user:
-            # In a real application, send a password reset email here
-            flash('Check your email for instructions to reset your password.', 'info')
+        if auth_header:
+            try:
+                auth_type, token = auth_header.split(' ', 1)
+                if auth_type.lower() != 'bearer':
+                    return jsonify({"error": "Invalid authorization header format. Use 'Bearer YOUR_TOKEN'"}), 401
+            except ValueError:
+                return jsonify({"error": "Invalid authorization header format. Use 'Bearer YOUR_TOKEN'"}), 401
         else:
-            # Don't reveal that the user doesn't exist
-            flash('Check your email for instructions to reset your password.', 'info')
+            token = request.args.get('token')
         
-        return redirect(url_for('login'))
-    
-    return render_template('reset_password_request.html', title='Reset Password', form=form)
+        if not token:
+            return jsonify({"error": "JWT token is required"}), 401
+        
+        try:
+            # Decode the JWT token
+            secret_key = current_app.config['SECRET_KEY']
+            payload = jwt.decode(token, secret_key, algorithms=['HS256'])
+            
+            # Store agent information for later use
+            g.agent_id = payload.get('agent_id')
+            g.agent_type = payload.get('agent_type')
+            
+        except jwt.ExpiredSignatureError:
+            return jsonify({"error": "Token has expired"}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({"error": "Invalid token"}), 401
+        
+        return f(*args, **kwargs)
+    return decorated_function
 
-@app.route('/reset-password/<token>', methods=['GET', 'POST'])
-def reset_password(token):
-    """Password reset with token route."""
-    if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
-    
-    # In a real application, validate the token here
-    # For demo purposes, just show the form
-    
-    form = PasswordResetForm()
+
+# Main routes
+@main_bp.route('/')
+def index():
+    """Home page route"""
+    return render_template('index.html')
+
+
+@main_bp.route('/about')
+def about():
+    """About page route"""
+    return render_template('about.html')
+
+
+@main_bp.route('/contact', methods=['GET', 'POST'])
+def contact():
+    """Contact page route"""
+    form = ContactForm()
     if form.validate_on_submit():
-        # Update the user's password
-        flash('Your password has been reset successfully.', 'success')
-        return redirect(url_for('login'))
-    
-    return render_template('reset_password.html', title='Reset Password', form=form)
+        # Process the contact form (would typically send an email)
+        flash("Your message has been sent! We'll get back to you soon.", "success")
+        return redirect(url_for('main.contact'))
+    return render_template('contact.html', form=form)
 
-# User Profile and Settings Routes
-@app.route('/profile')
+
+@main_bp.route('/dashboard')
+@login_required
+def dashboard():
+    """User dashboard route"""
+    # Get property count
+    property_count = Property.query.count()
+    
+    # Get valuation count
+    valuation_count = Valuation.query.count()
+    
+    # Get active agents
+    active_agents = Agent.query.all()
+    agent_count = len(active_agents)
+    
+    # Get recent valuations
+    recent_valuations = Valuation.query.order_by(Valuation.valuation_date.desc()).limit(5).all()
+    
+    # Get ETL jobs
+    etl_jobs = ETLJob.query.order_by(ETLJob.start_time.desc()).limit(3).all()
+    
+    return render_template('dashboard.html', 
+                            property_count=property_count,
+                            valuation_count=valuation_count,
+                            agent_count=agent_count,
+                            active_agents=active_agents,
+                            recent_valuations=recent_valuations,
+                            etl_jobs=etl_jobs)
+
+
+@main_bp.route('/properties')
+@login_required
+def properties():
+    """Properties listing route"""
+    search_form = SearchForm()
+    page = request.args.get('page', 1, type=int)
+    query = Property.query
+    
+    # Apply search filters if provided
+    if request.args.get('query'):
+        search_term = f"%{request.args.get('query')}%"
+        query = query.filter(Property.address.ilike(search_term) | 
+                             Property.neighborhood.ilike(search_term) |
+                             Property.city.ilike(search_term))
+    
+    if request.args.get('property_type'):
+        query = query.filter(Property.property_type == request.args.get('property_type'))
+    
+    if request.args.get('city'):
+        query = query.filter(Property.city.ilike(f"%{request.args.get('city')}%"))
+    
+    if request.args.get('min_price'):
+        # We'll use the last_sold_price as a proxy for price
+        query = query.filter(Property.last_sold_price >= float(request.args.get('min_price')))
+    
+    if request.args.get('max_price'):
+        # We'll use the last_sold_price as a proxy for price
+        query = query.filter(Property.last_sold_price <= float(request.args.get('max_price')))
+    
+    if request.args.get('min_beds'):
+        query = query.filter(Property.bedrooms >= int(request.args.get('min_beds')))
+    
+    if request.args.get('min_baths'):
+        query = query.filter(Property.bathrooms >= float(request.args.get('min_baths')))
+    
+    if request.args.get('min_sqft'):
+        query = query.filter(Property.square_feet >= int(request.args.get('min_sqft')))
+    
+    # Paginate the results
+    properties = query.paginate(page=page, per_page=12)
+    
+    return render_template('properties.html', properties=properties, form=search_form)
+
+
+@main_bp.route('/property/<int:property_id>')
+@login_required
+def property_detail(property_id):
+    """Property detail route"""
+    property = Property.query.get_or_404(property_id)
+    
+    # Get the most recent valuation for this property
+    latest_valuation = Valuation.query.filter_by(property_id=property_id).order_by(Valuation.valuation_date.desc()).first()
+    
+    # Get valuation history for this property
+    valuation_history = Valuation.query.filter_by(property_id=property_id).order_by(Valuation.valuation_date.desc()).all()
+    
+    # Get property images
+    images = PropertyImage.query.filter_by(property_id=property_id).all()
+    
+    return render_template('property_detail.html', 
+                           property=property, 
+                           latest_valuation=latest_valuation,
+                           valuation_history=valuation_history,
+                           images=images)
+
+
+@main_bp.route('/valuations')
+@login_required
+def valuations():
+    """Valuations listing route"""
+    page = request.args.get('page', 1, type=int)
+    query = Valuation.query
+    
+    # Apply filters if provided
+    if request.args.get('method'):
+        query = query.filter(Valuation.valuation_method == request.args.get('method'))
+    
+    if request.args.get('min_confidence'):
+        query = query.filter(Valuation.confidence_score >= float(request.args.get('min_confidence')))
+    
+    if request.args.get('property_id'):
+        query = query.filter(Valuation.property_id == int(request.args.get('property_id')))
+    
+    # Paginate the results
+    valuations = query.order_by(Valuation.valuation_date.desc()).paginate(page=page, per_page=20)
+    
+    return render_template('valuations.html', valuations=valuations)
+
+
+@main_bp.route('/agents')
+@login_required
+def agents():
+    """Agents listing route"""
+    agents = Agent.query.all()
+    return render_template('agents.html', agents=agents)
+
+
+@main_bp.route('/etl_jobs')
+@login_required
+def etl_jobs():
+    """ETL jobs listing route"""
+    page = request.args.get('page', 1, type=int)
+    query = ETLJob.query
+    
+    # Apply filters if provided
+    if request.args.get('job_type'):
+        query = query.filter(ETLJob.job_type == request.args.get('job_type'))
+    
+    if request.args.get('status'):
+        query = query.filter(ETLJob.status == request.args.get('status'))
+    
+    # Paginate the results
+    jobs = query.order_by(ETLJob.start_time.desc()).paginate(page=page, per_page=20)
+    
+    return render_template('etl_jobs.html', jobs=jobs)
+
+
+@main_bp.route('/market_trends')
+@login_required
+def market_trends():
+    """Market trends analysis route"""
+    trends = MarketTrend.query.order_by(MarketTrend.trend_date.desc()).all()
+    
+    # Group trends by neighborhood
+    neighborhoods = {}
+    for trend in trends:
+        if trend.neighborhood not in neighborhoods:
+            neighborhoods[trend.neighborhood] = []
+        neighborhoods[trend.neighborhood].append(trend)
+    
+    return render_template('market_trends.html', neighborhoods=neighborhoods, trends=trends)
+
+
+@main_bp.route('/what_if_analysis')
+@login_required
+def what_if_analysis():
+    """What-if analysis tool route"""
+    return render_template('what_if_analysis.html')
+
+
+@main_bp.route('/reports')
+@login_required
+def reports():
+    """Reports generation route"""
+    return render_template('reports.html')
+
+
+@main_bp.route('/api_docs')
+def api_docs():
+    """API documentation route"""
+    return render_template('api_docs.html')
+
+
+@main_bp.route('/privacy')
+def privacy():
+    """Privacy policy route"""
+    return render_template('privacy.html')
+
+
+@main_bp.route('/terms')
+def terms():
+    """Terms of service route"""
+    return render_template('terms.html')
+
+
+@main_bp.route('/profile', methods=['GET', 'POST'])
 @login_required
 def profile():
-    """User profile route."""
-    return render_template('profile.html', title='Profile')
+    """User profile route"""
+    form = ProfileForm(original_username=current_user.username, original_email=current_user.email)
+    
+    if form.validate_on_submit():
+        current_user.username = form.username.data
+        current_user.email = form.email.data
+        current_user.first_name = form.first_name.data
+        current_user.last_name = form.last_name.data
+        db.session.commit()
+        flash('Your profile has been updated.', 'success')
+        return redirect(url_for('main.profile'))
+    
+    if request.method == 'GET':
+        form.username.data = current_user.username
+        form.email.data = current_user.email
+        form.first_name.data = current_user.first_name
+        form.last_name.data = current_user.last_name
+    
+    return render_template('profile.html', form=form)
 
-@app.route('/api-keys', methods=['GET', 'POST'])
+
+@main_bp.route('/settings', methods=['GET', 'POST'])
 @login_required
-def api_keys():
-    """API key management route."""
+def settings():
+    """User settings route"""
+    password_form = ChangePasswordForm()
+    api_key_form = ApiKeyForm()
+    
+    if password_form.validate_on_submit():
+        if current_user.check_password(password_form.current_password.data):
+            current_user.set_password(password_form.new_password.data)
+            db.session.commit()
+            flash('Your password has been updated.', 'success')
+            return redirect(url_for('main.settings'))
+        else:
+            flash('Current password is incorrect.', 'danger')
+    
+    # Get user's API keys
+    api_keys = ApiKey.query.filter_by(user_id=current_user.id).all()
+    
+    return render_template('settings.html', 
+                           password_form=password_form, 
+                           api_key_form=api_key_form,
+                           api_keys=api_keys)
+
+
+@main_bp.route('/settings/generate_api_key', methods=['POST'])
+@login_required
+def generate_api_key():
+    """Generate a new API key for the current user"""
     form = ApiKeyForm()
     
     if form.validate_on_submit():
+        # Generate a secure random API key
+        key = secrets.token_hex(32)
+        
+        # Create a new API key record
         api_key = ApiKey(
-            key=ApiKey.generate_key(),
+            key=key,
             name=form.name.data,
             user_id=current_user.id,
+            permissions=form.permissions.data,
+            created_at=datetime.utcnow(),
+            expires_at=datetime.utcnow() + timedelta(days=365),  # 1 year expiration
             is_active=True
         )
         
         db.session.add(api_key)
         db.session.commit()
         
-        flash(f'API Key "{form.name.data}" created successfully.', 'success')
-        return redirect(url_for('api_keys'))
+        flash(f'New API key generated: {key}. Please save this key as it will not be shown again.', 'success')
+        return redirect(url_for('main.settings'))
     
-    # Get all API keys for the current user
-    keys = ApiKey.query.filter_by(user_id=current_user.id).order_by(ApiKey.created_at.desc()).all()
-    
-    return render_template('api_keys.html', title='API Keys', form=form, keys=keys)
+    flash('Failed to generate API key. Please check the form and try again.', 'danger')
+    return redirect(url_for('main.settings'))
 
-@app.route('/api-keys/<int:key_id>/deactivate', methods=['POST'])
+
+@main_bp.route('/settings/revoke_api_key/<int:key_id>', methods=['POST'])
 @login_required
-def deactivate_api_key(key_id):
-    """Deactivate an API key."""
-    key = ApiKey.query.get_or_404(key_id)
+def revoke_api_key(key_id):
+    """Revoke an API key"""
+    api_key = ApiKey.query.get_or_404(key_id)
     
-    # Ensure the current user owns this key
-    if key.user_id != current_user.id:
-        flash('You do not have permission to deactivate this API key.', 'danger')
-        return redirect(url_for('api_keys'))
+    # Ensure the API key belongs to the current user
+    if api_key.user_id != current_user.id:
+        flash('You do not have permission to revoke this API key.', 'danger')
+        return redirect(url_for('main.settings'))
     
-    key.is_active = False
+    api_key.is_active = False
     db.session.commit()
     
-    flash(f'API Key "{key.name}" has been deactivated.', 'info')
-    return redirect(url_for('api_keys'))
+    flash('API key has been revoked.', 'success')
+    return redirect(url_for('main.settings'))
 
-# Dashboard Routes
-@app.route('/dashboard')
-@login_required
-def dashboard():
-    """Main dashboard route."""
-    # Get latest property valuations
-    recent_valuations = (PropertyValuation.query
-                          .join(Property)
-                          .order_by(PropertyValuation.created_at.desc())
-                          .limit(5)
-                          .all())
-    
-    # Get agent status summary
-    agent_status = db.session.query(
-        Agent.status,
-        func.count(Agent.id).label('count')
-    ).group_by(Agent.status).all()
-    
-    agent_status_dict = {status: count for status, count in agent_status}
-    
-    # Get ETL status
-    etl_status = EtlStatus.query.order_by(EtlStatus.last_update.desc()).first()
-    
-    # Get property count by type
-    property_types = db.session.query(
-        Property.property_type,
-        func.count(Property.id).label('count')
-    ).group_by(Property.property_type).all()
-    
-    property_type_dict = {pt: count for pt, count in property_types}
-    
-    # Get valuation method distribution
-    valuation_methods = db.session.query(
-        PropertyValuation.valuation_method,
-        func.count(PropertyValuation.id).label('count')
-    ).group_by(PropertyValuation.valuation_method).all()
-    
-    valuation_method_dict = {vm: count for vm, count in valuation_methods}
-    
-    # Get property count by neighborhood
-    neighborhoods = db.session.query(
-        Property.neighborhood,
-        func.count(Property.id).label('count')
-    ).filter(Property.neighborhood != None).group_by(Property.neighborhood).all()
-    
-    neighborhood_dict = {n: count for n, count in neighborhoods if n}
-    
-    # Prepare dashboard stats
-    stats = {
-        'total_properties': Property.query.count(),
-        'total_valuations': PropertyValuation.query.count(),
-        'active_agents': agent_status_dict.get('active', 0),
-        'etl_completeness': etl_status.completeness if etl_status else 0,
-        'property_types': property_type_dict,
-        'valuation_methods': valuation_method_dict,
-        'neighborhoods': neighborhood_dict,
-        'agent_status': agent_status_dict
-    }
-    
-    return render_template('dashboard.html', title='Dashboard', stats=stats, recent_valuations=recent_valuations)
 
-# Property Routes
-@app.route('/properties')
+# Authentication routes
+@auth_bp.route('/login', methods=['GET', 'POST'])
+def login():
+    """User login route"""
+    if current_user.is_authenticated:
+        return redirect(url_for('main.dashboard'))
+    
+    form = LoginForm()
+    if form.validate_on_submit():
+        user = User.query.filter_by(email=form.email.data).first()
+        
+        if user is None or not user.check_password(form.password.data):
+            flash('Invalid email or password.', 'danger')
+            return redirect(url_for('auth.login'))
+        
+        # Update last login timestamp
+        user.last_login = datetime.utcnow()
+        db.session.commit()
+        
+        login_user(user, remember=form.remember.data)
+        
+        # Redirect to the page the user was trying to access
+        next_page = request.args.get('next')
+        if not next_page or url_parse(next_page).netloc != '':
+            next_page = url_for('main.dashboard')
+        
+        return redirect(next_page)
+    
+    return render_template('login.html', form=form)
+
+
+@auth_bp.route('/register', methods=['GET', 'POST'])
+def register():
+    """User registration route"""
+    if current_user.is_authenticated:
+        return redirect(url_for('main.dashboard'))
+    
+    form = RegistrationForm()
+    if form.validate_on_submit():
+        user = User(
+            username=form.username.data,
+            email=form.email.data,
+            first_name=form.first_name.data,
+            last_name=form.last_name.data,
+            created_at=datetime.utcnow()
+        )
+        user.set_password(form.password.data)
+        
+        db.session.add(user)
+        db.session.commit()
+        
+        flash('Congratulations, you are now registered! Please log in.', 'success')
+        return redirect(url_for('auth.login'))
+    
+    return render_template('register.html', form=form)
+
+
+@auth_bp.route('/logout')
 @login_required
-def properties():
-    """Property listing route."""
-    form = PropertySearchForm()
+def logout():
+    """User logout route"""
+    logout_user()
+    return redirect(url_for('main.index'))
+
+
+# API routes
+@api_bp.route('/health', methods=['GET'])
+def health():
+    """API health check route"""
+    return jsonify({"status": "ok", "timestamp": datetime.utcnow().isoformat()})
+
+
+@api_bp.route('/properties', methods=['GET'])
+@api_key_required
+def get_properties():
+    """API route to get properties"""
+    page = request.args.get('page', 1, type=int)
+    per_page = min(int(request.args.get('per_page', 20)), 100)  # Limit max per_page to 100
     
-    # Get search parameters from request args
-    query = request.args.get('query', '')
-    property_type = request.args.get('property_type', '')
-    neighborhood = request.args.get('neighborhood', '')
-    min_price = request.args.get('min_price', None)
-    max_price = request.args.get('max_price', None)
-    min_bedrooms = request.args.get('min_bedrooms', None)
-    min_bathrooms = request.args.get('min_bathrooms', None)
-    min_area = request.args.get('min_area', None)
+    query = Property.query
     
-    # Set form values from request args
-    form.query.data = query
-    form.property_type.data = property_type
-    form.neighborhood.data = neighborhood
-    form.min_price.data = min_price
-    form.max_price.data = max_price
-    form.min_bedrooms.data = min_bedrooms
-    form.min_bathrooms.data = min_bathrooms
-    form.min_area.data = min_area
+    # Apply filters if provided
+    if request.args.get('property_type'):
+        query = query.filter(Property.property_type == request.args.get('property_type'))
     
-    # Build the query
-    property_query = Property.query
+    if request.args.get('city'):
+        query = query.filter(Property.city.ilike(f"%{request.args.get('city')}%"))
     
-    # Apply filters
-    if query:
-        property_query = property_query.filter(
-            or_(
-                Property.property_id.ilike(f'%{query}%'),
-                Property.address.ilike(f'%{query}%'),
-                Property.neighborhood.ilike(f'%{query}%'),
-                Property.city.ilike(f'%{query}%'),
-                Property.zip_code.ilike(f'%{query}%')
-            )
-        )
-    
-    if property_type:
-        property_query = property_query.filter(Property.property_type == property_type)
-    
-    if neighborhood:
-        property_query = property_query.filter(Property.neighborhood == neighborhood)
-    
-    if min_bedrooms:
-        property_query = property_query.filter(Property.bedrooms >= int(min_bedrooms))
-    
-    if min_bathrooms:
-        property_query = property_query.filter(Property.bathrooms >= float(min_bathrooms))
-    
-    if min_area:
-        property_query = property_query.filter(Property.living_area >= float(min_area))
-    
-    # Filter by price range using the latest valuation
-    if min_price or max_price:
-        # This is a complex query, we'll use a subquery to get the latest valuation for each property
-        latest_valuations = db.session.query(
-            PropertyValuation.property_id,
-            func.max(PropertyValuation.valuation_date).label('latest_date')
-        ).group_by(PropertyValuation.property_id).subquery()
-        
-        price_query = db.session.query(
-            PropertyValuation.property_id,
-            PropertyValuation.estimated_value
-        ).join(
-            latest_valuations,
-            and_(
-                PropertyValuation.property_id == latest_valuations.c.property_id,
-                PropertyValuation.valuation_date == latest_valuations.c.latest_date
-            )
-        )
-        
-        if min_price:
-            price_query = price_query.filter(PropertyValuation.estimated_value >= float(min_price))
-        
-        if max_price:
-            price_query = price_query.filter(PropertyValuation.estimated_value <= float(max_price))
-        
-        # Get property IDs that match the price criteria
-        property_ids = [p.property_id for p in price_query.all()]
-        
-        # Filter the main query by these property IDs
-        property_query = property_query.filter(Property.id.in_(property_ids))
+    if request.args.get('neighborhood'):
+        query = query.filter(Property.neighborhood.ilike(f"%{request.args.get('neighborhood')}%"))
     
     # Paginate the results
+    properties_page = query.paginate(page=page, per_page=per_page)
+    
+    result = {
+        "total": properties_page.total,
+        "page": properties_page.page,
+        "per_page": per_page,
+        "pages": properties_page.pages,
+        "properties": []
+    }
+    
+    for prop in properties_page.items:
+        result["properties"].append({
+            "id": prop.id,
+            "address": prop.address,
+            "city": prop.city,
+            "state": prop.state,
+            "zip_code": prop.zip_code,
+            "property_type": prop.property_type,
+            "bedrooms": prop.bedrooms,
+            "bathrooms": prop.bathrooms,
+            "square_feet": prop.square_feet,
+            "year_built": prop.year_built,
+            "latitude": prop.latitude,
+            "longitude": prop.longitude,
+            "neighborhood": prop.neighborhood
+        })
+    
+    return jsonify(result)
+
+
+@api_bp.route('/properties/<int:property_id>', methods=['GET'])
+@api_key_required
+def get_property(property_id):
+    """API route to get a specific property"""
+    property = Property.query.get_or_404(property_id)
+    
+    result = {
+        "id": property.id,
+        "address": property.address,
+        "city": property.city,
+        "state": property.state,
+        "zip_code": property.zip_code,
+        "property_type": property.property_type,
+        "bedrooms": property.bedrooms,
+        "bathrooms": property.bathrooms,
+        "square_feet": property.square_feet,
+        "lot_size": property.lot_size,
+        "year_built": property.year_built,
+        "last_sold_date": property.last_sold_date.isoformat() if property.last_sold_date else None,
+        "last_sold_price": property.last_sold_price,
+        "latitude": property.latitude,
+        "longitude": property.longitude,
+        "neighborhood": property.neighborhood,
+        "description": property.description,
+        "features": property.features,
+        "created_at": property.created_at.isoformat(),
+        "updated_at": property.updated_at.isoformat()
+    }
+    
+    return jsonify(result)
+
+
+@api_bp.route('/valuations', methods=['GET'])
+@api_key_required
+def get_valuations():
+    """API route to get valuations"""
     page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 10, type=int)
+    per_page = min(int(request.args.get('per_page', 20)), 100)  # Limit max per_page to 100
     
-    pagination = property_query.order_by(Property.updated_at.desc()).paginate(
-        page=page, per_page=per_page, error_out=False
-    )
+    query = Valuation.query
     
-    properties = pagination.items
+    # Apply filters if provided
+    if request.args.get('method'):
+        query = query.filter(Valuation.valuation_method == request.args.get('method'))
     
-    # Get the latest valuation for each property
-    property_ids = [p.id for p in properties]
-    latest_valuations = {}
+    if request.args.get('min_confidence'):
+        query = query.filter(Valuation.confidence_score >= float(request.args.get('min_confidence')))
     
-    if property_ids:
-        # Subquery to get the latest valuation for each property
-        latest_valuation_dates = db.session.query(
-            PropertyValuation.property_id,
-            func.max(PropertyValuation.valuation_date).label('latest_date')
-        ).filter(PropertyValuation.property_id.in_(property_ids)).group_by(PropertyValuation.property_id).subquery()
-        
-        # Query to get the valuation objects
-        valuations = db.session.query(PropertyValuation).join(
-            latest_valuation_dates,
-            and_(
-                PropertyValuation.property_id == latest_valuation_dates.c.property_id,
-                PropertyValuation.valuation_date == latest_valuation_dates.c.latest_date
-            )
-        ).all()
-        
-        # Create a dictionary of property_id to valuation
-        latest_valuations = {v.property_id: v for v in valuations}
+    if request.args.get('property_id'):
+        query = query.filter(Valuation.property_id == int(request.args.get('property_id')))
     
-    # Get unique neighborhoods for the filter dropdown
-    neighborhoods = db.session.query(Property.neighborhood).filter(
-        Property.neighborhood != None
-    ).distinct().order_by(Property.neighborhood).all()
+    if request.args.get('after_date'):
+        try:
+            after_date = datetime.fromisoformat(request.args.get('after_date'))
+            query = query.filter(Valuation.valuation_date >= after_date)
+        except ValueError:
+            return jsonify({"error": "Invalid after_date format. Use ISO format (YYYY-MM-DDTHH:MM:SS)"}), 400
     
-    neighborhoods = [n[0] for n in neighborhoods if n[0]]  # Extract from tuples and remove None
+    if request.args.get('before_date'):
+        try:
+            before_date = datetime.fromisoformat(request.args.get('before_date'))
+            query = query.filter(Valuation.valuation_date <= before_date)
+        except ValueError:
+            return jsonify({"error": "Invalid before_date format. Use ISO format (YYYY-MM-DDTHH:MM:SS)"}), 400
     
-    return render_template(
-        'properties.html',
-        title='Properties',
-        properties=properties,
-        pagination=pagination,
-        form=form,
-        latest_valuations=latest_valuations,
-        neighborhoods=neighborhoods,
-        format_currency=format_currency
-    )
+    # Apply sorting
+    sort_by = request.args.get('sort_by', 'valuation_date')
+    sort_dir = request.args.get('sort_dir', 'desc')
+    
+    if sort_dir == 'desc':
+        query = query.order_by(getattr(Valuation, sort_by).desc())
+    else:
+        query = query.order_by(getattr(Valuation, sort_by))
+    
+    # Paginate the results
+    valuations_page = query.paginate(page=page, per_page=per_page)
+    
+    result = {
+        "total": valuations_page.total,
+        "page": valuations_page.page,
+        "per_page": per_page,
+        "pages": valuations_page.pages,
+        "valuations": []
+    }
+    
+    for val in valuations_page.items:
+        result["valuations"].append({
+            "id": val.id,
+            "property_id": val.property_id,
+            "agent_id": val.agent_id,
+            "estimated_value": val.estimated_value,
+            "confidence_score": val.confidence_score,
+            "valuation_date": val.valuation_date.isoformat(),
+            "valuation_method": val.valuation_method,
+            "model_version": val.model_version,
+            "adjusted_value": val.adjusted_value,
+            "property_address": val.property.address if val.property else None
+        })
+    
+    return jsonify(result)
 
-@app.route('/properties/<int:property_id>')
-@login_required
-def property_detail(property_id):
-    """Property detail route."""
-    property_obj = Property.query.get_or_404(property_id)
-    
-    # Get all valuations for this property, ordered by date
-    valuations = PropertyValuation.query.filter_by(
-        property_id=property_id
-    ).order_by(PropertyValuation.valuation_date.desc()).all()
-    
-    # Create valuation form for new valuations
-    valuation_form = ValuationForm()
-    valuation_form.property_id.data = property_id
-    
-    return render_template(
-        'property_detail.html',
-        title=f'Property: {property_obj.address}',
-        property=property_obj,
-        valuations=valuations,
-        valuation_form=valuation_form,
-        format_currency=format_currency
-    )
 
-@app.route('/properties/new', methods=['GET', 'POST'])
-@login_required
-def new_property():
-    """Create new property route."""
-    form = PropertyForm()
+@api_bp.route('/valuations/<int:valuation_id>', methods=['GET'])
+@api_key_required
+def get_valuation(valuation_id):
+    """API route to get a specific valuation"""
+    valuation = Valuation.query.get_or_404(valuation_id)
     
-    if form.validate_on_submit():
-        property_obj = Property(
-            property_id=form.property_id.data,
-            address=form.address.data,
-            city=form.city.data,
-            state=form.state.data,
-            zip_code=form.zip_code.data,
-            neighborhood=form.neighborhood.data,
-            property_type=form.property_type.data,
-            year_built=form.year_built.data,
-            bedrooms=form.bedrooms.data,
-            bathrooms=form.bathrooms.data,
-            living_area=form.living_area.data,
-            land_area=form.land_area.data,
-            latitude=form.latitude.data,
-            longitude=form.longitude.data
-        )
-        
-        db.session.add(property_obj)
-        db.session.commit()
-        
-        flash(f'Property "{form.address.data}" created successfully.', 'success')
-        return redirect(url_for('property_detail', property_id=property_obj.id))
+    result = {
+        "id": valuation.id,
+        "property_id": valuation.property_id,
+        "user_id": valuation.user_id,
+        "agent_id": valuation.agent_id,
+        "estimated_value": valuation.estimated_value,
+        "confidence_score": valuation.confidence_score,
+        "valuation_date": valuation.valuation_date.isoformat(),
+        "valuation_method": valuation.valuation_method,
+        "model_version": valuation.model_version,
+        "adjusted_value": valuation.adjusted_value,
+        "adjustment_factors": valuation.adjustment_factors,
+        "comparable_properties": valuation.comparable_properties,
+        "metrics": valuation.metrics,
+        "notes": valuation.notes,
+        "property": {
+            "id": valuation.property.id,
+            "address": valuation.property.address,
+            "city": valuation.property.city,
+            "state": valuation.property.state,
+            "property_type": valuation.property.property_type
+        } if valuation.property else None,
+        "agent": {
+            "id": valuation.agent.id,
+            "name": valuation.agent.name,
+            "agent_type": valuation.agent.agent_type,
+            "model_version": valuation.agent.model_version
+        } if valuation.agent else None
+    }
     
-    return render_template('property_form.html', title='New Property', form=form, is_new=True)
+    return jsonify(result)
 
-@app.route('/properties/<int:property_id>/edit', methods=['GET', 'POST'])
-@login_required
-def edit_property(property_id):
-    """Edit property route."""
-    property_obj = Property.query.get_or_404(property_id)
-    form = PropertyForm(obj=property_obj)
-    
-    # Store original property_id for validation
-    form.original_property_id = property_obj.property_id
-    
-    if form.validate_on_submit():
-        property_obj.property_id = form.property_id.data
-        property_obj.address = form.address.data
-        property_obj.city = form.city.data
-        property_obj.state = form.state.data
-        property_obj.zip_code = form.zip_code.data
-        property_obj.neighborhood = form.neighborhood.data
-        property_obj.property_type = form.property_type.data
-        property_obj.year_built = form.year_built.data
-        property_obj.bedrooms = form.bedrooms.data
-        property_obj.bathrooms = form.bathrooms.data
-        property_obj.living_area = form.living_area.data
-        property_obj.land_area = form.land_area.data
-        property_obj.latitude = form.latitude.data
-        property_obj.longitude = form.longitude.data
-        property_obj.updated_at = datetime.utcnow()
-        
-        db.session.commit()
-        
-        flash(f'Property "{form.address.data}" updated successfully.', 'success')
-        return redirect(url_for('property_detail', property_id=property_obj.id))
-    
-    return render_template('property_form.html', title='Edit Property', form=form, is_new=False)
 
-# Valuation Routes
-@app.route('/valuations/new', methods=['POST'])
-@login_required
-def new_valuation():
-    """Create new valuation route."""
-    form = ValuationForm()
+@api_bp.route('/valuation/request', methods=['POST'])
+@api_key_required
+def request_valuation():
+    """API route to request a new property valuation"""
+    data = request.get_json()
     
-    if form.validate_on_submit():
-        property_id = form.property_id.data
-        property_obj = Property.query.get_or_404(property_id)
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+    
+    required_fields = ['property_id', 'valuation_method']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({"error": f"Missing required field: {field}"}), 400
+    
+    # Check if the property exists
+    property_obj = Property.query.get(data['property_id'])
+    if not property_obj:
+        return jsonify({"error": f"Property with ID {data['property_id']} not found"}), 404
+    
+    # Find an available agent for the requested method
+    agent = Agent.query.filter_by(agent_type=data['valuation_method'], status='idle').first()
+    
+    try:
+        # Import the valuation module
+        from valuation.core import calculate_basic_valuation, save_valuation
         
-        # For this demo, we'll generate a simple valuation
-        # In a real app, this would call valuation algorithms
+        # Calculate the valuation
+        valuation_result = calculate_basic_valuation(property_obj)
         
-        # Base value calculation
-        if property_obj.property_type == "land":
-            # Land is valued by acre
-            base_value = 100000 + (property_obj.land_area * 250000)
-        else:
-            # Calculate base value from square footage
-            sq_ft_value = {
-                "single_family": 300,
-                "condo": 350,
-                "townhouse": 325,
-                "multi_family": 250
-            }.get(property_obj.property_type, 300)
-            
-            base_value = property_obj.living_area * sq_ft_value
-            
-            # Adjust for bedrooms and bathrooms
-            if property_obj.bedrooms:
-                base_value += property_obj.bedrooms * 15000
-            
-            if property_obj.bathrooms:
-                base_value += property_obj.bathrooms * 25000
-            
-            # Adjust for age if year_built is available
-            if property_obj.year_built:
-                age = datetime.now().year - property_obj.year_built
-                age_factor = max(0.7, 1 - (age / 100))
-                base_value *= age_factor
+        # Save it to the database
+        valuation_id = save_valuation(property_obj.id, valuation_result)
         
-        # Adjust value based on method
-        method = form.valuation_method.data
-        if method == "enhanced_regression":
-            value_adjustment = 1.05
-            confidence = 0.92
-        elif method == "lightgbm":
-            value_adjustment = 1.03
-            confidence = 0.90
-        elif method == "xgboost":
-            value_adjustment = 1.04
-            confidence = 0.91
-        elif method == "linear_regression":
-            value_adjustment = 0.98
-            confidence = 0.82
-        elif method == "ridge_regression":
-            value_adjustment = 0.99
-            confidence = 0.84
-        elif method == "lasso_regression":
-            value_adjustment = 0.97
-            confidence = 0.83
-        else:  # elastic_net
-            value_adjustment = 1.00
-            confidence = 0.85
+        # Get the saved valuation
+        valuation = Valuation.query.get(valuation_id)
         
-        # Create the valuation
-        valuation = PropertyValuation(
-            property_id=property_id,
-            estimated_value=round(base_value * value_adjustment, 2),
-            confidence_score=confidence,
-            valuation_date=form.valuation_date.data,
-            valuation_method=method
+        # Return the valuation result
+        return jsonify({
+            "status": "completed",
+            "valuation_id": valuation.id,
+            "property_id": property_obj.id,
+            "estimated_value": valuation.estimated_value,
+            "confidence_score": valuation.confidence_score,
+            "valuation_date": valuation.valuation_date.isoformat(),
+            "valuation_method": valuation.valuation_method
+        }), 200
+        
+    except ImportError:
+        # Fallback to the old behavior if the valuation module isn't available
+        logger.warning("Valuation module not available, falling back to queued valuation")
+        
+        # Create a new valuation record
+        valuation = Valuation(
+            property_id=data['property_id'],
+            user_id=g.api_user.id,
+            agent_id=agent.id if agent else None,
+            estimated_value=0.0,  # Will be updated by the agent
+            confidence_score=0.0,  # Will be updated by the agent
+            valuation_date=datetime.utcnow(),
+            valuation_method=data['valuation_method'],
+            notes=data.get('notes')
         )
         
         db.session.add(valuation)
         db.session.commit()
         
-        flash(f'New valuation created: {format_currency(valuation.estimated_value)}', 'success')
-        return redirect(url_for('property_detail', property_id=property_id))
-    
-    for field, errors in form.errors.items():
-        for error in errors:
-            flash(f'Error in {getattr(form, field).label.text}: {error}', 'danger')
-    
-    return redirect(url_for('properties'))
+        return jsonify({
+            "status": "pending",
+            "valuation_id": valuation.id,
+            "message": "Valuation request received and queued for processing"
+        }), 202
+    except Exception as e:
+        logger.error(f"Error performing valuation: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+            "message": "An error occurred while performing the valuation"
+        }), 500
 
-@app.route('/batch-valuation', methods=['GET', 'POST'])
+
+@main_bp.route('/calculate-valuation/<int:property_id>', methods=['GET', 'POST'])
 @login_required
-def batch_valuation():
-    """Batch valuation route."""
-    form = BatchValuationForm()
-    
-    if form.validate_on_submit():
-        # Get properties matching the criteria
-        property_query = Property.query
-        
-        if form.property_type.data != 'all':
-            property_query = property_query.filter(Property.property_type == form.property_type.data)
-        
-        if form.neighborhood.data:
-            property_query = property_query.filter(Property.neighborhood == form.neighborhood.data)
-        
-        properties = property_query.all()
-        
-        if not properties:
-            flash('No properties found matching the selected criteria.', 'warning')
-            return redirect(url_for('batch_valuation'))
-        
-        # For each property, create a valuation
-        valuations_created = 0
-        method = form.valuation_method.data
-        
-        for property_obj in properties:
-            # Check if a recent valuation (last 30 days) exists with this method
-            recent_valuation = PropertyValuation.query.filter(
-                PropertyValuation.property_id == property_obj.id,
-                PropertyValuation.valuation_method == method,
-                PropertyValuation.valuation_date >= (datetime.utcnow() - timedelta(days=30))
-            ).first()
-            
-            if recent_valuation:
-                continue  # Skip if recent valuation exists
-            
-            # Similar logic to single valuation, simplified for batch processing
-            if property_obj.property_type == "land":
-                base_value = 100000 + (property_obj.land_area * 250000 if property_obj.land_area else 0)
-            else:
-                sq_ft_value = {
-                    "single_family": 300,
-                    "condo": 350,
-                    "townhouse": 325,
-                    "multi_family": 250
-                }.get(property_obj.property_type, 300)
-                
-                base_value = property_obj.living_area * sq_ft_value if property_obj.living_area else 200000
-                
-                if property_obj.bedrooms:
-                    base_value += property_obj.bedrooms * 15000
-                
-                if property_obj.bathrooms:
-                    base_value += property_obj.bathrooms * 25000
-                
-                if property_obj.year_built:
-                    age = datetime.now().year - property_obj.year_built
-                    age_factor = max(0.7, 1 - (age / 100))
-                    base_value *= age_factor
-            
-            # Adjust based on method
-            if method == "enhanced_regression":
-                value_adjustment = 1.05
-                confidence = 0.92
-            elif method == "lightgbm":
-                value_adjustment = 1.03
-                confidence = 0.90
-            elif method == "xgboost":
-                value_adjustment = 1.04
-                confidence = 0.91
-            elif method == "linear_regression":
-                value_adjustment = 0.98
-                confidence = 0.82
-            elif method == "ridge_regression":
-                value_adjustment = 0.99
-                confidence = 0.84
-            elif method == "lasso_regression":
-                value_adjustment = 0.97
-                confidence = 0.83
-            else:  # elastic_net
-                value_adjustment = 1.00
-                confidence = 0.85
-            
-            # Create the valuation
-            valuation = PropertyValuation(
-                property_id=property_obj.id,
-                estimated_value=round(base_value * value_adjustment, 2),
-                confidence_score=confidence,
-                valuation_date=datetime.utcnow(),
-                valuation_method=method
-            )
-            
-            db.session.add(valuation)
-            valuations_created += 1
-        
-        db.session.commit()
-        
-        flash(f'Batch valuation completed. Created {valuations_created} new valuations.', 'success')
-        return redirect(url_for('dashboard'))
-    
-    # Get unique neighborhoods for the filter dropdown
-    neighborhoods = db.session.query(Property.neighborhood).filter(
-        Property.neighborhood != None
-    ).distinct().order_by(Property.neighborhood).all()
-    
-    neighborhoods = [n[0] for n in neighborhoods if n[0]]  # Extract from tuples and remove None
-    
-    return render_template('batch_valuation.html', title='Batch Valuation', form=form, neighborhoods=neighborhoods)
-
-# ETL and Agent Routes
-@app.route('/etl-status')
-@login_required
-def etl_status():
-    """ETL status route."""
-    status = EtlStatus.query.order_by(EtlStatus.last_update.desc()).first()
-    sources = []
-    
-    if status:
-        sources = DataSource.query.filter_by(etl_status_id=status.id).all()
-    
-    return render_template('etl_status.html', title='ETL Status', status=status, sources=sources)
-
-@app.route('/agents')
-@login_required
-def agents():
-    """Agent status route."""
-    agents = Agent.query.order_by(Agent.agent_type, Agent.agent_id).all()
-    
-    # Group agents by type
-    agents_by_type = {}
-    for agent in agents:
-        if agent.agent_type not in agents_by_type:
-            agents_by_type[agent.agent_type] = []
-        agents_by_type[agent.agent_type].append(agent)
-    
-    return render_template('agents.html', title='Agent Status', agents_by_type=agents_by_type)
-
-@app.route('/agents/<int:agent_id>/logs')
-@login_required
-def agent_logs(agent_id):
-    """Agent logs route."""
-    agent = Agent.query.get_or_404(agent_id)
-    
-    # Get logs with pagination
-    page = request.args.get('page', 1, type=int)
-    logs = AgentLog.query.filter_by(agent_id=agent_id).order_by(
-        AgentLog.timestamp.desc()
-    ).paginate(page=page, per_page=20, error_out=False)
-    
-    return render_template('agent_logs.html', title=f'Logs: {agent.agent_id}', agent=agent, logs=logs)
-
-# API Routes
-
-@app.route('/api/properties', methods=['GET'])
-@require_api_key
-def api_properties():
-    """API endpoint for properties."""
-    # Parse query parameters
-    query = request.args.get('query', '')
-    property_type = request.args.get('type', '')
-    neighborhood = request.args.get('neighborhood', '')
-    min_price = request.args.get('min_price', None)
-    max_price = request.args.get('max_price', None)
-    min_bedrooms = request.args.get('min_bedrooms', None)
-    min_bathrooms = request.args.get('min_bathrooms', None)
-    limit = request.args.get('limit', 10, type=int)
-    offset = request.args.get('offset', 0, type=int)
-    
-    # Build the query
-    property_query = Property.query
-    
-    # Apply filters
-    if query:
-        property_query = property_query.filter(
-            or_(
-                Property.property_id.ilike(f'%{query}%'),
-                Property.address.ilike(f'%{query}%'),
-                Property.neighborhood.ilike(f'%{query}%'),
-                Property.city.ilike(f'%{query}%'),
-                Property.zip_code.ilike(f'%{query}%')
-            )
-        )
-    
-    if property_type:
-        property_query = property_query.filter(Property.property_type == property_type)
-    
-    if neighborhood:
-        property_query = property_query.filter(Property.neighborhood == neighborhood)
-    
-    if min_bedrooms:
-        property_query = property_query.filter(Property.bedrooms >= int(min_bedrooms))
-    
-    if min_bathrooms:
-        property_query = property_query.filter(Property.bathrooms >= float(min_bathrooms))
-    
-    # Filter by price range using the latest valuation
-    if min_price or max_price:
-        # This is a complex query, we'll use a subquery to get the latest valuation for each property
-        latest_valuations = db.session.query(
-            PropertyValuation.property_id,
-            func.max(PropertyValuation.valuation_date).label('latest_date')
-        ).group_by(PropertyValuation.property_id).subquery()
-        
-        price_query = db.session.query(
-            PropertyValuation.property_id,
-            PropertyValuation.estimated_value
-        ).join(
-            latest_valuations,
-            and_(
-                PropertyValuation.property_id == latest_valuations.c.property_id,
-                PropertyValuation.valuation_date == latest_valuations.c.latest_date
-            )
-        )
-        
-        if min_price:
-            price_query = price_query.filter(PropertyValuation.estimated_value >= float(min_price))
-        
-        if max_price:
-            price_query = price_query.filter(PropertyValuation.estimated_value <= float(max_price))
-        
-        # Get property IDs that match the price criteria
-        property_ids = [p.property_id for p in price_query.all()]
-        
-        # Filter the main query by these property IDs
-        if property_ids:
-            property_query = property_query.filter(Property.id.in_(property_ids))
-        else:
-            # If no properties match the price criteria, return an empty list
-            return jsonify({
-                "total": 0,
-                "offset": offset,
-                "limit": limit,
-                "properties": []
-            })
-    
-    # Count total matching properties
-    total = property_query.count()
-    
-    # Apply pagination
-    properties = property_query.order_by(Property.updated_at.desc()).offset(offset).limit(limit).all()
-    
-    # Get the latest valuation for each property
-    property_ids = [p.id for p in properties]
-    latest_valuations = {}
-    
-    if property_ids:
-        # Subquery to get the latest valuation for each property
-        latest_valuation_dates = db.session.query(
-            PropertyValuation.property_id,
-            func.max(PropertyValuation.valuation_date).label('latest_date')
-        ).filter(PropertyValuation.property_id.in_(property_ids)).group_by(PropertyValuation.property_id).subquery()
-        
-        # Query to get the valuation objects
-        valuations = db.session.query(PropertyValuation).join(
-            latest_valuation_dates,
-            and_(
-                PropertyValuation.property_id == latest_valuation_dates.c.property_id,
-                PropertyValuation.valuation_date == latest_valuation_dates.c.latest_date
-            )
-        ).all()
-        
-        # Create a dictionary of property_id to valuation
-        latest_valuations = {v.property_id: v for v in valuations}
-    
-    # Format the response
-    result = {
-        "total": total,
-        "offset": offset,
-        "limit": limit,
-        "properties": []
-    }
-    
-    for property_obj in properties:
-        property_data = {
-            "id": property_obj.id,
-            "property_id": property_obj.property_id,
-            "address": property_obj.address,
-            "city": property_obj.city,
-            "state": property_obj.state,
-            "zip_code": property_obj.zip_code,
-            "neighborhood": property_obj.neighborhood,
-            "property_type": property_obj.property_type,
-            "year_built": property_obj.year_built,
-            "bedrooms": property_obj.bedrooms,
-            "bathrooms": property_obj.bathrooms,
-            "living_area": property_obj.living_area,
-            "land_area": property_obj.land_area,
-            "latitude": property_obj.latitude,
-            "longitude": property_obj.longitude,
-            "created_at": property_obj.created_at.isoformat(),
-            "updated_at": property_obj.updated_at.isoformat()
-        }
-        
-        # Add latest valuation if available
-        if property_obj.id in latest_valuations:
-            valuation = latest_valuations[property_obj.id]
-            property_data["latest_valuation"] = {
-                "estimated_value": valuation.estimated_value,
-                "confidence_score": valuation.confidence_score,
-                "valuation_date": valuation.valuation_date.isoformat(),
-                "valuation_method": valuation.valuation_method
-            }
-        
-        result["properties"].append(property_data)
-    
-    return jsonify(result)
-
-@app.route('/api/properties/<int:property_id>', methods=['GET'])
-@require_api_key
-def api_property_detail(property_id):
-    """API endpoint for property details."""
+def calculate_valuation(property_id):
+    """Calculate valuation for a property and display the result"""
+    # Get the property
     property_obj = Property.query.get_or_404(property_id)
     
-    # Get all valuations for this property, ordered by date
-    valuations = PropertyValuation.query.filter_by(
-        property_id=property_id
-    ).order_by(PropertyValuation.valuation_date.desc()).all()
+    # Default method
+    valuation_method = 'basic'
     
-    # Format the response
-    result = {
-        "id": property_obj.id,
-        "property_id": property_obj.property_id,
-        "address": property_obj.address,
-        "city": property_obj.city,
-        "state": property_obj.state,
-        "zip_code": property_obj.zip_code,
-        "neighborhood": property_obj.neighborhood,
-        "property_type": property_obj.property_type,
-        "year_built": property_obj.year_built,
-        "bedrooms": property_obj.bedrooms,
-        "bathrooms": property_obj.bathrooms,
-        "living_area": property_obj.living_area,
-        "land_area": property_obj.land_area,
-        "latitude": property_obj.latitude,
-        "longitude": property_obj.longitude,
-        "created_at": property_obj.created_at.isoformat(),
-        "updated_at": property_obj.updated_at.isoformat(),
-        "valuations": []
-    }
+    # Check if form was submitted
+    if request.method == 'POST':
+        valuation_method = request.form.get('valuation_method', 'basic')
     
-    for valuation in valuations:
-        result["valuations"].append({
-            "id": valuation.id,
-            "estimated_value": valuation.estimated_value,
-            "confidence_score": valuation.confidence_score,
-            "valuation_date": valuation.valuation_date.isoformat(),
-            "valuation_method": valuation.valuation_method,
-            "created_at": valuation.created_at.isoformat()
-        })
-    
-    return jsonify(result)
-
-@app.route('/api/valuations', methods=['GET'])
-@require_api_key
-def api_valuations():
-    """API endpoint for property valuations."""
-    # Parse query parameters
-    property_id = request.args.get('property_id', None, type=int)
-    method = request.args.get('method', None)
-    min_date = request.args.get('min_date', None)
-    max_date = request.args.get('max_date', None)
-    limit = request.args.get('limit', 10, type=int)
-    offset = request.args.get('offset', 0, type=int)
-    
-    # Build the query
-    valuation_query = PropertyValuation.query
-    
-    # Apply filters
-    if property_id:
-        valuation_query = valuation_query.filter(PropertyValuation.property_id == property_id)
-    
-    if method:
-        valuation_query = valuation_query.filter(PropertyValuation.valuation_method == method)
-    
-    if min_date:
-        try:
-            min_date = datetime.fromisoformat(min_date)
-            valuation_query = valuation_query.filter(PropertyValuation.valuation_date >= min_date)
-        except ValueError:
-            return jsonify({"error": "Invalid min_date format. Use ISO format (YYYY-MM-DD)."}), 400
-    
-    if max_date:
-        try:
-            max_date = datetime.fromisoformat(max_date)
-            valuation_query = valuation_query.filter(PropertyValuation.valuation_date <= max_date)
-        except ValueError:
-            return jsonify({"error": "Invalid max_date format. Use ISO format (YYYY-MM-DD)."}), 400
-    
-    # Count total matching valuations
-    total = valuation_query.count()
-    
-    # Apply pagination
-    valuations = valuation_query.order_by(PropertyValuation.valuation_date.desc()).offset(offset).limit(limit).all()
-    
-    # Get property details for each valuation
-    property_ids = {v.property_id for v in valuations}
-    properties = {p.id: p for p in Property.query.filter(Property.id.in_(property_ids)).all()} if property_ids else {}
-    
-    # Format the response
-    result = {
-        "total": total,
-        "offset": offset,
-        "limit": limit,
-        "valuations": []
-    }
-    
-    for valuation in valuations:
-        valuation_data = {
-            "id": valuation.id,
-            "property_id": valuation.property_id,
-            "estimated_value": valuation.estimated_value,
-            "confidence_score": valuation.confidence_score,
-            "valuation_date": valuation.valuation_date.isoformat(),
-            "valuation_method": valuation.valuation_method,
-            "created_at": valuation.created_at.isoformat()
-        }
+    try:
+        # Import valuation module
+        from valuation.core import calculate_basic_valuation, save_valuation
         
-        # Add property details if available
-        if valuation.property_id in properties:
-            property_obj = properties[valuation.property_id]
-            valuation_data["property"] = {
-                "property_id": property_obj.property_id,
-                "address": property_obj.address,
-                "city": property_obj.city,
-                "state": property_obj.state,
-                "zip_code": property_obj.zip_code,
-                "neighborhood": property_obj.neighborhood,
-                "property_type": property_obj.property_type
-            }
+        # Calculate valuation
+        valuation_result = calculate_basic_valuation(property_obj)
         
-        result["valuations"].append(valuation_data)
-    
-    return jsonify(result)
+        # Save to database
+        valuation_id = save_valuation(property_obj.id, valuation_result)
+        
+        # Get the saved valuation
+        valuation = Valuation.query.get(valuation_id)
+        
+        flash(f"Valuation completed: ${valuation.estimated_value:,.2f} with {valuation.confidence_score:.2%} confidence", "success")
+        
+        # Redirect to property detail page
+        return redirect(url_for('main.property_detail', property_id=property_id))
+        
+    except ImportError:
+        flash("Valuation module is not available", "danger")
+        return redirect(url_for('main.property_detail', property_id=property_id))
+    except Exception as e:
+        flash(f"Error calculating valuation: {str(e)}", "danger")
+        return redirect(url_for('main.property_detail', property_id=property_id))
 
-@app.route('/api/etl-status', methods=['GET'])
-@require_api_key
-def api_etl_status():
-    """API endpoint for ETL status."""
-    status = EtlStatus.query.order_by(EtlStatus.last_update.desc()).first()
-    
-    if not status:
-        return jsonify({
-            "status": "unknown",
-            "message": "No ETL status records found."
-        }), 404
-    
-    # Get data sources
-    sources = DataSource.query.filter_by(etl_status_id=status.id).all()
-    
-    # Format the response
-    result = {
-        "id": status.id,
-        "status": status.status,
-        "progress": status.progress,
-        "last_update": status.last_update.isoformat(),
-        "records_processed": status.records_processed,
-        "success_rate": status.success_rate,
-        "average_processing_time": status.average_processing_time,
-        "completeness": status.completeness,
-        "accuracy": status.accuracy,
-        "timeliness": status.timeliness,
-        "sources": []
-    }
-    
-    for source in sources:
-        result["sources"].append({
-            "id": source.id,
-            "name": source.name,
-            "status": source.status,
-            "records": source.records,
-            "created_at": source.created_at.isoformat(),
-            "updated_at": source.updated_at.isoformat()
-        })
-    
-    return jsonify(result)
 
-@app.route('/api/agent-status', methods=['GET'])
-@require_api_key
-def api_agent_status():
-    """API endpoint for agent status."""
-    # Parse query parameters
-    agent_type = request.args.get('agent_type', None)
-    status = request.args.get('status', None)
+@api_bp.route('/agent-status', methods=['GET'])
+@api_key_required
+def get_agent_status():
+    """API route to get status of valuation agents"""
+    query = Agent.query
     
-    # Build the query
-    agent_query = Agent.query
+    # Apply filters if provided
+    if request.args.get('agent_type'):
+        query = query.filter(Agent.agent_type == request.args.get('agent_type'))
     
-    # Apply filters
-    if agent_type:
-        agent_query = agent_query.filter(Agent.agent_type == agent_type)
+    if request.args.get('status'):
+        query = query.filter(Agent.status == request.args.get('status'))
     
-    if status:
-        agent_query = agent_query.filter(Agent.status == status)
+    if request.args.get('active_only') == 'true':
+        query = query.filter(Agent.status != 'error')
     
-    # Get all agents matching the criteria
-    agents = agent_query.order_by(Agent.agent_type, Agent.agent_id).all()
+    agents = query.all()
     
-    # Format the response
     result = {
-        "count": len(agents),
+        "total": len(agents),
         "agents": []
     }
     
     for agent in agents:
         result["agents"].append({
             "id": agent.id,
-            "agent_id": agent.agent_id,
+            "name": agent.name,
             "agent_type": agent.agent_type,
             "status": agent.status,
-            "last_active": agent.last_active.isoformat(),
-            "queue_size": agent.queue_size,
-            "total_processed": agent.total_processed,
-            "success_rate": agent.success_rate,
-            "average_processing_time": agent.average_processing_time,
-            "created_at": agent.created_at.isoformat(),
-            "updated_at": agent.updated_at.isoformat()
+            "model_version": agent.model_version,
+            "last_active": agent.last_active.isoformat() if agent.last_active else None,
+            "processing_count": agent.processing_count,
+            "success_count": agent.success_count,
+            "error_count": agent.error_count,
+            "average_confidence": agent.average_confidence
         })
     
     return jsonify(result)
 
-@app.route('/api/agent-logs/<int:agent_id>', methods=['GET'])
-@require_api_key
-def api_agent_logs(agent_id):
-    """API endpoint for agent logs."""
+
+@api_bp.route('/agent-logs/<int:agent_id>', methods=['GET'])
+@api_key_required
+def get_agent_logs(agent_id):
+    """API route to get logs for a specific agent"""
     agent = Agent.query.get_or_404(agent_id)
     
-    # Parse query parameters
-    level = request.args.get('level', None)
-    limit = request.args.get('limit', 20, type=int)
-    offset = request.args.get('offset', 0, type=int)
+    page = request.args.get('page', 1, type=int)
+    per_page = min(int(request.args.get('per_page', 20)), 100)  # Limit max per_page to 100
     
-    # Build the query
-    log_query = AgentLog.query.filter_by(agent_id=agent_id)
+    query = AgentLog.query.filter_by(agent_id=agent_id)
     
-    # Apply filters
-    if level:
-        log_query = log_query.filter(AgentLog.level == level)
+    # Apply filters if provided
+    if request.args.get('log_level'):
+        query = query.filter(AgentLog.log_level == request.args.get('log_level'))
     
-    # Count total matching logs
-    total = log_query.count()
+    # Paginate the results
+    logs_page = query.order_by(AgentLog.timestamp.desc()).paginate(page=page, per_page=per_page)
     
-    # Apply pagination
-    logs = log_query.order_by(AgentLog.timestamp.desc()).offset(offset).limit(limit).all()
-    
-    # Format the response
     result = {
-        "agent_id": agent.agent_id,
-        "agent_type": agent.agent_type,
-        "status": agent.status,
-        "total": total,
-        "offset": offset,
-        "limit": limit,
+        "agent": {
+            "id": agent.id,
+            "name": agent.name,
+            "agent_type": agent.agent_type,
+            "status": agent.status
+        },
+        "total": logs_page.total,
+        "page": logs_page.page,
+        "per_page": per_page,
+        "pages": logs_page.pages,
         "logs": []
     }
     
-    for log in logs:
+    for log in logs_page.items:
         result["logs"].append({
             "id": log.id,
-            "level": log.level,
+            "log_level": log.log_level,
             "message": log.message,
-            "timestamp": log.timestamp.isoformat()
+            "timestamp": log.timestamp.isoformat(),
+            "details": log.details
         })
     
     return jsonify(result)
 
-# Error Handlers
-@app.errorhandler(404)
-def not_found_error(error):
-    """404 error handler."""
+
+@api_bp.route('/etl-status', methods=['GET'])
+@api_key_required
+def get_etl_status():
+    """API route to get status of ETL pipeline jobs"""
+    query = ETLJob.query
+    
+    # Apply filters if provided
+    if request.args.get('job_type'):
+        query = query.filter(ETLJob.job_type == request.args.get('job_type'))
+    
+    if request.args.get('status'):
+        query = query.filter(ETLJob.status == request.args.get('status'))
+    
+    if request.args.get('timeframe'):
+        timeframe = request.args.get('timeframe')
+        now = datetime.utcnow()
+        
+        if timeframe == 'today':
+            start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            query = query.filter(ETLJob.start_time >= start_date)
+        elif timeframe == 'yesterday':
+            start_date = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            end_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            query = query.filter(ETLJob.start_time >= start_date, ETLJob.start_time < end_date)
+        elif timeframe == 'this_week':
+            # Start of week (Monday)
+            start_date = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+            query = query.filter(ETLJob.start_time >= start_date)
+        elif timeframe == 'last_week':
+            # Start of last week (Monday)
+            start_date = (now - timedelta(days=now.weekday() + 7)).replace(hour=0, minute=0, second=0, microsecond=0)
+            # End of last week (Sunday)
+            end_date = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+            query = query.filter(ETLJob.start_time >= start_date, ETLJob.start_time < end_date)
+        elif timeframe == 'this_month':
+            # Start of month
+            start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            query = query.filter(ETLJob.start_time >= start_date)
+    
+    # Apply limit
+    limit = min(int(request.args.get('limit', 20)), 100)  # Limit max results to 100
+    
+    etl_jobs = query.order_by(ETLJob.start_time.desc()).limit(limit).all()
+    
+    result = {
+        "total": len(etl_jobs),
+        "jobs": []
+    }
+    
+    for job in etl_jobs:
+        result["jobs"].append({
+            "id": job.id,
+            "job_type": job.job_type,
+            "source": job.source,
+            "status": job.status,
+            "start_time": job.start_time.isoformat() if job.start_time else None,
+            "end_time": job.end_time.isoformat() if job.end_time else None,
+            "records_processed": job.records_processed,
+            "total_records": job.total_records,
+            "success_count": job.success_count,
+            "error_count": job.error_count,
+            "error_details": job.error_details,
+            "duration": (job.end_time - job.start_time).total_seconds() if job.end_time else None
+        })
+    
+    return jsonify(result)
+
+
+@api_bp.route('/token', methods=['POST'])
+@api_key_required
+def generate_token():
+    """API route to generate a JWT token for agents"""
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+    
+    required_fields = ['agent_id', 'agent_type']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({"error": f"Missing required field: {field}"}), 400
+    
+    # In a real application, we would validate the agent's credentials
+    # For now, we'll just check if the agent exists
+    agent = Agent.query.get(data['agent_id'])
+    if not agent:
+        return jsonify({"error": f"Agent with ID {data['agent_id']} not found"}), 404
+    
+    # Generate a JWT token
+    payload = {
+        'agent_id': data['agent_id'],
+        'agent_type': data['agent_type'],
+        'exp': datetime.utcnow() + timedelta(days=1)  # 24 hour expiration
+    }
+    
+    secret_key = current_app.config['SECRET_KEY']
+    token = jwt.encode(payload, secret_key, algorithm='HS256')
+    
+    return jsonify({
+        "token": token,
+        "expires_at": (datetime.utcnow() + timedelta(days=1)).isoformat()
+    })
+
+
+@api_bp.route('/market-trends', methods=['GET'])
+@api_key_required
+def get_market_trends():
+    """API route to get market trends data"""
+    query = MarketTrend.query
+    
+    # Apply filters if provided
+    if request.args.get('neighborhood'):
+        query = query.filter(MarketTrend.neighborhood == request.args.get('neighborhood'))
+    
+    if request.args.get('city'):
+        query = query.filter(MarketTrend.city == request.args.get('city'))
+    
+    if request.args.get('state'):
+        query = query.filter(MarketTrend.state == request.args.get('state'))
+    
+    if request.args.get('property_type'):
+        query = query.filter(MarketTrend.property_type == request.args.get('property_type'))
+    
+    # Get date range
+    if request.args.get('start_date'):
+        try:
+            start_date = datetime.fromisoformat(request.args.get('start_date')).date()
+            query = query.filter(MarketTrend.trend_date >= start_date)
+        except ValueError:
+            return jsonify({"error": "Invalid start_date format. Use ISO format (YYYY-MM-DD)"}), 400
+    
+    if request.args.get('end_date'):
+        try:
+            end_date = datetime.fromisoformat(request.args.get('end_date')).date()
+            query = query.filter(MarketTrend.trend_date <= end_date)
+        except ValueError:
+            return jsonify({"error": "Invalid end_date format. Use ISO format (YYYY-MM-DD)"}), 400
+    
+    trends = query.order_by(MarketTrend.trend_date).all()
+    
+    result = {
+        "total": len(trends),
+        "trends": []
+    }
+    
+    for trend in trends:
+        result["trends"].append({
+            "id": trend.id,
+            "neighborhood": trend.neighborhood,
+            "city": trend.city,
+            "state": trend.state,
+            "trend_date": trend.trend_date.isoformat(),
+            "median_price": trend.median_price,
+            "average_price": trend.average_price,
+            "price_per_sqft": trend.price_per_sqft,
+            "inventory_count": trend.inventory_count,
+            "days_on_market": trend.days_on_market,
+            "month_over_month": trend.month_over_month,
+            "year_over_year": trend.year_over_year,
+            "property_type": trend.property_type
+        })
+    
+    return jsonify(result)
+
+
+# Admin routes
+@admin_bp.route('/dashboard')
+@login_required
+@admin_required
+def dashboard():
+    """Admin dashboard route"""
+    user_count = User.query.count()
+    property_count = Property.query.count()
+    valuation_count = Valuation.query.count()
+    agent_count = Agent.query.count()
+    
+    # Get recent users
+    recent_users = User.query.order_by(User.created_at.desc()).limit(5).all()
+    
+    # Get recent valuations
+    recent_valuations = Valuation.query.order_by(Valuation.valuation_date.desc()).limit(5).all()
+    
+    # Get ETL jobs
+    etl_jobs = ETLJob.query.order_by(ETLJob.start_time.desc()).limit(5).all()
+    
+    return render_template('admin/dashboard.html', 
+                           user_count=user_count,
+                           property_count=property_count,
+                           valuation_count=valuation_count,
+                           agent_count=agent_count,
+                           recent_users=recent_users,
+                           recent_valuations=recent_valuations,
+                           etl_jobs=etl_jobs)
+
+
+@admin_bp.route('/users')
+@login_required
+@admin_required
+def users():
+    """Admin user management route"""
+    page = request.args.get('page', 1, type=int)
+    users = User.query.paginate(page=page, per_page=20)
+    return render_template('admin/users.html', users=users)
+
+
+@admin_bp.route('/users/<int:user_id>')
+@login_required
+@admin_required
+def user_detail(user_id):
+    """Admin user detail route"""
+    user = User.query.get_or_404(user_id)
+    return render_template('admin/user_detail.html', user=user)
+
+
+@admin_bp.route('/agents')
+@login_required
+@admin_required
+def agents():
+    """Admin agent management route"""
+    agents = Agent.query.all()
+    return render_template('admin/agents.html', agents=agents)
+
+
+@admin_bp.route('/agents/<int:agent_id>')
+@login_required
+@admin_required
+def agent_detail(agent_id):
+    """Admin agent detail route"""
+    agent = Agent.query.get_or_404(agent_id)
+    logs = AgentLog.query.filter_by(agent_id=agent_id).order_by(AgentLog.timestamp.desc()).limit(100).all()
+    return render_template('admin/agent_detail.html', agent=agent, logs=logs)
+
+
+@admin_bp.route('/etl_config')
+@login_required
+@admin_required
+def etl_config():
+    """Admin ETL configuration route"""
+    return render_template('admin/etl_config.html')
+
+
+@admin_bp.route('/settings')
+@login_required
+@admin_required
+def settings():
+    """Admin system settings route"""
+    return render_template('admin/settings.html')
+
+
+# Error handlers
+@error_bp.app_errorhandler(404)
+def handle_404(e):
+    """Handle 404 errors"""
     return render_template('errors/404.html'), 404
 
-@app.errorhandler(500)
-def internal_error(error):
-    """500 error handler."""
-    db.session.rollback()  # Roll back any failed database transaction
-    logger.error(f"Internal Server Error: {str(error)}")
+
+@error_bp.app_errorhandler(500)
+def handle_500(e):
+    """Handle 500 errors"""
     return render_template('errors/500.html'), 500

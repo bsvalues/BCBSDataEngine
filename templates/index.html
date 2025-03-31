@@ -1,141 +1,182 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="jumbotron bg-light p-5 rounded-3 mb-4">
-    <div class="container">
-        <h1 class="display-4">Welcome to BCBS Property Valuation</h1>
-        <p class="lead">An advanced real estate valuation platform powered by machine learning and comprehensive property analysis.</p>
-        <hr class="my-4">
-        <p>Use our valuation tools to get accurate property assessments, analyze real estate data, and gain valuable market insights.</p>
-        {% if current_user.is_authenticated %}
-        <a class="btn btn-primary btn-lg" href="{{ url_for('dashboard') }}" role="button">Go to Dashboard</a>
-        {% else %}
-        <a class="btn btn-primary btn-lg" href="{{ url_for('register') }}" role="button">Get Started</a>
-        <a class="btn btn-outline-secondary btn-lg ms-2" href="{{ url_for('login') }}" role="button">Login</a>
-        {% endif %}
+<!-- Hero Section -->
+<div class="bg-primary text-white py-5 mb-5 rounded-3 shadow">
+    <div class="container py-4">
+        <div class="row align-items-center">
+            <div class="col-lg-7">
+                <h1 class="display-4 fw-bold mb-3">Advanced Property Valuation</h1>
+                <p class="lead mb-4">Leverage cutting-edge AI and machine learning to accurately assess property values with comprehensive analytics and interactive visualizations.</p>
+                <div class="d-grid gap-2 d-md-flex justify-content-md-start">
+                    <a href="{{ url_for('auth.register') }}" class="btn btn-light btn-lg px-4 me-md-2">Get Started</a>
+                    <a href="{{ url_for('main.features') }}" class="btn btn-outline-light btn-lg px-4">Learn More</a>
+                </div>
+            </div>
+            <div class="col-lg-5 d-none d-lg-block">
+                <svg width="100%" height="300" viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Building Silhouette -->
+                    <rect x="100" y="100" width="400" height="250" fill="#0d6efd" stroke="white" stroke-width="3" opacity="0.2"/>
+                    <rect x="150" y="150" width="300" height="200" fill="#0d6efd" stroke="white" stroke-width="3" opacity="0.3"/>
+                    <rect x="200" y="200" width="200" height="150" fill="#0d6efd" stroke="white" stroke-width="3" opacity="0.4"/>
+                    
+                    <!-- Windows -->
+                    <rect x="130" y="130" width="40" height="40" fill="white" opacity="0.8"/>
+                    <rect x="200" y="130" width="40" height="40" fill="white" opacity="0.8"/>
+                    <rect x="270" y="130" width="40" height="40" fill="white" opacity="0.8"/>
+                    <rect x="340" y="130" width="40" height="40" fill="white" opacity="0.8"/>
+                    <rect x="410" y="130" width="40" height="40" fill="white" opacity="0.8"/>
+                    
+                    <rect x="130" y="200" width="40" height="40" fill="white" opacity="0.8"/>
+                    <rect x="410" y="200" width="40" height="40" fill="white" opacity="0.8"/>
+                    
+                    <rect x="130" y="270" width="40" height="40" fill="white" opacity="0.8"/>
+                    <rect x="410" y="270" width="40" height="40" fill="white" opacity="0.8"/>
+                    
+                    <!-- Door -->
+                    <rect x="270" y="280" width="60" height="70" fill="white" opacity="0.9"/>
+                    <rect x="290" y="310" width="5" height="10" fill="#0d6efd" opacity="0.9"/>
+                    
+                    <!-- Charts -->
+                    <g transform="translate(230, 250) scale(0.5)">
+                        <path d="M0,0 L0,100 L200,100" stroke="white" stroke-width="3" fill="none"/>
+                        <path d="M20,80 L50,60 L80,70 L110,30 L140,50 L170,20" stroke="white" stroke-width="3" fill="none"/>
+                        <circle cx="50" cy="60" r="5" fill="white"/>
+                        <circle cx="80" cy="70" r="5" fill="white"/>
+                        <circle cx="110" cy="30" r="5" fill="white"/>
+                        <circle cx="140" cy="50" r="5" fill="white"/>
+                        <circle cx="170" cy="20" r="5" fill="white"/>
+                    </g>
+                    
+                    <!-- Value Indicator -->
+                    <g transform="translate(250, 150)">
+                        <circle cx="50" cy="50" r="40" fill="none" stroke="white" stroke-width="3"/>
+                        <text x="50" y="55" font-family="Arial" font-size="24" fill="white" text-anchor="middle">$</text>
+                        <path d="M50,10 C80,10 80,90 50,90 C20,90 20,10 50,10" stroke="white" stroke-width="2" fill="none" opacity="0.5"/>
+                    </g>
+                </svg>
+            </div>
+        </div>
     </div>
 </div>
 
-<div class="container">
-    <div class="row mb-5">
-        <div class="col-md-4 mb-4">
-            <div class="card h-100">
+<!-- Key Features -->
+<div class="container mb-5">
+    <h2 class="text-center mb-5">Key Features</h2>
+    <div class="row g-4">
+        <div class="col-md-4">
+            <div class="card h-100 card-hover shadow-sm">
                 <div class="card-body text-center">
                     <div class="mb-3">
-                        <i class="fas fa-chart-line fa-4x text-primary"></i>
+                        <i class="fas fa-chart-line fa-3x text-primary"></i>
                     </div>
-                    <h3 class="card-title">Advanced Valuations</h3>
-                    <p class="card-text">Our platform uses multiple valuation methods including Enhanced Regression, LightGBM, and XGBoost to provide accurate property valuations with high confidence scores.</p>
+                    <h4 class="card-title">AI-Powered Valuations</h4>
+                    <p class="card-text">Advanced machine learning algorithms that analyze thousands of data points to deliver accurate property valuations.</p>
                 </div>
             </div>
         </div>
-        
-        <div class="col-md-4 mb-4">
-            <div class="card h-100">
+        <div class="col-md-4">
+            <div class="card h-100 card-hover shadow-sm">
                 <div class="card-body text-center">
                     <div class="mb-3">
-                        <i class="fas fa-map-marked-alt fa-4x text-primary"></i>
+                        <i class="fas fa-map-marked-alt fa-3x text-primary"></i>
                     </div>
-                    <h3 class="card-title">Geospatial Analysis</h3>
-                    <p class="card-text">Analyze properties by location with our built-in geospatial features. Get insights on neighborhood trends and property comparisons.</p>
+                    <h4 class="card-title">GIS Integration</h4>
+                    <p class="card-text">Sophisticated Geographic Information System integration providing spatial analysis and location-based insights.</p>
                 </div>
             </div>
         </div>
-        
-        <div class="col-md-4 mb-4">
-            <div class="card h-100">
+        <div class="col-md-4">
+            <div class="card h-100 card-hover shadow-sm">
                 <div class="card-body text-center">
                     <div class="mb-3">
-                        <i class="fas fa-code fa-4x text-primary"></i>
+                        <i class="fas fa-sliders-h fa-3x text-primary"></i>
                     </div>
-                    <h3 class="card-title">API Access</h3>
-                    <p class="card-text">Access our valuation services programmatically through our REST API. Generate API keys and integrate our platform with your applications.</p>
+                    <h4 class="card-title">What-If Analysis</h4>
+                    <p class="card-text">Interactive tools to simulate market changes and evaluate their impact on property valuations in real-time.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100 card-hover shadow-sm">
+                <div class="card-body text-center">
+                    <div class="mb-3">
+                        <i class="fas fa-code fa-3x text-primary"></i>
+                    </div>
+                    <h4 class="card-title">Comprehensive API</h4>
+                    <p class="card-text">Secure REST API with token-based authentication for programmatic access to valuation services and data.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100 card-hover shadow-sm">
+                <div class="card-body text-center">
+                    <div class="mb-3">
+                        <i class="fas fa-robot fa-3x text-primary"></i>
+                    </div>
+                    <h4 class="card-title">Valuation Agents</h4>
+                    <p class="card-text">Modular agent architecture with multiple specialized valuation models for different property types and scenarios.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card h-100 card-hover shadow-sm">
+                <div class="card-body text-center">
+                    <div class="mb-3">
+                        <i class="fas fa-file-alt fa-3x text-primary"></i>
+                    </div>
+                    <h4 class="card-title">Detailed Reports</h4>
+                    <p class="card-text">Comprehensive valuation reports with detailed breakdowns, comparables, and confidence metrics.</p>
                 </div>
             </div>
         </div>
     </div>
-    
-    <div class="row mb-5">
-        <div class="col-md-6 mb-4">
-            <div class="card h-100">
-                <div class="card-header">
-                    <h4 class="mb-0">Features</h4>
+</div>
+
+<!-- How It Works -->
+<div class="bg-light py-5 mb-5 rounded-3">
+    <div class="container">
+        <h2 class="text-center mb-5">How It Works</h2>
+        <div class="row">
+            <div class="col-md-3 text-center mb-4 mb-md-0">
+                <div class="bg-white rounded-circle mx-auto mb-3 d-flex align-items-center justify-content-center" style="width: 100px; height: 100px;">
+                    <i class="fas fa-database fa-3x text-primary"></i>
                 </div>
-                <div class="card-body">
-                    <ul class="list-group list-group-flush">
-                        <li class="list-group-item d-flex">
-                            <i class="fas fa-check-circle text-success me-3 mt-1"></i>
-                            <div>
-                                <strong>Multiple Valuation Models</strong>
-                                <p class="mb-0 text-muted">Choose from various models for different property types and scenarios.</p>
-                            </div>
-                        </li>
-                        <li class="list-group-item d-flex">
-                            <i class="fas fa-check-circle text-success me-3 mt-1"></i>
-                            <div>
-                                <strong>Batch Processing</strong>
-                                <p class="mb-0 text-muted">Process multiple properties at once with our efficient batch valuation system.</p>
-                            </div>
-                        </li>
-                        <li class="list-group-item d-flex">
-                            <i class="fas fa-check-circle text-success me-3 mt-1"></i>
-                            <div>
-                                <strong>Historical Tracking</strong>
-                                <p class="mb-0 text-muted">Monitor property value changes over time with our historical valuation tracking.</p>
-                            </div>
-                        </li>
-                        <li class="list-group-item d-flex">
-                            <i class="fas fa-check-circle text-success me-3 mt-1"></i>
-                            <div>
-                                <strong>Confidence Scores</strong>
-                                <p class="mb-0 text-muted">Each valuation includes a confidence score to help you assess its reliability.</p>
-                            </div>
-                        </li>
-                    </ul>
+                <h4>Data Collection</h4>
+                <p>Our ETL pipeline aggregates property data from multiple authoritative sources.</p>
+            </div>
+            <div class="col-md-3 text-center mb-4 mb-md-0">
+                <div class="bg-white rounded-circle mx-auto mb-3 d-flex align-items-center justify-content-center" style="width: 100px; height: 100px;">
+                    <i class="fas fa-cogs fa-3x text-primary"></i>
                 </div>
+                <h4>Processing</h4>
+                <p>AI agents analyze the data using advanced regression and machine learning techniques.</p>
+            </div>
+            <div class="col-md-3 text-center mb-4 mb-md-0">
+                <div class="bg-white rounded-circle mx-auto mb-3 d-flex align-items-center justify-content-center" style="width: 100px; height: 100px;">
+                    <i class="fas fa-calculator fa-3x text-primary"></i>
+                </div>
+                <h4>Valuation</h4>
+                <p>Properties are valued with high confidence scores and detailed metrics.</p>
+            </div>
+            <div class="col-md-3 text-center">
+                <div class="bg-white rounded-circle mx-auto mb-3 d-flex align-items-center justify-content-center" style="width: 100px; height: 100px;">
+                    <i class="fas fa-chart-bar fa-3x text-primary"></i>
+                </div>
+                <h4>Visualization</h4>
+                <p>Interactive dashboards present valuation data in meaningful ways.</p>
             </div>
         </div>
-        
-        <div class="col-md-6 mb-4">
-            <div class="card h-100">
-                <div class="card-header">
-                    <h4 class="mb-0">Getting Started</h4>
-                </div>
-                <div class="card-body">
-                    <ol class="list-group list-group-numbered mb-4">
-                        <li class="list-group-item d-flex">
-                            <div>
-                                <strong>Create an Account</strong>
-                                <p class="mb-0 text-muted">Register to access all valuation features and dashboard analytics.</p>
-                            </div>
-                        </li>
-                        <li class="list-group-item d-flex">
-                            <div>
-                                <strong>Add Properties</strong>
-                                <p class="mb-0 text-muted">Input property details manually or import them from supported formats.</p>
-                            </div>
-                        </li>
-                        <li class="list-group-item d-flex">
-                            <div>
-                                <strong>Generate Valuations</strong>
-                                <p class="mb-0 text-muted">Select a valuation method and run the analysis on your properties.</p>
-                            </div>
-                        </li>
-                        <li class="list-group-item d-flex">
-                            <div>
-                                <strong>Analyze Results</strong>
-                                <p class="mb-0 text-muted">View detailed reports, charts, and insights from your property valuations.</p>
-                            </div>
-                        </li>
-                    </ol>
-                    
-                    {% if not current_user.is_authenticated %}
-                    <div class="text-center">
-                        <a href="{{ url_for('register') }}" class="btn btn-primary">Create Account</a>
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
+    </div>
+</div>
+
+<!-- Call to Action -->
+<div class="container text-center mb-5">
+    <div class="card py-5 shadow">
+        <div class="card-body">
+            <h2 class="mb-3">Ready to Get Started?</h2>
+            <p class="lead mb-4">Create an account today and experience the power of advanced property valuation tools.</p>
+            <a href="{{ url_for('auth.register') }}" class="btn btn-primary btn-lg">Sign Up Now</a>
         </div>
     </div>
 </div>

@@ -1,25 +1,26 @@
 {
+  "name": "FlaskWebApp",
   "display": "Flask Web App",
-  "description": "Starts the BCBS Values Flask web application",
-  "icon": "server",
-  "colorIndex": 3,
-  "entrypoint": "start_webapp.py",
-  "ignorePorts": false,
-  "detached": true,
-  "terminalDarkTheme": true,
-  "showCommand": true,
-  "commands": ["python3 start_webapp.py"],
-  "interpreter": {
-    "type": "python3",
-    "module": {}
+  "description": "Start Flask Web Application",
+  "run": "python3 server.py",
+  "language": "python",
+  "onBoot": false,
+  "restartable": true,
+  "restart": "always",
+  "exclusive": true,
+  "permissions": {
+    "allowNetwork": true,
+    "allowFile": true,
+    "allowEnv": true
   },
+  "colorIndex": 1,
   "ports": [
     {
-      "internalPort": 5000,
-      "externalPort": 5000,
-      "description": "Web user interface",
-      "label": "WebApp",
-      "export": true
+      "port": 5000,
+      "description": "Flask Web App",
+      "label": "FlaskWebApp",
+      "export": true,
+      "internalPort": 5000
     }
   ]
 }

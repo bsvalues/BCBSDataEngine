@@ -1,15 +1,26 @@
 {
-  "commandInfo": "Start Node.js Server",
-  "startCommand": "node run.js",
-  "runOnBoot": true,
-  "autostart": true,
+  "name": "NodeServer",
+  "display": "Node.js Server",
+  "description": "Start Node.js Server",
+  "run": "node server.js",
+  "language": "nodejs",
+  "onBoot": false,
+  "restartable": true,
+  "restart": "always",
+  "exclusive": true,
+  "permissions": {
+    "allowNetwork": true,
+    "allowFile": true,
+    "allowEnv": true
+  },
+  "colorIndex": 2,
   "ports": [
     {
-      "port": 5002,
+      "port": 3000,
       "description": "Node.js Server",
       "label": "NodeServer",
       "export": true,
-      "internalPort": 5002
+      "internalPort": 3000
     }
   ]
 }

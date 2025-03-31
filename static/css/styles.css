@@ -1,391 +1,247 @@
+/* BCBS Values - Custom CSS Styles */
+
 /* 
- * BCBS Property Valuation - Custom Stylesheet
- * This file contains custom styles for the BCBS Property Valuation application.
+ * This stylesheet contains custom styling for the BCBS Values application
+ * It complements Bootstrap's default styling
  */
 
-/* General styles */
-:root {
-    --primary-color: #0d6efd;
-    --secondary-color: #6c757d;
-    --success-color: #198754;
-    --info-color: #0dcaf0;
-    --warning-color: #ffc107;
-    --danger-color: #dc3545;
-    --light-color: #f8f9fa;
-    --dark-color: #212529;
-}
-
+/* General Styles */
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background-color: #f8f9fa;
 }
 
-/* Custom card styling */
-.card {
-    border-radius: 0.5rem;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    transition: all 0.3s ease;
+.content-wrapper {
+    flex: 1;
 }
 
-.card:hover {
-    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
-    transform: translateY(-2px);
+.footer {
+    margin-top: auto;
+    padding: 1.5rem 0;
+    background-color: #343a40;
+    color: #fff;
 }
 
-.card-header {
-    font-weight: 600;
-    background-color: rgba(13, 110, 253, 0.05);
-}
-
-/* Dashboard stat cards */
-.stat-card {
-    height: 100%;
-    border-left: 4px solid var(--primary-color);
-}
-
-.stat-card .stat-icon {
-    font-size: 2.5rem;
-    opacity: 0.7;
-}
-
-.stat-card .stat-value {
-    font-size: 1.8rem;
+/* Navbar Styles */
+.navbar-brand {
     font-weight: 700;
 }
 
-.stat-card .stat-label {
-    color: var(--secondary-color);
-    font-size: 0.9rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+.navbar-brand .text-highlight {
+    color: #0d6efd;
 }
 
-.stat-card.primary {
-    border-left-color: var(--primary-color);
+/* Card Styles */
+.card {
+    border-radius: 0.5rem;
+    border: none;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
 }
 
-.stat-card.success {
-    border-left-color: var(--success-color);
+.card-header {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+    background-color: #fff;
+    border-top-left-radius: 0.5rem !important;
+    border-top-right-radius: 0.5rem !important;
 }
 
-.stat-card.info {
-    border-left-color: var(--info-color);
+.card-hover {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
-.stat-card.warning {
-    border-left-color: var(--warning-color);
+.card-hover:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
 }
 
-.stat-card.danger {
-    border-left-color: var(--danger-color);
+/* Button Styles */
+.btn {
+    border-radius: 0.35rem;
 }
 
-/* Property cards */
+.btn-primary {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.btn-primary:hover {
+    background-color: #0b5ed7;
+    border-color: #0a58ca;
+}
+
+/* Form Styles */
+.form-control {
+    border-radius: 0.35rem;
+}
+
+.form-control:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+/* Property Card Styles */
 .property-card {
-    height: 100%;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
-.property-card .property-type-badge {
+.property-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.property-img-container {
+    height: 200px;
+    overflow: hidden;
+    background-color: #e9ecef;
+}
+
+.property-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.property-badge {
     position: absolute;
     top: 10px;
     right: 10px;
 }
 
-.property-card .property-image {
-    height: 180px;
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-color: #e9ecef;
-    border-top-left-radius: 0.5rem;
-    border-top-right-radius: 0.5rem;
+/* Table Styles */
+.table-hover tbody tr:hover {
+    background-color: rgba(13, 110, 253, 0.075);
 }
 
-.property-card .property-price {
-    font-size: 1.4rem;
-    font-weight: 700;
-    color: var(--primary-color);
-}
-
-.property-card .property-address {
-    font-size: 1.1rem;
-    font-weight: 600;
-}
-
-.property-card .property-features {
-    font-size: 0.9rem;
-}
-
-.property-card .property-features i {
-    width: 16px;
-    text-align: center;
-    margin-right: 5px;
-}
-
-/* Agent status indicators */
-.status-indicator {
-    display: inline-block;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    margin-right: 5px;
-}
-
-.status-indicator.active {
-    background-color: var(--success-color);
-    box-shadow: 0 0 5px var(--success-color);
-}
-
-.status-indicator.idle {
-    background-color: var(--warning-color);
-    box-shadow: 0 0 5px var(--warning-color);
-}
-
-.status-indicator.error {
-    background-color: var(--danger-color);
-    box-shadow: 0 0 5px var(--danger-color);
-}
-
-.status-indicator.processing {
-    background-color: var(--info-color);
-    box-shadow: 0 0 5px var(--info-color);
-}
-
-.status-indicator.completed {
-    background-color: var(--success-color);
-    box-shadow: 0 0 5px var(--success-color);
-}
-
-.status-indicator.queued {
-    background-color: var(--secondary-color);
-    box-shadow: 0 0 5px var(--secondary-color);
-}
-
-/* Progress bars */
-.progress-thin {
-    height: 6px;
-    margin-bottom: 5px;
-}
-
-/* Chart containers */
-.chart-container {
-    position: relative;
-    height: 270px;
-    width: 100%;
-}
-
-/* Log level colors */
-.log-info {
-    border-left: 4px solid var(--info-color);
-}
-
-.log-warning {
-    border-left: 4px solid var(--warning-color);
-}
-
-.log-error {
-    border-left: 4px solid var(--danger-color);
-}
-
-/* API key styling */
-.api-key {
-    font-family: 'Courier New', Courier, monospace;
-    background-color: var(--light-color);
-    padding: 0.5rem;
-    border-radius: 0.25rem;
-    overflow-x: auto;
-    white-space: nowrap;
-}
-
-/* Valuation methods */
-.method-badge {
-    display: inline-block;
-    padding: 0.25rem 0.5rem;
-    border-radius: 0.25rem;
-    font-size: 0.8rem;
-    font-weight: 600;
-}
-
-.method-enhanced_regression {
-    background-color: #e3f2fd;
-    color: #0d47a1;
-}
-
-.method-lightgbm {
-    background-color: #e0f7fa;
-    color: #006064;
-}
-
-.method-xgboost {
-    background-color: #e8f5e9;
-    color: #1b5e20;
-}
-
-.method-linear_regression {
-    background-color: #f3e5f5;
-    color: #4a148c;
-}
-
-.method-ridge_regression {
-    background-color: #fff3e0;
-    color: #e65100;
-}
-
-.method-lasso_regression {
-    background-color: #ffebee;
-    color: #b71c1c;
-}
-
-.method-elastic_net {
-    background-color: #fffde7;
-    color: #f57f17;
-}
-
-/* Custom pagination */
-.page-item.active .page-link {
-    background-color: var(--primary-color);
-    border-color: var(--primary-color);
-}
-
-.page-link {
-    color: var(--primary-color);
-}
-
-/* Responsive adjustments */
-@media (max-width: 992px) {
-    .stat-card .stat-value {
-        font-size: 1.5rem;
-    }
-    
-    .stat-card .stat-icon {
-        font-size: 2rem;
-    }
-    
-    .chart-container {
-        height: 220px;
-    }
-}
-
-@media (max-width: 768px) {
-    .stat-card {
-        margin-bottom: 1rem;
-    }
-    
-    .chart-container {
-        height: 180px;
-    }
-}
-
-/* Custom animations */
-@keyframes pulse {
-    0% {
-        transform: scale(1);
-    }
-    50% {
-        transform: scale(1.05);
-    }
-    100% {
-        transform: scale(1);
-    }
-}
-
-.animate-pulse {
-    animation: pulse 2s infinite;
-}
-
-/* Custom utilities */
-.cursor-pointer {
-    cursor: pointer;
-}
-
-.border-dashed {
-    border-style: dashed !important;
-}
-
-/* Property detail page */
-.property-detail-header {
-    background-color: rgba(13, 110, 253, 0.05);
-    padding: 1.5rem;
+/* Dashboard Specific Styles */
+.stats-card {
     border-radius: 0.5rem;
-    margin-bottom: 1.5rem;
+    overflow: hidden;
+    transition: transform 0.3s ease;
 }
 
-.property-detail-header h1 {
-    margin-bottom: 0.5rem;
+.stats-card:hover {
+    transform: translateY(-5px);
 }
 
-.property-detail-section {
-    margin-bottom: 2rem;
-}
-
-.property-map {
-    height: 300px;
-    background-color: #e9ecef;
-    border-radius: 0.5rem;
-    margin-bottom: 1rem;
-}
-
-.valuation-history-item {
-    border-left: 3px solid var(--primary-color);
-    padding-left: 1rem;
-    margin-bottom: 1.5rem;
+.activity-timeline .timeline-item {
     position: relative;
+    padding-left: 45px;
+    margin-bottom: 20px;
 }
 
-.valuation-history-item::before {
+.activity-timeline .timeline-item:before {
     content: "";
     position: absolute;
-    left: -7px;
+    left: 22px;
     top: 0;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background-color: var(--primary-color);
-}
-
-.valuation-history-item .date {
-    font-size: 0.9rem;
-    color: var(--secondary-color);
-}
-
-.valuation-history-item .price {
-    font-size: 1.2rem;
-    font-weight: 700;
-    color: var(--dark-color);
-}
-
-.valuation-history-item .method {
-    font-size: 0.9rem;
-}
-
-.confidence-indicator {
-    display: inline-block;
-    width: 100%;
-    height: 6px;
+    height: 100%;
+    width: 2px;
     background-color: #e9ecef;
-    border-radius: 3px;
+}
+
+.activity-timeline .timeline-item:last-child:before {
+    display: none;
+}
+
+.activity-timeline .timeline-icon {
+    position: absolute;
+    left: 10px;
+    top: 0;
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+}
+
+/* Agent Card Styles */
+.agent-card {
+    border-radius: 0.5rem;
+    overflow: hidden;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.agent-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.agent-status-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 5px;
+}
+
+.agent-status-indicator.active {
+    background-color: #28a745;
+}
+
+.agent-status-indicator.idle {
+    background-color: #6c757d;
+}
+
+.agent-status-indicator.error {
+    background-color: #dc3545;
+}
+
+/* Login and Register Page Styles */
+.auth-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: calc(100vh - 200px);
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 450px;
+    border-radius: 0.5rem;
     overflow: hidden;
 }
 
-.confidence-indicator .confidence-level {
-    height: 100%;
-    background-color: var(--success-color);
-}
-
-/* Error pages */
-.error-container {
-    text-align: center;
-    padding: 3rem 0;
-}
-
-.error-code {
-    font-size: 6rem;
-    font-weight: 700;
-    color: var(--primary-color);
-    margin-bottom: 1rem;
-}
-
-.error-message {
-    font-size: 1.5rem;
-    color: var(--secondary-color);
+/* Property Detail Page Styles */
+.property-detail-header {
+    background-color: #f8f9fa;
+    border-radius: 0.5rem;
+    padding: 2rem;
     margin-bottom: 2rem;
+}
+
+.property-feature-item {
+    padding: 1rem;
+    border-radius: 0.5rem;
+    background-color: #f8f9fa;
+    margin-bottom: 1rem;
+    transition: transform 0.3s ease;
+}
+
+.property-feature-item:hover {
+    transform: translateY(-5px);
+}
+
+.valuation-history-item {
+    padding: 1rem;
+    border-left: 3px solid #0d6efd;
+    margin-bottom: 1rem;
+    background-color: #f8f9fa;
+    border-radius: 0 0.5rem 0.5rem 0;
+}
+
+/* Media Queries */
+@media (max-width: 768px) {
+    .property-detail-header {
+        padding: 1rem;
+    }
+    
+    .stats-card {
+        margin-bottom: 1rem;
+    }
 }

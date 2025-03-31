@@ -1,202 +1,188 @@
-"""
-Forms for BCBS Property Valuation application.
-Includes user authentication, property, and valuation forms.
-"""
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, BooleanField, SubmitField, SelectField
-from wtforms import FloatField, IntegerField, TextAreaField, HiddenField, DateField
-from wtforms.validators import DataRequired, Email, EqualTo, Length, Optional, NumberRange
-from wtforms.validators import ValidationError, Regexp
-from datetime import datetime
-
+from wtforms import StringField, PasswordField, EmailField, BooleanField, SubmitField
+from wtforms import TextAreaField, SelectField, FloatField, IntegerField, DateField
+from wtforms.validators import DataRequired, Email, EqualTo, Length, Optional, ValidationError
 from models import User
 
+
 class LoginForm(FlaskForm):
-    """User login form."""
-    username = StringField('Username', validators=[DataRequired()])
+    """Form for user login"""
+    email = EmailField('Email', validators=[DataRequired(), Email()])
     password = PasswordField('Password', validators=[DataRequired()])
-    remember_me = BooleanField('Remember Me')
-    submit = SubmitField('Sign In')
+    remember = BooleanField('Remember Me')
+    submit = SubmitField('Login')
 
 
 class RegistrationForm(FlaskForm):
-    """User registration form."""
+    """Form for user registration"""
     username = StringField('Username', validators=[
         DataRequired(),
-        Length(min=3, max=64, message="Username must be between 3 and 64 characters.")
+        Length(min=3, max=64, message="Username must be between 3 and 64 characters")
     ])
-    email = StringField('Email', validators=[
-        DataRequired(),
-        Email(message="Please enter a valid email address."),
-        Length(max=120)
-    ])
+    email = EmailField('Email', validators=[DataRequired(), Email()])
     password = PasswordField('Password', validators=[
         DataRequired(),
-        Length(min=8, message="Password must be at least 8 characters long."),
-        Regexp(r'^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]+$',
-               message="Password must include at least one letter, one number, and one special character.")
+        Length(min=8, message="Password must be at least 8 characters long")
     ])
-    password2 = PasswordField('Confirm Password', validators=[
+    confirm_password = PasswordField('Confirm Password', validators=[
         DataRequired(),
-        EqualTo('password', message="Passwords must match.")
+        EqualTo('password', message="Passwords must match")
     ])
+    first_name = StringField('First Name', validators=[Optional(), Length(max=64)])
+    last_name = StringField('Last Name', validators=[Optional(), Length(max=64)])
     submit = SubmitField('Register')
     
     def validate_username(self, username):
-        """Check if username already exists."""
+        """Validate that the username is unique"""
         user = User.query.filter_by(username=username.data).first()
-        if user is not None:
-            raise ValidationError('Username already in use. Please choose a different one.')
+        if user:
+            raise ValidationError('Username is already taken. Please choose a different one.')
     
     def validate_email(self, email):
-        """Check if email already exists."""
+        """Validate that the email is unique"""
         user = User.query.filter_by(email=email.data).first()
-        if user is not None:
-            raise ValidationError('Email address already registered. Please use a different one or login.')
-
-
-class PasswordResetRequestForm(FlaskForm):
-    """Form for requesting password reset."""
-    email = StringField('Email', validators=[DataRequired(), Email()])
-    submit = SubmitField('Request Password Reset')
-
-
-class PasswordResetForm(FlaskForm):
-    """Form for resetting password."""
-    password = PasswordField('New Password', validators=[
-        DataRequired(),
-        Length(min=8, message="Password must be at least 8 characters long."),
-        Regexp(r'^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]+$',
-               message="Password must include at least one letter, one number, and one special character.")
-    ])
-    password2 = PasswordField('Confirm New Password', validators=[
-        DataRequired(),
-        EqualTo('password', message="Passwords must match.")
-    ])
-    submit = SubmitField('Reset Password')
-
-
-class ApiKeyForm(FlaskForm):
-    """Form for creating a new API key."""
-    name = StringField('Key Name', validators=[
-        DataRequired(),
-        Length(min=3, max=64, message="Key name must be between 3 and 64 characters.")
-    ])
-    submit = SubmitField('Generate API Key')
-
-
-class PropertySearchForm(FlaskForm):
-    """Form for searching properties."""
-    query = StringField('Search', validators=[Optional()])
-    property_type = SelectField('Property Type', choices=[
-        ('', 'All Types'),
-        ('single_family', 'Single Family'),
-        ('condo', 'Condominium'),
-        ('townhouse', 'Townhouse'),
-        ('multi_family', 'Multi-Family'),
-        ('land', 'Land')
-    ], validators=[Optional()])
-    neighborhood = StringField('Neighborhood', validators=[Optional()])
-    min_price = FloatField('Min Price', validators=[Optional(), NumberRange(min=0)])
-    max_price = FloatField('Max Price', validators=[Optional(), NumberRange(min=0)])
-    min_bedrooms = IntegerField('Min Bedrooms', validators=[Optional(), NumberRange(min=0)])
-    min_bathrooms = FloatField('Min Bathrooms', validators=[Optional(), NumberRange(min=0)])
-    min_area = FloatField('Min Area (sq ft)', validators=[Optional(), NumberRange(min=0)])
-    submit = SubmitField('Search')
-    
-    def validate_max_price(self, max_price):
-        """Ensure max price is greater than min price if both provided."""
-        if self.min_price.data and max_price.data and self.min_price.data > max_price.data:
-            raise ValidationError('Maximum price must be greater than minimum price.')
+        if user:
+            raise ValidationError('Email is already registered. Please use a different one.')
 
 
 class PropertyForm(FlaskForm):
-    """Form for adding or editing a property."""
-    property_id = StringField('Property ID', validators=[
-        DataRequired(),
-        Length(min=5, max=64)
-    ])
-    address = StringField('Address', validators=[
-        DataRequired(),
-        Length(min=5, max=256)
-    ])
-    city = StringField('City', validators=[
-        DataRequired(),
-        Length(min=2, max=100)
-    ])
-    state = StringField('State', validators=[
-        DataRequired(),
-        Length(min=2, max=2)
-    ])
-    zip_code = StringField('ZIP Code', validators=[
-        DataRequired(),
-        Length(min=5, max=10)
-    ])
-    neighborhood = StringField('Neighborhood', validators=[Optional(), Length(max=128)])
+    """Form for adding or editing properties"""
+    address = StringField('Address', validators=[DataRequired(), Length(max=256)])
+    city = StringField('City', validators=[DataRequired(), Length(max=100)])
+    state = StringField('State', validators=[DataRequired(), Length(max=50)])
+    zip_code = StringField('ZIP Code', validators=[DataRequired(), Length(max=20)])
     property_type = SelectField('Property Type', choices=[
-        ('single_family', 'Single Family'),
-        ('condo', 'Condominium'),
-        ('townhouse', 'Townhouse'),
-        ('multi_family', 'Multi-Family'),
-        ('land', 'Land')
+        ('residential', 'Residential'),
+        ('commercial', 'Commercial'),
+        ('industrial', 'Industrial'),
+        ('land', 'Land'),
+        ('multi_family', 'Multi-Family')
     ], validators=[DataRequired()])
-    year_built = IntegerField('Year Built', validators=[
-        Optional(),
-        NumberRange(min=1800, max=datetime.now().year)
-    ])
-    bedrooms = IntegerField('Bedrooms', validators=[Optional(), NumberRange(min=0)])
-    bathrooms = FloatField('Bathrooms', validators=[Optional(), NumberRange(min=0)])
-    living_area = FloatField('Living Area (sq ft)', validators=[Optional(), NumberRange(min=0)])
-    land_area = FloatField('Land Area (acres)', validators=[Optional(), NumberRange(min=0)])
+    bedrooms = IntegerField('Bedrooms', validators=[Optional()])
+    bathrooms = FloatField('Bathrooms', validators=[Optional()])
+    square_feet = IntegerField('Square Feet', validators=[Optional()])
+    lot_size = FloatField('Lot Size (acres)', validators=[Optional()])
+    year_built = IntegerField('Year Built', validators=[Optional()])
+    last_sold_date = DateField('Last Sold Date', format='%Y-%m-%d', validators=[Optional()])
+    last_sold_price = FloatField('Last Sold Price ($)', validators=[Optional()])
     latitude = FloatField('Latitude', validators=[Optional()])
     longitude = FloatField('Longitude', validators=[Optional()])
+    neighborhood = StringField('Neighborhood', validators=[Optional(), Length(max=100)])
+    description = TextAreaField('Description', validators=[Optional()])
+    features = TextAreaField('Features', validators=[Optional()])
     submit = SubmitField('Save Property')
-    
-    def validate_property_id(self, property_id):
-        """Custom validation for property_id field."""
-        from models import Property
-        property_obj = Property.query.filter_by(property_id=property_id.data).first()
-        
-        # If this is a new property or the property_id hasn't changed
-        if hasattr(self, 'original_property_id') and property_obj and property_obj.property_id != self.original_property_id:
-            raise ValidationError('This Property ID is already in use. Please choose a different one.')
 
 
 class ValuationForm(FlaskForm):
-    """Form for creating a new property valuation."""
-    property_id = HiddenField('Property ID', validators=[DataRequired()])
+    """Form for requesting a property valuation"""
+    property_id = SelectField('Property', coerce=int, validators=[DataRequired()])
     valuation_method = SelectField('Valuation Method', choices=[
         ('enhanced_regression', 'Enhanced Regression'),
         ('lightgbm', 'LightGBM'),
         ('xgboost', 'XGBoost'),
-        ('linear_regression', 'Linear Regression'),
-        ('ridge_regression', 'Ridge Regression'),
-        ('lasso_regression', 'Lasso Regression'),
-        ('elastic_net', 'Elastic Net')
+        ('ensemble', 'Ensemble'),
+        ('gis_enhanced', 'GIS Enhanced')
     ], validators=[DataRequired()])
-    valuation_date = DateField('Valuation Date', validators=[DataRequired()], default=datetime.now)
-    notes = TextAreaField('Notes', validators=[Optional(), Length(max=500)])
-    submit = SubmitField('Calculate Valuation')
+    notes = TextAreaField('Notes', validators=[Optional()])
+    submit = SubmitField('Request Valuation')
 
 
-class BatchValuationForm(FlaskForm):
-    """Form for batch property valuation processing."""
+class AgentForm(FlaskForm):
+    """Form for adding or editing valuation agents"""
+    name = StringField('Agent Name', validators=[DataRequired(), Length(max=100)])
+    agent_type = SelectField('Agent Type', choices=[
+        ('regression', 'Regression'),
+        ('lightgbm', 'LightGBM'),
+        ('xgboost', 'XGBoost'),
+        ('ensemble', 'Ensemble'),
+        ('gis', 'GIS')
+    ], validators=[DataRequired()])
+    description = TextAreaField('Description', validators=[Optional()])
+    model_version = StringField('Model Version', validators=[Optional(), Length(max=50)])
+    configuration = TextAreaField('Configuration (JSON)', validators=[Optional()])
+    submit = SubmitField('Save Agent')
+
+
+class ApiKeyForm(FlaskForm):
+    """Form for creating or editing API keys"""
+    name = StringField('Key Name', validators=[DataRequired(), Length(max=100)])
+    permissions = SelectField('Permissions', choices=[
+        ('read', 'Read Only'),
+        ('read_write', 'Read & Write'),
+        ('full', 'Full Access')
+    ], validators=[DataRequired()])
+    submit = SubmitField('Generate API Key')
+
+
+class SearchForm(FlaskForm):
+    """Form for searching properties and valuations"""
+    query = StringField('Search', validators=[Optional()])
     property_type = SelectField('Property Type', choices=[
-        ('all', 'All Properties'),
-        ('single_family', 'Single Family'),
-        ('condo', 'Condominium'),
-        ('townhouse', 'Townhouse'),
-        ('multi_family', 'Multi-Family'),
-        ('land', 'Land')
-    ], validators=[DataRequired()])
-    neighborhood = StringField('Neighborhood (optional)', validators=[Optional()])
-    valuation_method = SelectField('Valuation Method', choices=[
-        ('enhanced_regression', 'Enhanced Regression'),
-        ('lightgbm', 'LightGBM'),
-        ('xgboost', 'XGBoost'),
-        ('linear_regression', 'Linear Regression'),
-        ('ridge_regression', 'Ridge Regression'),
-        ('lasso_regression', 'Lasso Regression'),
-        ('elastic_net', 'Elastic Net')
-    ], validators=[DataRequired()])
-    submit = SubmitField('Start Batch Valuation')
+        ('', 'All Types'),
+        ('residential', 'Residential'),
+        ('commercial', 'Commercial'),
+        ('industrial', 'Industrial'),
+        ('land', 'Land'),
+        ('multi_family', 'Multi-Family')
+    ], validators=[Optional()])
+    city = StringField('City', validators=[Optional(), Length(max=100)])
+    min_price = FloatField('Min Price', validators=[Optional()])
+    max_price = FloatField('Max Price', validators=[Optional()])
+    min_beds = IntegerField('Min Beds', validators=[Optional()])
+    min_baths = FloatField('Min Baths', validators=[Optional()])
+    min_sqft = IntegerField('Min Sq. Ft.', validators=[Optional()])
+    submit = SubmitField('Search')
+
+
+class ProfileForm(FlaskForm):
+    """Form for updating user profile"""
+    username = StringField('Username', validators=[
+        DataRequired(),
+        Length(min=3, max=64, message="Username must be between 3 and 64 characters")
+    ])
+    email = EmailField('Email', validators=[DataRequired(), Email()])
+    first_name = StringField('First Name', validators=[Optional(), Length(max=64)])
+    last_name = StringField('Last Name', validators=[Optional(), Length(max=64)])
+    submit = SubmitField('Update Profile')
+    
+    def __init__(self, original_username, original_email, *args, **kwargs):
+        super(ProfileForm, self).__init__(*args, **kwargs)
+        self.original_username = original_username
+        self.original_email = original_email
+    
+    def validate_username(self, username):
+        """Validate that the username is unique, except for the current user"""
+        if username.data != self.original_username:
+            user = User.query.filter_by(username=username.data).first()
+            if user:
+                raise ValidationError('Username is already taken. Please choose a different one.')
+    
+    def validate_email(self, email):
+        """Validate that the email is unique, except for the current user"""
+        if email.data != self.original_email:
+            user = User.query.filter_by(email=email.data).first()
+            if user:
+                raise ValidationError('Email is already registered. Please use a different one.')
+
+
+class ChangePasswordForm(FlaskForm):
+    """Form for changing password"""
+    current_password = PasswordField('Current Password', validators=[DataRequired()])
+    new_password = PasswordField('New Password', validators=[
+        DataRequired(),
+        Length(min=8, message="Password must be at least 8 characters long")
+    ])
+    confirm_new_password = PasswordField('Confirm New Password', validators=[
+        DataRequired(),
+        EqualTo('new_password', message="Passwords must match")
+    ])
+    submit = SubmitField('Change Password')
+
+
+class ContactForm(FlaskForm):
+    """Form for contact page"""
+    name = StringField('Name', validators=[DataRequired(), Length(max=100)])
+    email = EmailField('Email', validators=[DataRequired(), Email()])
+    subject = StringField('Subject', validators=[DataRequired(), Length(max=200)])
+    message = TextAreaField('Message', validators=[DataRequired()])
+    submit = SubmitField('Send Message')

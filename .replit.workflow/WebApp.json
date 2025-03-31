@@ -1,15 +1,15 @@
 {
-  "commandInfo": "Start Web Application",
-  "startCommand": "node run.js",
-  "runOnBoot": true,
-  "autostart": true,
-  "ports": [
-    {
-      "port": 5000,
-      "description": "Web user interface",
-      "label": "WebApp",
-      "export": true,
-      "internalPort": 5000
-    }
-  ]
+  "name": "WebApp",
+  "description": "Run the Flask web application",
+  "run": "python start_webapp.py",
+  "language": "python3",
+  "onBoot": false,
+  "restartable": true,
+  "restart": "always",
+  "exclusive": true,
+  "permissions": {
+    "allowNetwork": true,
+    "allowFile": true,
+    "allowEnv": true
+  }
 }

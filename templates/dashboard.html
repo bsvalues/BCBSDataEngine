@@ -1,110 +1,133 @@
 {% extends "base.html" %}
 
+{% block head %}
+<style>
+    .stats-card {
+        transition: transform 0.3s ease;
+    }
+    
+    .stats-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    .valuations-table tr {
+        cursor: pointer;
+    }
+    
+    .activity-timeline .timeline-item {
+        position: relative;
+        padding-left: 45px;
+        margin-bottom: 20px;
+    }
+    
+    .activity-timeline .timeline-item:before {
+        content: "";
+        position: absolute;
+        left: 22px;
+        top: 0;
+        height: 100%;
+        width: 2px;
+        background-color: #e9ecef;
+    }
+    
+    .activity-timeline .timeline-item:last-child:before {
+        display: none;
+    }
+    
+    .activity-timeline .timeline-icon {
+        position: absolute;
+        left: 10px;
+        top: 0;
+        width: 25px;
+        height: 25px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+    }
+    
+    .chart-container {
+        height: 250px;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1><i class="fas fa-chart-bar me-2"></i>Dashboard</h1>
     <div>
-        <a href="{{ url_for('properties') }}" class="btn btn-outline-primary me-2">
-            <i class="fas fa-home me-1"></i>View Properties
-        </a>
-        <a href="{{ url_for('batch_valuation') }}" class="btn btn-primary">
-            <i class="fas fa-calculator me-1"></i>Run Batch Valuation
-        </a>
+        <h1 class="mb-0">Dashboard</h1>
+        <p class="text-muted">Welcome back, {{ current_user.username }}!</p>
+    </div>
+    <div>
+        <button id="refreshDashboard" class="btn btn-outline-primary">
+            <i class="fas fa-sync-alt me-2"></i>Refresh Data
+        </button>
     </div>
 </div>
 
-<!-- Summary cards -->
+<!-- Summary Stats -->
 <div class="row mb-4">
-    <div class="col-md-3 col-sm-6 mb-3">
-        <div class="card stat-card primary">
-            <div class="card-body d-flex align-items-center">
-                <div class="stat-icon me-3">
-                    <i class="fas fa-home text-primary"></i>
-                </div>
-                <div>
-                    <div class="stat-value">{{ stats.total_properties }}</div>
-                    <div class="stat-label">Total Properties</div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-md-3 col-sm-6 mb-3">
-        <div class="card stat-card success">
-            <div class="card-body d-flex align-items-center">
-                <div class="stat-icon me-3">
-                    <i class="fas fa-chart-line text-success"></i>
-                </div>
-                <div>
-                    <div class="stat-value">{{ stats.total_valuations }}</div>
-                    <div class="stat-label">Total Valuations</div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-md-3 col-sm-6 mb-3">
-        <div class="card stat-card info">
-            <div class="card-body d-flex align-items-center">
-                <div class="stat-icon me-3">
-                    <i class="fas fa-robot text-info"></i>
-                </div>
-                <div>
-                    <div class="stat-value">{{ stats.active_agents }}</div>
-                    <div class="stat-label">Active Agents</div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-md-3 col-sm-6 mb-3">
-        <div class="card stat-card warning">
-            <div class="card-body d-flex align-items-center">
-                <div class="stat-icon me-3">
-                    <i class="fas fa-database text-warning"></i>
-                </div>
-                <div>
-                    <div class="stat-value">{{ (stats.etl_completeness * 100)|int }}%</div>
-                    <div class="stat-label">ETL Completeness</div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Charts and tables -->
-<div class="row mb-4">
-    <!-- Property type distribution -->
-    <div class="col-md-6 mb-4">
-        <div class="card h-100">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Property Type Distribution</h5>
-                <span class="badge bg-primary">{{ stats.total_properties }} Properties</span>
-            </div>
+    <div class="col-md-3">
+        <div class="card stats-card bg-primary text-white shadow">
             <div class="card-body">
-                <div class="chart-container">
-                    {% set property_type_labels = stats.property_types.keys()|list %}
-                    {% set property_type_values = stats.property_types.values()|list %}
-                    {% set property_type_data = {'labels': property_type_labels, 'values': property_type_values} %}
-                    <canvas id="property-type-chart" data-chart="{{ property_type_data|tojson }}"></canvas>
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title">Properties</h6>
+                        <h2 class="mb-0">{{ property_count }}</h2>
+                    </div>
+                    <i class="fas fa-building fa-3x opacity-50"></i>
+                </div>
+                <div class="mt-3">
+                    <a href="{{ url_for('main.properties') }}" class="text-white">View all properties<i class="fas fa-arrow-right ms-2"></i></a>
                 </div>
             </div>
         </div>
     </div>
-    
-    <!-- Valuation method distribution -->
-    <div class="col-md-6 mb-4">
-        <div class="card h-100">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Valuation Method Distribution</h5>
-                <span class="badge bg-primary">{{ stats.total_valuations }} Valuations</span>
-            </div>
+    <div class="col-md-3">
+        <div class="card stats-card bg-success text-white shadow">
             <div class="card-body">
-                <div class="chart-container">
-                    {% set valuation_method_labels = stats.valuation_methods.keys()|list %}
-                    {% set valuation_method_values = stats.valuation_methods.values()|list %}
-                    {% set valuation_method_data = {'labels': valuation_method_labels, 'values': valuation_method_values} %}
-                    <canvas id="valuation-method-chart" data-chart="{{ valuation_method_data|tojson }}"></canvas>
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title">Valuations</h6>
+                        <h2 class="mb-0">{{ valuation_count }}</h2>
+                    </div>
+                    <i class="fas fa-dollar-sign fa-3x opacity-50"></i>
+                </div>
+                <div class="mt-3">
+                    <a href="{{ url_for('main.valuations') }}" class="text-white">View all valuations<i class="fas fa-arrow-right ms-2"></i></a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stats-card bg-info text-white shadow">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title">Active Agents</h6>
+                        <h2 class="mb-0">{{ agent_count }}</h2>
+                    </div>
+                    <i class="fas fa-robot fa-3x opacity-50"></i>
+                </div>
+                <div class="mt-3">
+                    <a href="{{ url_for('main.agents') }}" class="text-white">View all agents<i class="fas fa-arrow-right ms-2"></i></a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stats-card bg-warning text-white shadow">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title">ETL Jobs</h6>
+                        <h2 class="mb-0">{{ etl_jobs|length }}</h2>
+                    </div>
+                    <i class="fas fa-sync fa-3x opacity-50"></i>
+                </div>
+                <div class="mt-3">
+                    <a href="{{ url_for('main.etl_jobs') }}" class="text-white">View all ETL jobs<i class="fas fa-arrow-right ms-2"></i></a>
                 </div>
             </div>
         </div>
@@ -112,127 +135,308 @@
 </div>
 
 <div class="row mb-4">
-    <!-- Neighborhood distribution -->
-    <div class="col-md-6 mb-4">
-        <div class="card h-100">
-            <div class="card-header">
-                <h5 class="mb-0">Properties by Neighborhood</h5>
+    <!-- Charts -->
+    <div class="col-md-8">
+        <div class="card shadow mb-4">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">Valuation Trends</h5>
             </div>
             <div class="card-body">
                 <div class="chart-container">
-                    {% set neighborhood_labels = stats.neighborhoods.keys()|list %}
-                    {% set neighborhood_values = stats.neighborhoods.values()|list %}
-                    {% set neighborhood_data = {'labels': neighborhood_labels, 'values': neighborhood_values} %}
-                    <canvas id="neighborhood-chart" data-chart="{{ neighborhood_data|tojson }}"></canvas>
+                    <canvas id="valuationTrends"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card shadow mb-4">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">Valuation Methods</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="valuationMethods"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card shadow mb-4">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">Property Types</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="propertyTypes"></canvas>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
     
-    <!-- Agent status -->
-    <div class="col-md-6 mb-4">
-        <div class="card h-100">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Agent Status</h5>
-                <a href="{{ url_for('agents') }}" class="btn btn-sm btn-outline-primary">View All</a>
+    <!-- Recent Valuations & Activity -->
+    <div class="col-md-4">
+        <div class="card shadow mb-4">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Recent Valuations</h5>
+                <a href="{{ url_for('main.valuations') }}" class="text-decoration-none">View All</a>
             </div>
-            <div class="card-body">
-                <div class="chart-container">
-                    {% set agent_status_labels = stats.agent_status.keys()|list %}
-                    {% set agent_status_values = stats.agent_status.values()|list %}
-                    {% set agent_status_data = {'labels': agent_status_labels, 'values': agent_status_values} %}
-                    <canvas id="agent-status-chart" data-chart="{{ agent_status_data|tojson }}"></canvas>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover valuations-table mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Property</th>
+                                <th>Value</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for valuation in recent_valuations %}
+                            <tr onclick="window.location='{{ url_for('main.property_detail', property_id=valuation.property_id) }}'">
+                                <td>
+                                    {% if valuation.property %}
+                                    {{ valuation.property.address }}
+                                    {% else %}
+                                    Unknown
+                                    {% endif %}
+                                </td>
+                                <td>${{ "%.0f"|format(valuation.estimated_value) }}</td>
+                                <td>{{ valuation.valuation_date.strftime('%m/%d/%Y') }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
-    </div>
-</div>
-
-<!-- Recent valuations -->
-<div class="card mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">Recent Valuations</h5>
-        <a href="{{ url_for('properties') }}" class="btn btn-sm btn-outline-primary">View All Properties</a>
-    </div>
-    <div class="card-body">
-        {% if recent_valuations %}
-        <div class="table-responsive">
-            <table class="table table-hover">
-                <thead>
-                    <tr>
-                        <th>Property</th>
-                        <th>Value</th>
-                        <th>Method</th>
-                        <th>Confidence</th>
-                        <th>Date</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for valuation in recent_valuations %}
-                    <tr>
-                        <td>
-                            <a href="{{ url_for('property_detail', property_id=valuation.property.id) }}" class="text-decoration-none">
-                                {{ valuation.property.address }}
-                            </a>
-                            <div class="small text-muted">
-                                {{ valuation.property.city }}, {{ valuation.property.state }} {{ valuation.property.zip_code }}
+        
+        <div class="card shadow">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">ETL Pipeline Status</h5>
+            </div>
+            <div class="card-body">
+                <div class="activity-timeline">
+                    {% for job in etl_jobs %}
+                    <div class="timeline-item">
+                        {% if job.status == 'completed' %}
+                        <div class="timeline-icon bg-success">
+                            <i class="fas fa-check-circle fa-sm"></i>
+                        </div>
+                        {% elif job.status == 'running' %}
+                        <div class="timeline-icon bg-primary">
+                            <i class="fas fa-spinner fa-sm"></i>
+                        </div>
+                        {% elif job.status == 'failed' %}
+                        <div class="timeline-icon bg-danger">
+                            <i class="fas fa-times-circle fa-sm"></i>
+                        </div>
+                        {% else %}
+                        <div class="timeline-icon bg-secondary">
+                            <i class="fas fa-clock fa-sm"></i>
+                        </div>
+                        {% endif %}
+                        
+                        <h6 class="mb-1">{{ job.job_type|title }} Job</h6>
+                        <div class="text-muted small">
+                            <div><i class="fas fa-database me-1"></i> Source: {{ job.source }}</div>
+                            <div>
+                                <i class="far fa-calendar-alt me-1"></i> 
+                                {% if job.start_time %}
+                                {{ job.start_time.strftime('%m/%d/%Y %H:%M') }}
+                                {% else %}
+                                N/A
+                                {% endif %}
                             </div>
-                        </td>
-                        <td class="fw-bold">${{ "{:,.0f}".format(valuation.estimated_value) }}</td>
-                        <td>
-                            <span class="method-badge method-{{ valuation.valuation_method }}">
-                                {{ valuation.valuation_method.replace('_', ' ').title() }}
-                            </span>
-                        </td>
-                        <td>
-                            <div class="confidence-indicator" data-value="{{ valuation.confidence_score }}">
-                                <div class="confidence-level"></div>
+                            
+                            {% if job.status == 'running' and job.total_records %}
+                            <div class="mt-2">
+                                <div class="progress" style="height: 8px;">
+                                    <div class="progress-bar bg-primary" role="progressbar" 
+                                         style="width: {{ (job.records_processed / job.total_records) * 100 }}%"
+                                         aria-valuenow="{{ (job.records_processed / job.total_records) * 100 }}" 
+                                         aria-valuemin="0" aria-valuemax="100"></div>
+                                </div>
+                                <div class="d-flex justify-content-between mt-1">
+                                    <small>{{ job.records_processed }} of {{ job.total_records }}</small>
+                                    <small>{{ ((job.records_processed / job.total_records) * 100)|round(1) }}%</small>
+                                </div>
                             </div>
-                            <div class="small text-center">{{ "%.1f"|format(valuation.confidence_score * 100) }}%</div>
-                        </td>
-                        <td>{{ valuation.valuation_date.strftime('%b %d, %Y') }}</td>
-                        <td>
-                            <a href="{{ url_for('property_detail', property_id=valuation.property.id) }}" class="btn btn-sm btn-outline-primary">
-                                <i class="fas fa-eye"></i>
-                            </a>
-                        </td>
-                    </tr>
+                            {% endif %}
+                        </div>
+                    </div>
                     {% endfor %}
-                </tbody>
-            </table>
+                </div>
+            </div>
         </div>
-        {% else %}
-        <div class="alert alert-info">
-            <i class="fas fa-info-circle me-2"></i>No recent valuations found. Start by adding properties and creating valuations.
-        </div>
-        {% endif %}
     </div>
 </div>
 
+<!-- Agent Status -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card shadow">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Agent Status</h5>
+                <a href="{{ url_for('main.agents') }}" class="text-decoration-none">View All</a>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    {% for agent in active_agents %}
+                    <div class="col-md-4 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <div class="d-flex align-items-center mb-3">
+                                    {% if agent.status == 'idle' %}
+                                    <div class="badge bg-secondary rounded-pill me-2">Idle</div>
+                                    {% elif agent.status == 'processing' %}
+                                    <div class="badge bg-primary rounded-pill me-2">Processing</div>
+                                    {% elif agent.status == 'error' %}
+                                    <div class="badge bg-danger rounded-pill me-2">Error</div>
+                                    {% endif %}
+                                    <h6 class="mb-0">{{ agent.name }}</h6>
+                                </div>
+                                <div class="small text-muted mb-3">
+                                    <div><i class="fas fa-tag me-1"></i> Type: {{ agent.agent_type }}</div>
+                                    <div><i class="fas fa-code-branch me-1"></i> Version: {{ agent.model_version }}</div>
+                                    <div><i class="far fa-clock me-1"></i> Last Active: 
+                                        {% if agent.last_active %}
+                                        {{ agent.last_active.strftime('%m/%d/%Y %H:%M') }}
+                                        {% else %}
+                                        Never
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="row text-center">
+                                    <div class="col-4">
+                                        <div class="h4 mb-0">{{ agent.processing_count }}</div>
+                                        <div class="small text-muted">Processed</div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="h4 mb-0">{{ agent.success_count }}</div>
+                                        <div class="small text-muted">Success</div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="h4 mb-0">{{ agent.error_count }}</div>
+                                        <div class="small text-muted">Errors</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Initialize confidence indicators
-        const confidenceIndicators = document.querySelectorAll('.confidence-indicator');
-        confidenceIndicators.forEach(function(indicator) {
-            const value = parseFloat(indicator.getAttribute('data-value'));
-            if (!isNaN(value)) {
-                const confidenceLevel = indicator.querySelector('.confidence-level');
-                if (confidenceLevel) {
-                    confidenceLevel.style.width = (value * 100) + '%';
-                    
-                    // Set color based on confidence level
-                    if (value >= 0.9) {
-                        confidenceLevel.style.backgroundColor = 'var(--success-color)';
-                    } else if (value >= 0.7) {
-                        confidenceLevel.style.backgroundColor = 'var(--info-color)';
-                    } else if (value >= 0.5) {
-                        confidenceLevel.style.backgroundColor = 'var(--warning-color)';
-                    } else {
-                        confidenceLevel.style.backgroundColor = 'var(--danger-color)';
+        // Refresh Dashboard Button
+        document.getElementById('refreshDashboard').addEventListener('click', function() {
+            location.reload();
+        });
+        
+        // Valuation Trends Chart
+        var trendCtx = document.getElementById('valuationTrends').getContext('2d');
+        var trendChart = new Chart(trendCtx, {
+            type: 'line',
+            data: {
+                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                datasets: [{
+                    label: 'Average Valuation',
+                    data: [850000, 870000, 920000, 905000, 950000, 980000],
+                    borderColor: '#0d6efd',
+                    tension: 0.1,
+                    fill: false
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    },
+                    title: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + value.toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Valuation Methods Chart
+        var methodsCtx = document.getElementById('valuationMethods').getContext('2d');
+        var methodsChart = new Chart(methodsCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Regression', 'Ensemble', 'GIS Enhanced', 'LightGBM', 'XGBoost'],
+                datasets: [{
+                    data: [30, 25, 15, 20, 10],
+                    backgroundColor: [
+                        '#0d6efd',
+                        '#6f42c1',
+                        '#20c997',
+                        '#fd7e14',
+                        '#dc3545'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                    }
+                }
+            }
+        });
+        
+        // Property Types Chart
+        var typesCtx = document.getElementById('propertyTypes').getContext('2d');
+        var typesChart = new Chart(typesCtx, {
+            type: 'bar',
+            data: {
+                labels: ['Residential', 'Commercial', 'Industrial', 'Land', 'Multi-Family'],
+                datasets: [{
+                    label: 'Count',
+                    data: [60, 15, 10, 8, 7],
+                    backgroundColor: [
+                        '#0d6efd',
+                        '#20c997',
+                        '#ffc107',
+                        '#dc3545',
+                        '#6f42c1'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true
                     }
                 }
             }
