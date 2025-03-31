@@ -729,30 +729,106 @@ class ValuationEngine:
     
     def normalize_features(self, features_df):
         """
-        Normalize features using the trained scaler.
+        Normalize features using the trained scaler with enhanced error handling.
         
         Parameters:
             features_df (pandas.DataFrame): Features to normalize
             
         Returns:
             pandas.DataFrame: Normalized features
+            dict: Status information about the normalization process
         """
-        if self.scaler is None:
-            self.logger.warning("No scaler available, initializing StandardScaler")
-            self.scaler = StandardScaler()
-            if not features_df.empty:
-                self.scaler.fit(features_df)
+        # Initialize status info
+        status = {
+            'success': True,
+            'error': None,
+            'features_normalized': [],
+            'features_skipped': []
+        }
         
+        # Handle empty dataframe
+        if features_df.empty:
+            self.logger.warning("Empty dataframe provided for normalization")
+            status['success'] = False
+            status['error'] = "Empty dataframe"
+            return features_df, status
+        
+        # Check for infinite or NaN values
+        has_inf = features_df.isin([np.inf, -np.inf]).any().any()
+        has_nan = features_df.isna().any().any()
+        
+        if has_inf or has_nan:
+            self.logger.warning(f"Data contains {'infinite values' if has_inf else ''}"
+                               f"{' and ' if has_inf and has_nan else ''}"
+                               f"{'NaN values' if has_nan else ''}")
+            
+            # Replace inf with large values and NaN with median
+            if has_inf:
+                self.logger.info("Replacing infinite values with large finite values")
+                features_df = features_df.replace([np.inf, -np.inf], [1e9, -1e9])
+            
+            if has_nan:
+                self.logger.info("Replacing NaN values with column medians")
+                features_df = features_df.fillna(features_df.median())
+                
+            # Update status
+            status['features_fixed'] = list(features_df.columns[features_df.isna().any() | 
+                                                  features_df.isin([np.inf, -np.inf]).any()])
+        
+        # Initialize scaler if needed
+        if self.scaler is None:
+            self.logger.info("Initializing StandardScaler for feature normalization")
+            self.scaler = StandardScaler()
+            self.scaler.fit(features_df)
+            
+        # Perform feature normalization with detailed error handling
         try:
             normalized = pd.DataFrame(
                 self.scaler.transform(features_df),
                 columns=features_df.columns,
                 index=features_df.index
             )
-            return normalized
+            
+            # Check normalization results
+            if normalized.isna().any().any():
+                self.logger.warning("Normalization produced NaN values, replacing with zeros")
+                normalized = normalized.fillna(0)
+                status['features_with_nan_after'] = list(normalized.columns[normalized.isna().any()])
+            
+            status['features_normalized'] = list(features_df.columns)
+            return normalized, status
+            
         except Exception as e:
-            self.logger.error(f"Error normalizing features: {e}")
-            return features_df  # Return original if normalization fails
+            self.logger.error(f"Error normalizing features: {str(e)}")
+            status['success'] = False
+            status['error'] = str(e)
+            
+            # Try column-by-column normalization as fallback
+            self.logger.info("Attempting column-by-column normalization as fallback")
+            normalized = features_df.copy()
+            
+            for col in features_df.columns:
+                try:
+                    # Skip string/categorical columns
+                    if features_df[col].dtype == 'object':
+                        status['features_skipped'].append(col)
+                        continue
+                        
+                    # Get column data as 2D array for scaler
+                    col_data = features_df[[col]]
+                    col_scaler = StandardScaler()
+                    normalized[col] = col_scaler.fit_transform(col_data).flatten()
+                    status['features_normalized'].append(col)
+                except Exception as col_err:
+                    self.logger.warning(f"Could not normalize column {col}: {str(col_err)}")
+                    status['features_skipped'].append(col)
+            
+            if status['features_normalized']:
+                self.logger.info(f"Partial normalization successful for {len(status['features_normalized'])} features")
+                return normalized, status
+            else:
+                self.logger.error("All normalization attempts failed, returning original data")
+                return features_df, status
     
     def preprocess_property_data(self, property_data):
         """
@@ -787,6 +863,14 @@ class AdvancedValuationEngine(ValuationEngine):
     This class extends the base ValuationEngine to provide enhanced valuation capabilities
     using multiple regression techniques and spatial analysis. It incorporates GIS features,
     performs feature normalization, and provides detailed model metrics.
+    
+    Features:
+    - Multiple regression model types (linear, ridge, lasso, GBM, LightGBM, ensemble)
+    - Automatic model selection based on performance metrics
+    - Advanced feature engineering and normalization
+    - Integration with GIS data for spatial adjustments
+    - Detailed model comparison and evaluation metrics
+    - Comprehensive result reporting with model strengths and insights
     
     Attributes:
         regression_model (object): Trained multiple regression model
@@ -1138,7 +1222,7 @@ class AdvancedValuationEngine(ValuationEngine):
     
     def train_lightgbm_model(self, X_train, X_test, y_train, y_test, selected_feature_names):
         """
-        Train a LightGBM model for property valuation.
+        Train a LightGBM model for property valuation with enhanced metrics and hyperparameter tuning.
         
         Parameters:
             X_train (pandas.DataFrame): Training features
@@ -1151,57 +1235,123 @@ class AdvancedValuationEngine(ValuationEngine):
             tuple: (fitted model, model type string, performance metrics dictionary)
         """
         try:
-            self.logger.info("Training LightGBM model")
+            start_time = time.time()
+            self.logger.info("Training LightGBM model with enhanced configuration")
             
             # Create LightGBM datasets
             lgb_train = lgb.Dataset(X_train, y_train)
             lgb_eval = lgb.Dataset(X_test, y_test, reference=lgb_train)
             
-            # Parameters for LightGBM
-            params = {
-                'boosting_type': 'gbdt',
-                'objective': 'regression',
-                'metric': {'l2', 'l1'},
-                'num_leaves': 31,
-                'learning_rate': 0.05,
-                'feature_fraction': 0.9,
-                'bagging_fraction': 0.8,
-                'bagging_freq': 5,
-                'verbose': 0
-            }
+            # Find optimal hyperparameters based on dataset size
+            if X_train.shape[0] < 100:  # Small dataset
+                self.logger.info("Small dataset detected - optimizing hyperparameters for small data")
+                params = {
+                    'boosting_type': 'gbdt',
+                    'objective': 'regression',
+                    'metric': ['l2', 'l1'],
+                    'num_leaves': 15,  # Smaller tree to prevent overfitting
+                    'learning_rate': 0.1,
+                    'feature_fraction': 0.8,
+                    'bagging_fraction': 0.8,
+                    'bagging_freq': 5,
+                    'min_data_in_leaf': 3,  # Allow smaller leaf nodes
+                    'lambda_l1': 0.1,  # L1 regularization
+                    'lambda_l2': 0.1,  # L2 regularization
+                    'verbose': -1
+                }
+                num_boost_round = 300
+            else:  # Larger dataset
+                self.logger.info("Sufficient data for standard hyperparameters")
+                params = {
+                    'boosting_type': 'gbdt',
+                    'objective': 'regression',
+                    'metric': ['l2', 'l1'],
+                    'num_leaves': 31,
+                    'learning_rate': 0.05,
+                    'feature_fraction': 0.9,
+                    'bagging_fraction': 0.8,
+                    'bagging_freq': 5,
+                    'min_data_in_leaf': 10,
+                    'verbose': -1
+                }
+                num_boost_round = 500
             
-            # Train LightGBM model
+            # Set up callback for evaluation
+            evaluation_results = {}
+            
+            # Train LightGBM model with early stopping
             gbm = lgb.train(
                 params,
                 lgb_train,
-                num_boost_round=500,
+                num_boost_round=num_boost_round,
                 valid_sets=[lgb_train, lgb_eval],
+                valid_names=['train', 'validation'],
                 early_stopping_rounds=50,
+                evals_result=evaluation_results,
                 verbose_eval=False
             )
+            
+            # Record training time
+            training_time = time.time() - start_time
             
             # Make predictions on test set
             y_pred = gbm.predict(X_test, num_iteration=gbm.best_iteration)
             
-            # Calculate metrics
+            # Calculate comprehensive metrics
             r2 = r2_score(y_test, y_pred)
+            r2_train = r2_score(y_train, gbm.predict(X_train, num_iteration=gbm.best_iteration))
+            adj_r2 = 1 - (1 - r2) * (len(y_test) - 1) / (len(y_test) - X_test.shape[1] - 1)
             mae = mean_absolute_error(y_test, y_pred)
             rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+            
+            # Calculate mean absolute percentage error with protection against zero values
+            non_zero_mask = y_test != 0
+            if np.any(non_zero_mask):
+                mape = np.mean(np.abs((y_test[non_zero_mask] - y_pred[non_zero_mask]) / y_test[non_zero_mask])) * 100
+            else:
+                mape = float('nan')
             
             # Get feature importances
             importances = gbm.feature_importance(importance_type='gain')
             feature_importances = {selected_feature_names[i]: importances[i] for i in range(len(selected_feature_names))}
             
-            self.logger.info(f"LightGBM model trained successfully with R² = {r2:.4f}")
+            # Calculate overfitting metrics (difference between train and test performance)
+            r2_diff = r2_train - r2
+            overfitting_score = r2_diff / r2_train if r2_train > 0 else 0
             
-            return gbm, "LightGBM", {
+            self.logger.info(f"LightGBM model trained successfully with R² = {r2:.4f}, Adj R² = {adj_r2:.4f}")
+            self.logger.info(f"Training completed in {training_time:.2f} seconds with {gbm.best_iteration} iterations")
+            
+            if overfitting_score > 0.2:
+                self.logger.warning(f"Potential overfitting detected: Train R² = {r2_train:.4f}, Test R² = {r2:.4f}")
+            
+            # Create a comprehensive metrics dictionary
+            metrics = {
                 'r_squared': r2,
+                'r_squared_train': r2_train,
+                'adjusted_r_squared': adj_r2,
                 'mean_absolute_error': mae,
                 'root_mean_squared_error': rmse,
-                'feature_importances': feature_importances
+                'mean_absolute_percentage_error': mape,
+                'training_time': training_time,
+                'iterations': gbm.best_iteration,
+                'feature_importances': feature_importances,
+                'overfitting_metrics': {
+                    'r_squared_diff': r2_diff,
+                    'overfitting_score': overfitting_score
+                },
+                'learning_curve': {
+                    'training': evaluation_results['train']['l2'],
+                    'validation': evaluation_results['validation']['l2']
+                }
             }
+            
+            return gbm, "LightGBM", metrics
         except Exception as e:
-            self.logger.error(f"Error training LightGBM model: {e}")
+            self.logger.error(f"Error training LightGBM model: {str(e)}")
+            # Include traceback for better debugging
+            import traceback
+            self.logger.debug(f"LightGBM training error traceback: {traceback.format_exc()}")
             return None, "LightGBM (Failed)", {'error': str(e)}
     
     def train_xgboost_model(self, X_train, X_test, y_train, y_test, selected_feature_names):
@@ -1724,6 +1874,162 @@ class AdvancedValuationEngine(ValuationEngine):
             self.logger.error(f"Error preparing features for prediction: {e}")
             # Return a default feature vector if preparation fails
             return [1500, 3, 2, 15, 8000, 1, 3, 3]
+            
+    def _extract_model_strengths(self, model_info):
+        """
+        Extract key strengths and characteristics from the best model.
+        
+        Parameters:
+        -----------
+        model_info : dict
+            Dictionary containing information about the model
+            
+        Returns:
+        --------
+        dict
+            Dictionary of model strengths and characteristics
+        """
+        strengths = {}
+        model_type = model_info.get('model_type')
+        
+        if model_type == 'linear':
+            strengths['interpretability'] = 'High - Coefficients directly show feature impact'
+            strengths['feature_impact'] = 'Explicit through coefficients'
+            strengths['prediction_speed'] = 'Very fast'
+            strengths['training_speed'] = 'Very fast'
+            strengths['best_for'] = 'Properties with prices that vary linearly with features'
+            
+        elif model_type == 'ridge':
+            strengths['interpretability'] = 'Good - Regularized coefficients show feature impact'
+            strengths['feature_impact'] = 'Explicit through regularized coefficients'
+            strengths['prediction_speed'] = 'Very fast'
+            strengths['training_speed'] = 'Fast'
+            strengths['best_for'] = 'Properties with correlated features'
+            
+        elif model_type == 'lasso':
+            strengths['interpretability'] = 'Good - Performs automatic feature selection'
+            strengths['feature_impact'] = 'Sparse coefficients highlight most important features'
+            strengths['prediction_speed'] = 'Very fast'
+            strengths['training_speed'] = 'Fast'
+            strengths['best_for'] = 'Datasets with many features where simplicity is preferred'
+            
+        elif model_type == 'gbr':
+            strengths['interpretability'] = 'Medium - Feature importances provide insight'
+            strengths['feature_impact'] = 'Through feature importance values'
+            strengths['prediction_speed'] = 'Medium'
+            strengths['training_speed'] = 'Medium'
+            strengths['best_for'] = 'Complex, non-linear property value relationships'
+            
+        elif model_type == 'lightgbm':
+            strengths['interpretability'] = 'Medium - Feature importances provide insight'
+            strengths['feature_impact'] = 'Detailed feature importance with gain, split, and weight metrics'
+            strengths['prediction_speed'] = 'Fast for a tree-based model'
+            strengths['training_speed'] = 'Faster than traditional GBM'
+            strengths['best_for'] = 'Large datasets with complex non-linear relationships and interactions'
+            
+        elif model_type == 'ensemble':
+            strengths['interpretability'] = 'Low - Complex combination of multiple models'
+            strengths['feature_impact'] = 'Through combined model impact'
+            strengths['prediction_speed'] = 'Medium'
+            strengths['training_speed'] = 'Slow - Requires training multiple models'
+            strengths['best_for'] = 'Maximizing prediction accuracy when interpretability is less important'
+            
+        else:
+            strengths['interpretability'] = 'Unknown'
+            strengths['feature_impact'] = 'Unknown'
+            strengths['best_for'] = 'Unknown'
+        
+        # Add model-specific notes
+        strengths['model_notes'] = model_info.get('model_notes', [])
+        
+        # Add overfitting assessment if available
+        overfitting = model_info.get('overfitting_metrics', {})
+        if overfitting and 'r_squared_diff' in overfitting:
+            r2_diff = overfitting.get('r_squared_diff', 0)
+            if r2_diff > 0.2:
+                strengths['overfitting_assessment'] = 'High risk - Model performs significantly better on training data'
+            elif r2_diff > 0.1:
+                strengths['overfitting_assessment'] = 'Medium risk - Some gap between training and test performance'
+            else:
+                strengths['overfitting_assessment'] = 'Low risk - Model generalizes well to unseen data'
+        
+        return strengths
+        
+    def _generate_model_comparison_summary(self, models_compared):
+        """
+        Generate a human-readable summary of the model comparison results.
+        
+        Parameters:
+        -----------
+        models_compared : dict
+            Dictionary of model comparison results
+            
+        Returns:
+        --------
+        dict
+            Summary of model comparison
+        """
+        if not models_compared or len(models_compared) < 2:
+            return {'summary': 'Insufficient models to generate comparison'}
+        
+        # Extract key metrics for each model
+        comparison_data = []
+        
+        for model_name, metrics in models_compared.items():
+            comparison_data.append({
+                'model_type': model_name,
+                'r_squared': metrics.get('r_squared', 0),
+                'rmse': metrics.get('rmse', float('inf')),
+                'training_time': metrics.get('training_time', 0),
+                'prediction_time': metrics.get('prediction_time', 0)
+            })
+        
+        # Sort by R² (descending)
+        comparison_data.sort(key=lambda x: x['r_squared'], reverse=True)
+        
+        # Generate ranking by different metrics
+        r2_ranking = sorted(comparison_data, key=lambda x: x['r_squared'], reverse=True)
+        rmse_ranking = sorted(comparison_data, key=lambda x: x['rmse'])
+        speed_ranking = sorted(comparison_data, key=lambda x: x['training_time'])
+        
+        # Create human-readable summary
+        best_model = r2_ranking[0]['model_type']
+        best_r2 = r2_ranking[0]['r_squared']
+        best_rmse = rmse_ranking[0]['model_type']
+        fastest_model = speed_ranking[0]['model_type']
+        
+        # Find the biggest difference in R² between models
+        r2_diff = r2_ranking[0]['r_squared'] - r2_ranking[-1]['r_squared']
+        
+        # Determine if there's a clear winner
+        if r2_diff > 0.05:  # More than 5% difference in R²
+            winner_note = f"Clear winner: {best_model} outperforms others by {r2_diff*100:.1f}% R²"
+        else:
+            winner_note = "Multiple models perform similarly (within 5% R²)"
+        
+        # Calculate performance tradeoffs
+        tradeoffs = []
+        
+        if best_model != fastest_model:
+            fastest_r2 = next(m['r_squared'] for m in comparison_data if m['model_type'] == fastest_model)
+            time_diff = next(m['training_time'] for m in comparison_data if m['model_type'] == best_model) - \
+                      next(m['training_time'] for m in comparison_data if m['model_type'] == fastest_model)
+            r2_diff = best_r2 - fastest_r2
+            
+            if r2_diff < 0.02 and time_diff > 0:  # Less than 2% R² difference, but notably slower
+                tradeoffs.append(f"{fastest_model} is {time_diff:.2f}s faster with only {r2_diff*100:.1f}% lower R²")
+        
+        # Format into structured summary
+        summary = {
+            'overview': winner_note,
+            'best_model_by_r2': f"{best_model} (R² = {best_r2:.4f})",
+            'best_model_by_rmse': f"{best_rmse} (RMSE = {rmse_ranking[0]['rmse']:.2f})",
+            'fastest_model': f"{fastest_model} ({speed_ranking[0]['training_time']:.2f}s)",
+            'comparison_table': comparison_data,
+            'tradeoffs': tradeoffs
+        }
+        
+        return summary
 
 
 # GIS Feature Engine for spatial analysis and adjustments
@@ -2054,10 +2360,11 @@ def advanced_property_valuation(property_data, target_property=None, **kwargs):
 def estimate_property_value(property_data, target_property=None, test_size=0.2, random_state=42,
                        gis_data=None, ref_points=None, neighborhood_ratings=None, use_gis_features=True,
                        use_multiple_regression=True, include_advanced_metrics=True, gis_adjustment_factor=None,
-                       model_type='linear', feature_selection_method='all', regularization_strength=0.01,
+                       model_type='auto', feature_selection_method='all', regularization_strength=0.01,
                        spatial_adjustment_method='multiplicative', confidence_interval_level=0.95,
                        handle_outliers=True, handle_missing_values=True, cross_validation_folds=5,
-                       use_polynomial_features=False, polynomial_degree=2):
+                       use_polynomial_features=False, polynomial_degree=2, normalize_features=True,
+                       compare_models=True):
     """
     Estimates property value using advanced regression techniques with enhanced GIS integration.
     
@@ -2102,9 +2409,10 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
     gis_adjustment_factor : float, optional
         Direct multiplier for GIS-based adjustments to valuations.
     
-    model_type : str, default='linear'
+    model_type : str, default='auto'
         Type of regression model to use. Options:
-        - 'linear': Standard OLS linear regression (default)
+        - 'auto': Automatically compare and select the best model (default)
+        - 'linear': Standard OLS linear regression
         - 'ridge': Ridge regression with L2 regularization
         - 'lasso': Lasso regression with L1 regularization
         - 'elastic_net': Elastic Net combining L1 and L2 regularization
@@ -2145,6 +2453,13 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
         
     polynomial_degree : int, default=2
         Degree of polynomial features if use_polynomial_features is True.
+        
+    normalize_features : bool, default=True
+        Whether to normalize all input features before model training.
+        
+    compare_models : bool, default=True
+        Whether to compare performance of multiple models and select the best one.
+        Only applies when model_type='auto'.
     
     Returns:
     --------
@@ -2163,6 +2478,8 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
         - spatial_factors: Information about spatial adjustments applied
         - prediction_std_error: Standard error of the prediction
         - normalized_feature_values: The normalized values used for prediction
+        - models_compared: Comparison metrics of all models tried (when model_type='auto')
+        - best_model_info: Details about the selected model and why it was chosen
     """
     # ======================================================================
     # Step 1: Initialize logging and track execution
@@ -2576,145 +2893,355 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
     # ======================================================================
     # Step 9: Model training based on model_type
     # ======================================================================
-    log_message('info', f"Training {model_type} regression model")
+    if model_type == 'auto':
+        log_message('info', "Auto mode: comparing multiple regression models to find the best one")
+    else:
+        log_message('info', f"Training {model_type} regression model")
     
     try:
         # Initialize model and metrics containers
         model = None
         model_metrics = {
+            # Primary performance metrics
             'r_squared': None,
             'adjusted_r_squared': None,
             'rmse': None,
             'mae': None,
             'cross_val_scores': None,
+            
+            # Feature insights
             'feature_importances': {},
             'p_values': {},
-            'coefficients': {}
+            'coefficients': {},
+            
+            # Enhanced metrics and metadata
+            'model_notes': [],        # Textual notes about model performance and characteristics
+            'additional_metrics': {},  # Container for model-specific metrics (e.g., lightgbm iterations)
+            'training_time': None,     # Time taken to train the model
+            'prediction_time': None,   # Time to generate predictions (for performance evaluation)
+            'overfitting_metrics': {}  # Metrics to assess potential overfitting
         }
         
-        # Train appropriate model based on model_type
-        if model_type == 'linear':
-            # Standard OLS linear regression for interpretability
+        # Container for model comparison when in auto mode
+        models_compared = {}
+        best_model_info = {
+            'model_type': None,
+            'r_squared': -float('inf'),  # Start with worst possible value
+            'selection_criteria': [],    # Reasons for selecting this model
+            'training_time': None
+        }
+        
+        # Function to train a model and record its metrics
+        def train_and_evaluate_model(model_name, train_func, is_tree_based=False, save_as_best=False):
+            """
+            Trains a model, evaluates it, and tracks performance metrics.
             
+            Parameters:
+            -----------
+            model_name : str
+                Name of the model being trained
+                
+            train_func : callable
+                Function that trains and returns the model
+                
+            is_tree_based : bool, default=False
+                Whether the model is tree-based (affects feature importance calculation)
+                
+            save_as_best : bool, default=False
+                Whether to update the best model with this one regardless of performance
+                
+            Returns:
+            --------
+            tuple
+                (trained_model, metrics_dict)
+            """
+            nonlocal best_model_info
+            
+            start_time = datetime.datetime.now()
+            
+            # Train the model
+            trained_model = train_func()
+            
+            # Get performance metrics
+            if model_name == 'ensemble':
+                # For ensemble, prepare stacked predictions
+                test_predictions = []
+                for m_name, base_model in trained_model['base_models']:
+                    test_predictions.append(base_model.predict(X_test))
+                stacked_test_preds = np.column_stack(test_predictions)
+                y_pred = trained_model['meta_model'].predict(stacked_test_preds)
+            elif model_name == 'lightgbm' and LIGHTGBM_AVAILABLE:
+                # For LightGBM, use best iteration
+                y_pred = trained_model.predict(X_test, num_iteration=trained_model.best_iteration)
+            else:
+                # Standard prediction
+                y_pred = trained_model.predict(X_test)
+            
+            # Calculate metrics
+            this_r2 = r2_score(y_test, y_pred)
+            this_rmse = float(np.sqrt(mean_squared_error(y_test, y_pred)))
+            this_mae = float(mean_absolute_error(y_test, y_pred))
+            
+            # Calculate adjusted R²
+            n = len(y_test)
+            p = X_test.shape[1] if not model_name == 'ensemble' else 3  # For ensemble, use number of base models
+            this_adj_r2 = 1 - (1 - this_r2) * (n - 1) / (n - p - 1)
+            
+            # Create comprehensive metrics dictionary
+            train_time = (datetime.datetime.now() - start_time).total_seconds()
+            
+            # Calculate prediction time (important for real-time applications)
+            pred_start = datetime.datetime.now()
+            if model_name == 'ensemble':
+                # For ensemble, prepare stacked predictions
+                test_predictions = []
+                for m_name, base_model in trained_model['base_models']:
+                    test_predictions.append(base_model.predict(X_test))
+                stacked_test_preds = np.column_stack(test_predictions)
+                _ = trained_model['meta_model'].predict(stacked_test_preds)
+            elif model_name == 'lightgbm' and LIGHTGBM_AVAILABLE:
+                # For LightGBM, use best iteration
+                _ = trained_model.predict(X_test, num_iteration=trained_model.best_iteration)
+            else:
+                # Standard prediction
+                _ = trained_model.predict(X_test)
+            pred_time = (datetime.datetime.now() - pred_start).total_seconds()
+            
+            # Calculate overfitting metrics
+            if model_name == 'ensemble':
+                # For ensemble, prepare stacked predictions for training data
+                train_predictions = []
+                for m_name, base_model in trained_model['base_models']:
+                    train_predictions.append(base_model.predict(X_train))
+                stacked_train_preds = np.column_stack(train_predictions)
+                train_pred = trained_model['meta_model'].predict(stacked_train_preds)
+            elif model_name == 'lightgbm' and LIGHTGBM_AVAILABLE:
+                # For LightGBM, use best iteration
+                train_pred = trained_model.predict(X_train, num_iteration=trained_model.best_iteration)
+            else:
+                # Standard prediction
+                train_pred = trained_model.predict(X_train)
+            
+            # Calculate training metrics for overfitting detection
+            train_r2 = r2_score(y_train, train_pred)
+            train_rmse = float(np.sqrt(mean_squared_error(y_train, train_pred)))
+            
+            # Calculate overfitting scores
+            r2_diff = train_r2 - this_r2
+            rmse_ratio = this_rmse / (train_rmse if train_rmse > 0 else 1)
+            
+            model_metrics_dict = {
+                'model_type': model_name,
+                'r_squared': this_r2,
+                'adjusted_r_squared': this_adj_r2,
+                'rmse': this_rmse,
+                'mae': this_mae,
+                'training_time': train_time,
+                'prediction_time': pred_time,
+                'overfitting_metrics': {
+                    'train_r_squared': train_r2,
+                    'train_rmse': train_rmse,
+                    'r_squared_diff': r2_diff,
+                    'rmse_ratio': rmse_ratio,
+                    'overfitting_score': r2_diff / train_r2 if train_r2 > 0 else 0
+                }
+            }
+            
+            # Add model-specific notes
+            model_notes = []
+            
+            # Check for overfitting
+            if r2_diff > 0.2 and train_r2 > 0.7:
+                model_notes.append(f"Potential overfitting detected: train R² = {train_r2:.4f}, test R² = {this_r2:.4f}, diff = {r2_diff:.4f}")
+            elif r2_diff < 0.05 and train_r2 > 0.6:
+                model_notes.append(f"Good generalization: train R² = {train_r2:.4f}, test R² = {this_r2:.4f}, diff = {r2_diff:.4f}")
+                
+            # Add model-specific characteristics
+            if model_name == 'linear':
+                model_notes.append("Linear model provides easily interpretable coefficients")
+            elif model_name == 'ridge':
+                model_notes.append("Ridge regression helps with multicollinearity while maintaining interpretability")
+            elif model_name == 'lasso':
+                model_notes.append("Lasso regression performs feature selection by zeroing out less important coefficients")
+            elif model_name == 'lightgbm':
+                model_notes.append("LightGBM efficiently handles non-linear relationships and interactions")
+            elif model_name == 'ensemble':
+                model_notes.append("Ensemble combines multiple models for improved prediction stability")
+                
+            # Add notes about prediction speed
+            if pred_time < 0.01:
+                model_notes.append(f"Very fast prediction time ({pred_time*1000:.2f}ms), suitable for real-time applications")
+            elif pred_time > 0.1:
+                model_notes.append(f"Slower prediction time ({pred_time*1000:.2f}ms), may impact high-volume applications")
+                
+            model_metrics_dict['model_notes'] = model_notes
+            
+            # Record the comparison metrics
+            if model_type == 'auto' or compare_models:
+                models_compared[model_name] = model_metrics_dict
+            
+            # Log performance
+            log_message('info', f"{model_name} model trained in {train_time:.2f}s: "
+                             f"R² = {this_r2:.4f}, RMSE = {this_rmse:.2f}, MAE = {this_mae:.2f}")
+            
+            # Enhanced model selection logic with multiple criteria
+            is_better = False
+            selection_criteria = []
+            
+            # Primary criterion: R-squared (higher is better)
+            r2_improvement = this_r2 - best_model_info['r_squared']
+            if r2_improvement > 0:
+                is_better = True
+                selection_criteria.append(f"Higher R² score ({this_r2:.4f} vs. {best_model_info['r_squared']:.4f}, +{r2_improvement:.4f})")
+            
+            # Consider adjusted R-squared for models with different numbers of features
+            if 'adjusted_r_squared' in best_model_info and this_adj_r2 > best_model_info.get('adjusted_r_squared', -float('inf')):
+                # If R² is very close but adjusted R² is better, favor the simpler model
+                if abs(r2_improvement) < 0.02:  # Within 2% R²
+                    is_better = True
+                    adj_r2_diff = this_adj_r2 - best_model_info.get('adjusted_r_squared', 0)
+                    selection_criteria.append(f"Better adjusted R² ({this_adj_r2:.4f} vs. {best_model_info.get('adjusted_r_squared', 0):.4f}, +{adj_r2_diff:.4f})")
+            
+            # Consider RMSE for similar R² (within 1%)
+            if abs(r2_improvement) < 0.01 and 'rmse' in best_model_info:
+                rmse_improvement = best_model_info.get('rmse', float('inf')) - this_rmse
+                if rmse_improvement > 0:
+                    is_better = True
+                    selection_criteria.append(f"Lower RMSE ({this_rmse:.2f} vs. {best_model_info.get('rmse', 'N/A'):.2f}, -{rmse_improvement:.2f}) with similar R²")
+            
+            # Consider training time for very similar performance (within 0.5%)
+            if abs(r2_improvement) < 0.005 and 'training_time' in best_model_info:
+                time_improvement = best_model_info.get('training_time', float('inf')) - train_time
+                # If new model is at least 20% faster
+                if time_improvement > 0 and time_improvement / best_model_info.get('training_time', float('inf')) > 0.2:
+                    is_better = True
+                    selection_criteria.append(f"Faster training ({train_time:.2f}s vs. {best_model_info.get('training_time', 'N/A'):.2f}s, {time_improvement/best_model_info.get('training_time', 1)*100:.0f}% faster) with similar performance")
+            
+            # Consider prediction time for real-time applications (if measured)
+            # TODO: Add prediction time comparison when available
+            
+            # Consider interpretability as a tiebreaker for very similar performance
+            if abs(r2_improvement) < 0.01:
+                # Linear models are generally more interpretable than tree-based models
+                if model_name in ['linear', 'ridge', 'lasso'] and best_model_info.get('model_type') in ['random_forest', 'lightgbm', 'xgboost', 'gbm']:
+                    selection_criteria.append("More interpretable linear model with similar performance")
+                    # Only make this a deciding factor if R² is very close
+                    if abs(r2_improvement) < 0.005:
+                        is_better = True
+            
+            # Update best model info if this model is better
+            if is_better or save_as_best:
+                best_model_info = {
+                    'model_type': model_name,
+                    'model': trained_model,
+                    'r_squared': this_r2,
+                    'adjusted_r_squared': this_adj_r2,
+                    'rmse': this_rmse,
+                    'mae': this_mae,
+                    'training_time': train_time,
+                    'prediction_time': pred_time,
+                    'selection_criteria': selection_criteria,
+                    'overfitting_metrics': model_metrics_dict['overfitting_metrics'],
+                    'model_notes': model_metrics_dict['model_notes']
+                }
+                
+                # Add model-specific information
+                if model_name == 'lightgbm' and LIGHTGBM_AVAILABLE:
+                    best_model_info['best_iteration'] = getattr(trained_model, 'best_iteration', None)
+                elif model_name == 'linear':
+                    # Store top coefficient features with their values
+                    if len(model_metrics['coefficients']) > 0:
+                        coef_items = sorted(
+                            [(k, v) for k, v in model_metrics['coefficients'].items() if k != 'const'],
+                            key=lambda x: abs(x[1]),
+                            reverse=True
+                        )[:5]  # Top 5 coefficients
+                        best_model_info['top_coefficients'] = {k: v for k, v in coef_items}
+                
+                # Log selection with more detail
+                log_message('info', f"New best model: {model_name} ({', '.join(selection_criteria)})")
+                for note in model_metrics_dict.get('model_notes', []):
+                    log_message('info', f"  - {note}")
+            
+            return trained_model, model_metrics_dict
+        
+        # Define training functions for each model type
+        def train_linear_model():
             # Add constant for statsmodels
             X_train_sm = sm.add_constant(X_train)
             
-            # Fit OLS model
+            # Fit OLS model for detailed statistics
             ols_model = sm.OLS(y_train, X_train_sm).fit()
             
-            # Store model and create scikit-learn compatible version for predictions
-            model = LinearRegression()
-            model.fit(X_train, y_train)
-            
-            # Extract and store detailed metrics
-            model_metrics['r_squared'] = ols_model.rsquared
-            model_metrics['adjusted_r_squared'] = ols_model.rsquared_adj
+            # Create scikit-learn compatible version for predictions
+            linear_model = LinearRegression()
+            linear_model.fit(X_train, y_train)
             
             # Extract p-values and coefficients
             p_values = ols_model.pvalues
             coefficients = ols_model.params
             
-            # Store in dictionaries (skipping the constant term)
+            # Store in feature_metrics
             feature_names = ['const'] + selected_features
             for i, feature in enumerate(feature_names):
                 if i < len(p_values):
                     model_metrics['p_values'][feature] = p_values[i]
                     model_metrics['coefficients'][feature] = coefficients[i]
             
-            log_message('info', f"Linear regression model trained: R² = {model_metrics['r_squared']:.4f}")
-            
-        elif model_type == 'ridge':
-            # Ridge regression (L2 regularization)
-            model = Ridge(alpha=regularization_strength, random_state=random_state)
-            model.fit(X_train, y_train)
-            
-            # Calculate basic metrics
-            y_pred = model.predict(X_test)
-            model_metrics['r_squared'] = r2_score(y_test, y_pred)
-            
-            # Adjust R² for number of predictors
-            n = len(y_test)
-            p = X_test.shape[1]
-            model_metrics['adjusted_r_squared'] = 1 - (1 - model_metrics['r_squared']) * (n - 1) / (n - p - 1)
+            return linear_model
+        
+        def train_ridge_model():
+            ridge_model = Ridge(alpha=regularization_strength, random_state=random_state)
+            ridge_model.fit(X_train, y_train)
             
             # Store coefficients
             for i, feature in enumerate(selected_features):
-                model_metrics['coefficients'][feature] = model.coef_[i]
-            
-            log_message('info', f"Ridge regression model trained: R² = {model_metrics['r_squared']:.4f}")
-            
-        elif model_type == 'lasso':
-            # Lasso regression (L1 regularization)
-            model = Lasso(alpha=regularization_strength, random_state=random_state, max_iter=2000)
-            model.fit(X_train, y_train)
-            
-            # Calculate basic metrics
-            y_pred = model.predict(X_test)
-            model_metrics['r_squared'] = r2_score(y_test, y_pred)
-            
-            # Adjust R² for number of predictors
-            n = len(y_test)
-            p = X_test.shape[1]
-            model_metrics['adjusted_r_squared'] = 1 - (1 - model_metrics['r_squared']) * (n - 1) / (n - p - 1)
+                model_metrics['coefficients'][feature] = ridge_model.coef_[i]
+                
+            return ridge_model
+        
+        def train_lasso_model():
+            lasso_model = Lasso(alpha=regularization_strength, random_state=random_state, max_iter=2000)
+            lasso_model.fit(X_train, y_train)
             
             # Store coefficients
             for i, feature in enumerate(selected_features):
-                model_metrics['coefficients'][feature] = model.coef_[i]
-            
-            log_message('info', f"Lasso regression model trained: R² = {model_metrics['r_squared']:.4f}")
-            
-        elif model_type == 'elastic_net':
-            # Elastic Net (combining L1 and L2 regularization)
-            model = ElasticNet(
+                model_metrics['coefficients'][feature] = lasso_model.coef_[i]
+                
+            return lasso_model
+        
+        def train_elastic_net_model():
+            elastic_model = ElasticNet(
                 alpha=regularization_strength, 
                 l1_ratio=0.5,  # Equal weight to L1 and L2
                 random_state=random_state,
                 max_iter=2000
             )
-            model.fit(X_train, y_train)
-            
-            # Calculate basic metrics
-            y_pred = model.predict(X_test)
-            model_metrics['r_squared'] = r2_score(y_test, y_pred)
-            
-            # Adjust R² for number of predictors
-            n = len(y_test)
-            p = X_test.shape[1]
-            model_metrics['adjusted_r_squared'] = 1 - (1 - model_metrics['r_squared']) * (n - 1) / (n - p - 1)
+            elastic_model.fit(X_train, y_train)
             
             # Store coefficients
             for i, feature in enumerate(selected_features):
-                model_metrics['coefficients'][feature] = model.coef_[i]
-            
-            log_message('info', f"Elastic Net model trained: R² = {model_metrics['r_squared']:.4f}")
-            
-        elif model_type == 'gbr' or (model_type == 'lightgbm' and not LIGHTGBM_AVAILABLE):
-            # Gradient Boosting Regressor (scikit-learn implementation)
-            model = GradientBoostingRegressor(
+                model_metrics['coefficients'][feature] = elastic_model.coef_[i]
+                
+            return elastic_model
+        
+        def train_gradient_boosting_model():
+            gbr_model = GradientBoostingRegressor(
                 n_estimators=100,
                 learning_rate=0.1,
                 max_depth=3,
                 random_state=random_state
             )
-            model.fit(X_train, y_train)
-            
-            # Calculate basic metrics
-            y_pred = model.predict(X_test)
-            model_metrics['r_squared'] = r2_score(y_test, y_pred)
-            
-            # Adjust R² for number of predictors (though less relevant for tree-based models)
-            n = len(y_test)
-            p = X_test.shape[1]
-            model_metrics['adjusted_r_squared'] = 1 - (1 - model_metrics['r_squared']) * (n - 1) / (n - p - 1)
+            gbr_model.fit(X_train, y_train)
             
             # Store feature importances
             for i, feature in enumerate(selected_features):
-                model_metrics['feature_importances'][feature] = model.feature_importances_[i]
-            
-            log_message('info', f"Gradient boosting model trained: R² = {model_metrics['r_squared']:.4f}")
-            
-        elif model_type == 'lightgbm' and LIGHTGBM_AVAILABLE:
-            # LightGBM for efficient gradient boosting
+                model_metrics['feature_importances'][feature] = gbr_model.feature_importances_[i]
+                
+            return gbr_model
+        
+        def train_lightgbm_model():
+            # Import LightGBM here to ensure it's available
             import lightgbm as lgb
             
             # Create LightGBM dataset objects
@@ -2745,20 +3272,13 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
                 verbose_eval=False
             )
             
-            # Save model reference and make predictions
-            model = gbm
-            y_pred = model.predict(X_test, num_iteration=model.best_iteration)
-            model_metrics['r_squared'] = r2_score(y_test, y_pred)
-            
             # Get feature importances
             for i, feature in enumerate(selected_features):
-                model_metrics['feature_importances'][feature] = model.feature_importance()[i]
-            
-            log_message('info', f"LightGBM model trained: R² = {model_metrics['r_squared']:.4f}")
-            
-        elif model_type == 'ensemble':
-            # Ensemble of linear and gradient boosting models
-            
+                model_metrics['feature_importances'][feature] = gbm.feature_importance()[i]
+                
+            return gbm
+        
+        def train_ensemble_model():
             # Train base models
             base_models = []
             base_predictions = []
@@ -2796,34 +3316,292 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
             meta_model = Ridge(alpha=0.001)
             meta_model.fit(stacked_preds, y_test)
             
-            # Make ensemble prediction
-            ensemble_pred = meta_model.predict(stacked_preds)
-            model_metrics['r_squared'] = r2_score(y_test, ensemble_pred)
-            
-            # Adjust R² for number of predictors
-            n = len(y_test)
-            p = 3  # Number of base models
-            model_metrics['adjusted_r_squared'] = 1 - (1 - model_metrics['r_squared']) * (n - 1) / (n - p - 1)
-            
-            # Store model ensemble
-            model = {
+            # Return ensemble
+            return {
                 'base_models': base_models,
                 'meta_model': meta_model
             }
-            
-            log_message('info', f"Ensemble model trained: R² = {model_metrics['r_squared']:.4f}")
         
-        else:
-            # Fallback to linear regression if model_type is not recognized
-            log_message('warning', f"Unrecognized model type '{model_type}'. Falling back to linear regression.")
-            model = LinearRegression()
-            model.fit(X_train, y_train)
-            model_metrics['r_squared'] = model.score(X_test, y_test)
+        # If auto mode, compare multiple models
+        if model_type == 'auto' or compare_models:
+            log_message('info', "Comparing multiple regression models...")
             
-            # Adjust R² for number of predictors
-            n = len(y_test)
-            p = X_test.shape[1]
-            model_metrics['adjusted_r_squared'] = 1 - (1 - model_metrics['r_squared']) * (n - 1) / (n - p - 1)
+            # Train a linear model as baseline
+            model, linear_metrics = train_and_evaluate_model('linear', train_linear_model, is_tree_based=False, save_as_best=True)
+            
+            # Train ridge regression
+            ridge_model, ridge_metrics = train_and_evaluate_model('ridge', train_ridge_model)
+            
+            # Train gradient boosting model
+            gbr_model, gbr_metrics = train_and_evaluate_model('gbr', train_gradient_boosting_model, is_tree_based=True)
+            
+            # If LightGBM is available, train and compare it with enhanced configuration
+            if LIGHTGBM_AVAILABLE:
+                try:
+                    log_message('info', "Evaluating LightGBM model with advanced hyperparameter optimization")
+                    # Add special note about LightGBM's ability to handle categorical features
+                    model_metrics['model_notes'].append("LightGBM naturally handles categorical features and missing values")
+                    
+                    # Define optimized LightGBM training function with dataset-specific tuning
+                    def train_optimized_lightgbm():
+                        import lightgbm as lgb
+                        from sklearn.model_selection import StratifiedKFold
+                        
+                        # Create LightGBM dataset objects
+                        lgb_train = lgb.Dataset(X_train, y_train)
+                        lgb_eval = lgb.Dataset(X_test, y_test, reference=lgb_train)
+                        
+                        # Automatically optimize parameters based on dataset characteristics
+                        dataset_size = len(X_train)
+                        feature_count = X_train.shape[1]
+                        
+                        # Determine optimal parameters based on data size
+                        if dataset_size < 100:  # Very small dataset
+                            params = {
+                                'boosting_type': 'gbdt',
+                                'objective': 'regression',
+                                'metric': 'rmse',
+                                'num_leaves': min(15, max(7, feature_count // 2)),  # Fewer leaves for small datasets
+                                'learning_rate': 0.1,
+                                'feature_fraction': 0.8,
+                                'bagging_fraction': 0.9,
+                                'min_data_in_leaf': 3,  # Allow smaller leaf nodes
+                                'lambda_l1': 0.1,  # L1 regularization to prevent overfitting
+                                'lambda_l2': 0.1,  # L2 regularization
+                                'verbose': -1
+                            }
+                            boost_rounds = 200
+                        elif dataset_size < 1000:  # Small to medium dataset
+                            params = {
+                                'boosting_type': 'gbdt',
+                                'objective': 'regression',
+                                'metric': 'rmse',
+                                'num_leaves': min(31, max(15, feature_count)),
+                                'learning_rate': 0.05,
+                                'feature_fraction': 0.8,
+                                'bagging_fraction': 0.8,
+                                'min_data_in_leaf': 5,
+                                'lambda_l1': 0.05,
+                                'lambda_l2': 0.05,
+                                'verbose': -1
+                            }
+                            boost_rounds = 300
+                        else:  # Large dataset
+                            params = {
+                                'boosting_type': 'gbdt',
+                                'objective': 'regression',
+                                'metric': 'rmse',
+                                'num_leaves': 31,
+                                'learning_rate': 0.03,
+                                'feature_fraction': 0.9,
+                                'bagging_fraction': 0.7,
+                                'min_data_in_leaf': 10,
+                                'lambda_l1': 0.01,
+                                'lambda_l2': 0.01,
+                                'verbose': -1
+                            }
+                            boost_rounds = 500
+                        
+                        # Train model with early stopping
+                        evaluation_results = {}
+                        gbm = lgb.train(
+                            params,
+                            lgb_train,
+                            num_boost_round=boost_rounds,
+                            valid_sets=[lgb_train, lgb_eval],
+                            valid_names=['train', 'validation'],
+                            early_stopping_rounds=50,
+                            evals_result=evaluation_results,
+                            verbose_eval=False
+                        )
+                        
+                        # Store additional metrics
+                        model_metrics['additional_metrics']['lightgbm_best_iteration'] = gbm.best_iteration
+                        model_metrics['additional_metrics']['lightgbm_eval_history'] = {
+                            'training_rmse': evaluation_results['train']['rmse'],
+                            'validation_rmse': evaluation_results['validation']['rmse']
+                        }
+                        
+                        # Get feature importances for interpretability
+                        for i, feature in enumerate(selected_features):
+                            model_metrics['feature_importances'][feature] = gbm.feature_importance(importance_type='gain')[i]
+                        
+                        return gbm
+                    
+                    # Execute the optimized training
+                    lightgbm_model, lightgbm_metrics = train_and_evaluate_model(
+                        'lightgbm', 
+                        train_optimized_lightgbm, 
+                        is_tree_based=True
+                    )
+                    
+                    # Add note about model strengths
+                    if lightgbm_metrics['r_squared'] > 0.7:
+                        log_message('info', "LightGBM shows strong predictive performance, suitable for complex non-linear patterns")
+                        
+                except Exception as e:
+                    log_message('warning', f"LightGBM training failed: {str(e)}. Skipping LightGBM comparison.")
+                    # Log detailed error for debugging
+                    import traceback
+                    log_message('debug', f"LightGBM error details: {traceback.format_exc()}")
+            else:
+                log_message('info', "LightGBM not available, skipping this model type and using scikit-learn's GBR instead")
+            
+            # Optional: Train ensemble model if dataset is large enough
+            if len(X_train) >= 100:  # Only train ensemble on sufficient data
+                try:
+                    ensemble_model, ensemble_metrics = train_and_evaluate_model('ensemble', train_ensemble_model)
+                except Exception as e:
+                    log_message('warning', f"Ensemble model training failed: {str(e)}. Skipping ensemble comparison.")
+            
+            # If comparing models but using a specific model_type that's not 'auto',
+            # train that model type as well (if not already trained)
+            if compare_models and model_type != 'auto' and model_type not in models_compared:
+                if model_type == 'lasso':
+                    model, lasso_metrics = train_and_evaluate_model('lasso', train_lasso_model)
+                elif model_type == 'elastic_net':
+                    model, elastic_net_metrics = train_and_evaluate_model('elastic_net', train_elastic_net_model)
+                # Other model types should already be covered
+            
+            # Print comparison results
+            log_message('info', "Model comparison results:")
+            for model_name, metrics in models_compared.items():
+                log_message('info', f"  {model_name}: R² = {metrics['r_squared']:.4f}, RMSE = {metrics['rmse']:.2f}")
+            
+            # Select the best model
+            best_model_type = best_model_info['model_type']
+            model = best_model_info['model']
+            log_message('info', f"Selected {best_model_type} as best model. Criteria: {', '.join(best_model_info['selection_criteria'])}")
+            
+            # Update model_metrics with the best model's metrics
+            model_metrics.update({
+                'r_squared': best_model_info['r_squared'],
+                'adjusted_r_squared': best_model_info['adjusted_r_squared'],
+                'rmse': best_model_info['rmse'],
+                'mae': best_model_info['mae']
+            })
+        
+        # If not in auto mode, just train the requested model type
+        else:
+            if model_type == 'linear':
+                model = train_linear_model()
+                
+                # Add constant for statsmodels to get p-values
+                X_train_sm = sm.add_constant(X_train)
+                ols_model = sm.OLS(y_train, X_train_sm).fit()
+                model_metrics['r_squared'] = ols_model.rsquared
+                model_metrics['adjusted_r_squared'] = ols_model.rsquared_adj
+                
+                # Log results
+                log_message('info', f"Linear regression model trained: R² = {model_metrics['r_squared']:.4f}")
+                
+            elif model_type == 'ridge':
+                model = train_ridge_model()
+                
+                # Calculate basic metrics
+                y_pred = model.predict(X_test)
+                model_metrics['r_squared'] = r2_score(y_test, y_pred)
+                
+                # Adjust R² for number of predictors
+                n = len(y_test)
+                p = X_test.shape[1]
+                model_metrics['adjusted_r_squared'] = 1 - (1 - model_metrics['r_squared']) * (n - 1) / (n - p - 1)
+                
+                # Log results
+                log_message('info', f"Ridge regression model trained: R² = {model_metrics['r_squared']:.4f}")
+                
+            elif model_type == 'lasso':
+                model = train_lasso_model()
+                
+                # Calculate basic metrics
+                y_pred = model.predict(X_test)
+                model_metrics['r_squared'] = r2_score(y_test, y_pred)
+                
+                # Adjust R² for number of predictors
+                n = len(y_test)
+                p = X_test.shape[1]
+                model_metrics['adjusted_r_squared'] = 1 - (1 - model_metrics['r_squared']) * (n - 1) / (n - p - 1)
+                
+                # Log results
+                log_message('info', f"Lasso regression model trained: R² = {model_metrics['r_squared']:.4f}")
+                
+            elif model_type == 'elastic_net':
+                model = train_elastic_net_model()
+                
+                # Calculate basic metrics
+                y_pred = model.predict(X_test)
+                model_metrics['r_squared'] = r2_score(y_test, y_pred)
+                
+                # Adjust R² for number of predictors
+                n = len(y_test)
+                p = X_test.shape[1]
+                model_metrics['adjusted_r_squared'] = 1 - (1 - model_metrics['r_squared']) * (n - 1) / (n - p - 1)
+                
+                # Log results
+                log_message('info', f"Elastic Net model trained: R² = {model_metrics['r_squared']:.4f}")
+                
+            elif model_type == 'gbr' or (model_type == 'lightgbm' and not LIGHTGBM_AVAILABLE):
+                model = train_gradient_boosting_model()
+                
+                # Calculate basic metrics
+                y_pred = model.predict(X_test)
+                model_metrics['r_squared'] = r2_score(y_test, y_pred)
+                
+                # Adjust R² for number of predictors
+                n = len(y_test)
+                p = X_test.shape[1]
+                model_metrics['adjusted_r_squared'] = 1 - (1 - model_metrics['r_squared']) * (n - 1) / (n - p - 1)
+                
+                # Log results
+                log_message('info', f"Gradient boosting model trained: R² = {model_metrics['r_squared']:.4f}")
+                
+            elif model_type == 'lightgbm' and LIGHTGBM_AVAILABLE:
+                model = train_lightgbm_model()
+                
+                # Calculate metrics
+                y_pred = model.predict(X_test, num_iteration=model.best_iteration)
+                model_metrics['r_squared'] = r2_score(y_test, y_pred)
+                
+                # Adjust R² for number of predictors (though less relevant for tree-based models)
+                n = len(y_test)
+                p = X_test.shape[1]
+                model_metrics['adjusted_r_squared'] = 1 - (1 - model_metrics['r_squared']) * (n - 1) / (n - p - 1)
+                
+                # Log results
+                log_message('info', f"LightGBM model trained: R² = {model_metrics['r_squared']:.4f}")
+                
+            elif model_type == 'ensemble':
+                model = train_ensemble_model()
+                
+                # Calculate metrics using ensemble predictions
+                test_predictions = []
+                for model_name, base_model in model['base_models']:
+                    test_predictions.append(base_model.predict(X_test))
+                stacked_test_preds = np.column_stack(test_predictions)
+                y_pred = model['meta_model'].predict(stacked_test_preds)
+                model_metrics['r_squared'] = r2_score(y_test, y_pred)
+                
+                # Adjust R² for number of predictors
+                n = len(y_test)
+                p = 3  # Number of base models
+                model_metrics['adjusted_r_squared'] = 1 - (1 - model_metrics['r_squared']) * (n - 1) / (n - p - 1)
+                
+                # Log results
+                log_message('info', f"Ensemble model trained: R² = {model_metrics['r_squared']:.4f}")
+            
+            else:
+                # Fallback to linear regression if model_type is not recognized
+                log_message('warning', f"Unrecognized model type '{model_type}'. Falling back to linear regression.")
+                model = train_linear_model()
+                
+                # Calculate basic metrics
+                y_pred = model.predict(X_test)
+                model_metrics['r_squared'] = r2_score(y_test, y_pred)
+                
+                # Adjust R² for number of predictors
+                n = len(y_test)
+                p = X_test.shape[1]
+                model_metrics['adjusted_r_squared'] = 1 - (1 - model_metrics['r_squared']) * (n - 1) / (n - p - 1)
         
         # ======================================================================
         # Step 10: Calculate additional model performance metrics
@@ -3100,6 +3878,26 @@ def estimate_property_value(property_data, target_property=None, test_size=0.2, 
             'features_used': selected_features,
             'normalized_feature_values': normalized_features.to_dict(orient='records')[0] if len(normalized_features) > 0 else {}
         }
+        
+        # Add model comparison results if available
+        if model_type == 'auto' or compare_models:
+            result.update({
+                'models_compared': models_compared,
+                'best_model_info': {
+                    'model_type': best_model_info.get('model_type', None),
+                    'r_squared': best_model_info.get('r_squared', None),
+                    'adjusted_r_squared': best_model_info.get('adjusted_r_squared', None),
+                    'rmse': best_model_info.get('rmse', None),
+                    'mae': best_model_info.get('mae', None),
+                    'training_time': best_model_info.get('training_time', None),
+                    'prediction_time': best_model_info.get('prediction_time', None),
+                    'selection_criteria': best_model_info.get('selection_criteria', []),
+                    'model_notes': best_model_info.get('model_notes', []),
+                    'overfitting_metrics': best_model_info.get('overfitting_metrics', {}),
+                    'model_strengths': self._extract_model_strengths(best_model_info)
+                },
+                'model_comparison_summary': self._generate_model_comparison_summary(models_compared)
+            })
         
         # Add prediction results if available
         if prediction_results['prediction_successful']:

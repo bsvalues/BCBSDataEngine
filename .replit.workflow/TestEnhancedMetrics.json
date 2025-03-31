@@ -1,0 +1,9 @@
+{
+  "runner": "python3",
+  "commands": {
+    "start": [
+      "cd .",
+      "python test_enhanced_metrics.py"
+    ]
+  }
+}
