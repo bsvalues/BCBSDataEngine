@@ -1,6 +1,7 @@
 from app import db
 from flask_login import UserMixin
 from datetime import datetime
+import secrets
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -26,6 +27,11 @@ class ApiKey(db.Model):
     last_used = db.Column(db.DateTime, nullable=True)
     is_active = db.Column(db.Boolean, default=True)
     
+    @staticmethod
+    def generate_key():
+        """Generate a random API key."""
+        return f"key_{secrets.token_hex(20)}"
+    
     def __repr__(self):
         return f'<ApiKey {self.name}>'
 
@@ -34,13 +40,18 @@ class Property(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     property_id = db.Column(db.String(64), unique=True, nullable=False)
     address = db.Column(db.String(256), nullable=False)
+    city = db.Column(db.String(100), nullable=False, default="Sample City")
+    state = db.Column(db.String(2), nullable=False, default="WA")
+    zip_code = db.Column(db.String(10), nullable=False, default="98000")
     neighborhood = db.Column(db.String(128), nullable=True)
     property_type = db.Column(db.String(64), nullable=False)
     year_built = db.Column(db.Integer, nullable=True)
     bedrooms = db.Column(db.Integer, nullable=True)
     bathrooms = db.Column(db.Float, nullable=True)
     living_area = db.Column(db.Float, nullable=True)  # in square feet
-    land_area = db.Column(db.Float, nullable=True)  # in square feet
+    land_area = db.Column(db.Float, nullable=True)  # in acres
+    latitude = db.Column(db.Float, nullable=True)
+    longitude = db.Column(db.Float, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

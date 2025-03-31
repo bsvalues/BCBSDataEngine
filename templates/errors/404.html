@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="error-container">
+    <div class="error-code">404</div>
+    <div class="error-message">The page you're looking for doesn't exist.</div>
+    <div class="mb-4">
+        <p>We can't find the page you're looking for. The page may have been moved, deleted, or never existed.</p>
+    </div>
+    <div>
+        <a href="{{ url_for('index') }}" class="btn btn-primary">
+            <i class="fas fa-home me-2"></i>Go Home
+        </a>
+        {% if current_user.is_authenticated %}
+        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-primary ms-2">
+            <i class="fas fa-chart-bar me-2"></i>Go to Dashboard
+        </a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

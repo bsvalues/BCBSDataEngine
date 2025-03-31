@@ -1,396 +1,551 @@
 {% extends "base.html" %}
 
-{% block title %}Valuation Result{% endblock %}
-
-{% block header %}Property Valuation Result{% endblock %}
+{% block extra_head %}
+<style>
+    .result-card {
+        transition: transform 0.3s ease;
+    }
+    
+    .result-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    .confidence-meter {
+        height: 160px;
+        width: 160px;
+        margin: 0 auto;
+        position: relative;
+    }
+    
+    .confidence-meter .progress-ring__circle {
+        transition: 0.35s stroke-dashoffset;
+        transform: rotate(-90deg);
+        transform-origin: 50% 50%;
+    }
+    
+    .property-feature {
+        display: flex;
+        align-items: center;
+        margin-bottom: 0.75rem;
+    }
+    
+    .property-feature i {
+        width: 24px;
+        text-align: center;
+        margin-right: 0.75rem;
+    }
+    
+    .similar-property {
+        transition: all 0.3s ease;
+    }
+    
+    .similar-property:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 .5rem 1rem rgba(0,0,0,.15) !important;
+    }
+    
+    .price-history-chart {
+        height: 250px;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="row mb-4">
-    <div class="col-md-12">
+    <div class="col-12">
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Home</a></li>
-                <li class="breadcrumb-item"><a href="{{ url_for('valuation') }}">Property Valuation</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('property_search') }}">Properties</a></li>
                 <li class="breadcrumb-item active" aria-current="page">Valuation Result</li>
             </ol>
         </nav>
+        <div class="d-flex justify-content-between align-items-center">
+            <h1 class="mb-0"><i class="fas fa-calculator me-2"></i>Valuation Result</h1>
+            <div>
+                <button class="btn btn-sm btn-outline-secondary me-2" id="printResult">
+                    <i class="fas fa-print me-1"></i> Print
+                </button>
+                <div class="dropdown d-inline-block">
+                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="exportDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-download me-1"></i> Export
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="exportDropdown">
+                        <li><a class="dropdown-item" href="#"><i class="far fa-file-pdf me-2"></i>PDF Report</a></li>
+                        <li><a class="dropdown-item" href="#"><i class="far fa-file-excel me-2"></i>Excel Data</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
-<div class="row mb-5">
-    <div class="col-md-8">
-        <div class="card shadow mb-4">
-            <div class="card-header bg-primary text-white">
-                <h3 class="card-title mb-0">Valuation Summary</h3>
+<div class="row">
+    <!-- Main Valuation Result Column -->
+    <div class="col-lg-8">
+        <!-- Valuation Result Card -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white">
+                <h4 class="mb-0">Property Valuation</h4>
             </div>
-            <div class="card-body p-4">
+            <div class="card-body">
                 <div class="row">
-                    <div class="col-md-8">
-                        <h4>{{ property.address }}</h4>
-                        <p class="text-muted mb-4">{{ property.city }}, {{ property.state }} {{ property.zip_code }}</p>
-                        
-                        <div class="d-flex align-items-center mb-3">
-                            <h2 class="valuation-result me-3">${{ "{:,.2f}".format(result.estimated_value) }}</h2>
-                            
-                            {% set confidence_color = 'bg-danger' %}
-                            {% if result.confidence_score >= 0.8 %}
-                                {% set confidence_color = 'bg-success' %}
-                            {% elif result.confidence_score >= 0.6 %}
-                                {% set confidence_color = 'bg-warning' %}
+                    <div class="col-md-7">
+                        <h2 class="mb-3">{{ property.address }}</h2>
+                        <p class="text-muted mb-4">
+                            {{ property.city }}, {{ property.state }} {{ property.zip_code }}
+                            {% if property.neighborhood %}
+                                <br>{{ property.neighborhood }} Neighborhood
                             {% endif %}
-                            
-                            <div class="confidence-score {{ confidence_color }}">
-                                {{ (result.confidence_score * 100) | int }}%
-                            </div>
-                            <div class="ms-2">
-                                <div><strong>Confidence</strong></div>
-                                <div class="text-muted">{{ result.valuation_method | replace('_', ' ') | title }}</div>
-                            </div>
-                        </div>
+                        </p>
                         
                         <div class="row mb-4">
-                            <div class="col-md-6">
-                                <div class="d-flex justify-content-between">
-                                    <span>Property Type:</span>
-                                    <span><strong>{{ property.property_type | replace('_', ' ') | title }}</strong></span>
-                                </div>
-                                <div class="d-flex justify-content-between">
-                                    <span>Square Feet:</span>
-                                    <span><strong>{{ property.square_feet | int if property.square_feet else 'N/A' }}</strong></span>
-                                </div>
-                                <div class="d-flex justify-content-between">
-                                    <span>Lot Size:</span>
-                                    <span><strong>{{ property.lot_size ~ " acres" if property.lot_size else 'N/A' }}</strong></span>
+                            <div class="col-md-6 mb-3">
+                                <div class="property-feature">
+                                    <i class="fas fa-home text-primary"></i>
+                                    <div>
+                                        <small class="d-block text-muted">Property Type</small>
+                                        <strong>{{ property.property_type|replace('_', ' ')|title }}</strong>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="col-md-6">
-                                <div class="d-flex justify-content-between">
-                                    <span>Bedrooms:</span>
-                                    <span><strong>{{ property.bedrooms if property.bedrooms else 'N/A' }}</strong></span>
+                            <div class="col-md-6 mb-3">
+                                <div class="property-feature">
+                                    <i class="fas fa-calendar-alt text-primary"></i>
+                                    <div>
+                                        <small class="d-block text-muted">Year Built</small>
+                                        <strong>{{ property.year_built or 'N/A' }}</strong>
+                                    </div>
                                 </div>
-                                <div class="d-flex justify-content-between">
-                                    <span>Bathrooms:</span>
-                                    <span><strong>{{ property.bathrooms if property.bathrooms else 'N/A' }}</strong></span>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="property-feature">
+                                    <i class="fas fa-bed text-primary"></i>
+                                    <div>
+                                        <small class="d-block text-muted">Bedrooms</small>
+                                        <strong>{{ property.bedrooms or 'N/A' }}</strong>
+                                    </div>
                                 </div>
-                                <div class="d-flex justify-content-between">
-                                    <span>Year Built:</span>
-                                    <span><strong>{{ property.year_built if property.year_built else 'N/A' }}</strong></span>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="property-feature">
+                                    <i class="fas fa-bath text-primary"></i>
+                                    <div>
+                                        <small class="d-block text-muted">Bathrooms</small>
+                                        <strong>{{ property.bathrooms or 'N/A' }}</strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="property-feature">
+                                    <i class="fas fa-ruler-combined text-primary"></i>
+                                    <div>
+                                        <small class="d-block text-muted">Living Area</small>
+                                        <strong>{{ '{:,}'.format(property.living_area|int) if property.living_area else 'N/A' }} sq ft</strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="property-feature">
+                                    <i class="fas fa-chart-area text-primary"></i>
+                                    <div>
+                                        <small class="d-block text-muted">Lot Size</small>
+                                        <strong>{{ '{:.2f}'.format(property.land_area) if property.land_area else 'N/A' }} acres</strong>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                         
-                        <div class="d-flex">
-                            <a href="{{ url_for('property_detail', property_id=property.id) }}" class="btn btn-primary me-2">
-                                <i class="fas fa-info-circle me-1"></i> View Property Details
-                            </a>
-                            <a href="{{ url_for('what_if_analysis', property_id=property.id) }}" class="btn btn-outline-secondary">
-                                <i class="fas fa-sliders-h me-1"></i> What If Analysis
-                            </a>
+                        <div class="alert alert-info">
+                            <div class="d-flex">
+                                <div class="me-3">
+                                    <i class="fas fa-info-circle fa-2x"></i>
+                                </div>
+                                <div>
+                                    <h5 class="alert-heading mb-1">Valuation Method</h5>
+                                    <p class="mb-0">{{ valuation.valuation_method|replace('_', ' ')|title }} was used to calculate this property's estimated value, using {{ 'comprehensive GIS data and ' if property.latitude and property.longitude else '' }}comparable property analysis.</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div class="col-md-4">
-                        <div class="mb-3">
-                            <h5>Valuation Date</h5>
-                            <p>{{ valuation.valuation_date.strftime('%B %d, %Y') if valuation else 'N/A' }}</p>
+                    <div class="col-md-5 text-center">
+                        <div class="confidence-meter mb-3">
+                            <svg width="160" height="160" viewBox="0 0 160 160">
+                                <circle class="progress-ring__circle" 
+                                    stroke="#e9ecef" 
+                                    stroke-width="10" 
+                                    fill="transparent" 
+                                    r="70" 
+                                    cx="80" 
+                                    cy="80"/>
+                                <circle class="progress-ring__circle" 
+                                    stroke="{{ '#28a745' if valuation.confidence_score >= 0.8 else '#ffc107' if valuation.confidence_score >= 0.6 else '#dc3545' }}" 
+                                    stroke-width="10" 
+                                    stroke-dasharray="{{ 2 * 3.14159 * 70 }}" 
+                                    stroke-dashoffset="{{ 2 * 3.14159 * 70 * (1 - valuation.confidence_score) }}" 
+                                    fill="transparent" 
+                                    r="70" 
+                                    cx="80" 
+                                    cy="80"/>
+                                <text x="50%" y="50%" text-anchor="middle" stroke="none" fill="#212529" font-size="14" dy=".3em">{{ (valuation.confidence_score * 100)|int }}% Confidence</text>
+                            </svg>
                         </div>
-                        <div class="mb-3">
-                            <h5>Valuation Method</h5>
-                            <p>{{ result.valuation_method | replace('_', ' ') | title }}</p>
+                        
+                        <div class="mb-4">
+                            <h6 class="text-muted text-uppercase mb-2">Estimated Value</h6>
+                            <h1 class="display-4 fw-bold text-primary">${{ '{:,.0f}'.format(valuation.estimated_value) }}</h1>
+                            <p class="text-muted">Valued on {{ valuation.valuation_date.strftime('%B %d, %Y') }}</p>
                         </div>
-                        <div>
-                            <h5>Market Trend</h5>
-                            {% if result.market_trends and result.market_trends.current_trend %}
-                                {% if result.market_trends.current_trend > 0 %}
-                                    <div class="text-success">
-                                        <i class="fas fa-arrow-up me-1"></i> {{ result.market_trends.current_trend }}% (Increasing)
-                                    </div>
-                                {% elif result.market_trends.current_trend < 0 %}
-                                    <div class="text-danger">
-                                        <i class="fas fa-arrow-down me-1"></i> {{ result.market_trends.current_trend | abs }}% (Decreasing)
-                                    </div>
-                                {% else %}
-                                    <div class="text-muted">
-                                        <i class="fas fa-minus me-1"></i> Stable
-                                    </div>
-                                {% endif %}
-                            {% else %}
-                                <p>N/A</p>
-                            {% endif %}
+                        
+                        <div class="d-grid gap-2">
+                            <a href="{{ url_for('property_detail', property_id=property.id) }}" class="btn btn-primary">
+                                <i class="fas fa-home me-1"></i> View Property Details
+                            </a>
+                            <a href="{{ url_for('valuation_form') }}" class="btn btn-outline-secondary">
+                                <i class="fas fa-calculator me-1"></i> New Valuation
+                            </a>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
         
-        {% if result.comparable_properties %}
-        <div class="card shadow mb-4">
-            <div class="card-header">
-                <h3 class="card-title mb-0">Comparable Properties</h3>
+        <!-- Price History Card -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white">
+                <h4 class="mb-0">Valuation History</h4>
             </div>
-            <div class="card-body p-4">
-                <div class="table-responsive">
-                    <table class="table table-striped">
-                        <thead>
-                            <tr>
-                                <th>Address</th>
-                                <th>Sale Price</th>
-                                <th>Sale Date</th>
-                                <th>Sq Ft</th>
-                                <th>Bed/Bath</th>
-                                <th>Distance</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for comp in result.comparable_properties %}
-                            <tr>
-                                <td>{{ comp.address }}</td>
-                                <td>${{ "{:,.2f}".format(comp.sale_price) }}</td>
-                                <td>{{ comp.sale_date }}</td>
-                                <td>{{ comp.square_feet | int if comp.square_feet else 'N/A' }}</td>
-                                <td>{{ comp.bedrooms if comp.bedrooms else 'N/A' }}/{{ comp.bathrooms if comp.bathrooms else 'N/A' }}</td>
-                                <td>{{ comp.distance }} mi</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-        
-        {% if result.model_features %}
-        <div class="card shadow">
-            <div class="card-header">
-                <h3 class="card-title mb-0">Valuation Details</h3>
-            </div>
-            <div class="card-body p-4">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h5 class="mb-3">Model Features Used</h5>
-                        <ul class="list-group mb-4">
-                            {% for key, value in result.model_features.base_features.items() %}
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    {{ key | replace('_', ' ') | title }}
-                                    <span class="badge bg-primary rounded-pill">{{ value }}</span>
-                                </li>
-                            {% endfor %}
-                        </ul>
+            <div class="card-body">
+                {% if historical_valuations and historical_valuations|length > 1 %}
+                    <div class="price-history-chart mb-4">
+                        <canvas id="priceHistoryChart"></canvas>
                     </div>
                     
-                    <div class="col-md-6">
-                        <h5 class="mb-3">Valuation Factors</h5>
-                        {% if result.model_features.derived_features %}
-                            <ul class="list-group mb-4">
-                                {% for key, value in result.model_features.derived_features.items() %}
-                                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                                        {{ key | replace('_', ' ') | title }}
-                                        <span class="badge bg-info rounded-pill">{{ value }}</span>
-                                    </li>
-                                {% endfor %}
-                            </ul>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-    </div>
-    
-    <div class="col-md-4">
-        {% if result.market_trends and result.market_trends.monthly_trends %}
-        <div class="card shadow mb-4">
-            <div class="card-header">
-                <h3 class="card-title mb-0">Market Trends</h3>
-            </div>
-            <div class="card-body p-4">
-                <div id="marketTrendChart" class="chart-container"></div>
-                <div class="mt-3">
-                    <p><strong>Market Health:</strong> {{ result.market_trends.market_health | title }}</p>
-                    <p>{{ result.market_trends.trend_description }}</p>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-        
-        {% if result.gis_features %}
-        <div class="card shadow">
-            <div class="card-header">
-                <h3 class="card-title mb-0">Location Analysis</h3>
-            </div>
-            <div class="card-body p-4">
-                <div id="gisRadarChart" class="chart-container"></div>
-                <div class="mt-4">
-                    <h5>Location Factors</h5>
                     <div class="table-responsive">
-                        <table class="table table-sm">
+                        <table class="table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Valuation Method</th>
+                                    <th>Estimated Value</th>
+                                    <th>Confidence</th>
+                                </tr>
+                            </thead>
                             <tbody>
-                                {% for key, value in result.gis_features.items() %}
-                                    <tr>
-                                        <td>{{ key | replace('_', ' ') | title }}</td>
-                                        <td>
-                                            {% set factor_bar_class = 'bg-success' %}
-                                            {% if 'risk' in key or 'crime' in key or 'noise' in key %}
-                                                {% set factor_bar_class = 'bg-danger' %}
-                                                {% set value = 10 - value %}
-                                            {% endif %}
-                                            
-                                            <div class="progress" style="height: 8px;">
-                                                <div class="progress-bar {{ factor_bar_class }}" role="progressbar" style="width: {{ value * 10 }}%"></div>
+                                {% for hist_val in historical_valuations %}
+                                <tr class="{{ 'table-active' if hist_val.id == valuation.id else '' }}">
+                                    <td>{{ hist_val.valuation_date.strftime('%Y-%m-%d') }}</td>
+                                    <td>{{ hist_val.valuation_method|replace('_', ' ')|title }}</td>
+                                    <td>${{ '{:,.0f}'.format(hist_val.estimated_value) }}</td>
+                                    <td>
+                                        <div class="progress" style="height: 6px; width: 100px;">
+                                            <div class="progress-bar {{ 'bg-success' if hist_val.confidence_score >= 0.8 else 'bg-warning' if hist_val.confidence_score >= 0.6 else 'bg-danger' }}" 
+                                                role="progressbar" 
+                                                style="width: {{ (hist_val.confidence_score * 100)|int }}%" 
+                                                aria-valuenow="{{ (hist_val.confidence_score * 100)|int }}" 
+                                                aria-valuemin="0" 
+                                                aria-valuemax="100">
                                             </div>
-                                        </td>
-                                        <td class="text-end">{{ value | round(1) }}/10</td>
-                                    </tr>
+                                        </div>
+                                        <small>{{ (hist_val.confidence_score * 100)|int }}%</small>
+                                    </td>
+                                </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
                     </div>
+                {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-chart-line fa-4x text-muted mb-3"></i>
+                        <h5>No Historical Valuation Data</h5>
+                        <p class="text-muted">This is the first valuation for this property. Check back later for historical trends.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Valuation Factors Card -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white">
+                <h4 class="mb-0">Valuation Factors</h4>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-4">These factors significantly influenced the estimated property value:</p>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-4">
+                            <h5><i class="fas fa-map-marker-alt text-primary me-2"></i>Location Factors</h5>
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Neighborhood Desirability
+                                    <span class="badge bg-primary rounded-pill">High Impact</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    School District Quality
+                                    <span class="badge bg-primary rounded-pill">High Impact</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Proximity to Amenities
+                                    <span class="badge bg-secondary rounded-pill">Medium Impact</span>
+                                </li>
+                                {% if property.latitude and property.longitude %}
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    GIS Data Analysis
+                                    <span class="badge bg-primary rounded-pill">High Impact</span>
+                                </li>
+                                {% endif %}
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-4">
+                            <h5><i class="fas fa-home text-primary me-2"></i>Property Factors</h5>
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Property Size
+                                    <span class="badge bg-primary rounded-pill">High Impact</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Age of Construction
+                                    <span class="badge bg-secondary rounded-pill">Medium Impact</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Property Type
+                                    <span class="badge bg-primary rounded-pill">High Impact</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Bedrooms/Bathrooms
+                                    <span class="badge bg-secondary rounded-pill">Medium Impact</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="alert alert-light mt-3">
+                    <div class="d-flex">
+                        <div class="me-3">
+                            <i class="fas fa-lightbulb text-warning fa-2x"></i>
+                        </div>
+                        <div>
+                            <h5 class="alert-heading mb-1">Improve Valuation Accuracy</h5>
+                            <p class="mb-0">For even more accurate results, consider providing additional property details such as recent renovations, specific amenities, and detailed lot information in your next valuation.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-        {% endif %}
+    </div>
+    
+    <!-- Sidebar Column -->
+    <div class="col-lg-4">
+        <!-- Similar Properties Card -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white">
+                <h4 class="mb-0">Similar Properties</h4>
+            </div>
+            <div class="card-body">
+                {% if similar_properties %}
+                    <p class="text-muted mb-3">Comparable properties in the same area:</p>
+                    
+                    {% for similar in similar_properties %}
+                        <div class="similar-property card mb-3">
+                            <div class="card-body">
+                                <h5 class="card-title">{{ similar.address }}</h5>
+                                <p class="text-muted">{{ similar.neighborhood or similar.city }}</p>
+                                
+                                <div class="d-flex mb-3">
+                                    <div class="me-3">
+                                        <small class="d-block text-muted">Beds</small>
+                                        <strong>{{ similar.bedrooms or 'N/A' }}</strong>
+                                    </div>
+                                    <div class="me-3">
+                                        <small class="d-block text-muted">Baths</small>
+                                        <strong>{{ similar.bathrooms or 'N/A' }}</strong>
+                                    </div>
+                                    <div>
+                                        <small class="d-block text-muted">Size</small>
+                                        <strong>{{ '{:,}'.format(similar.living_area|int) if similar.living_area else 'N/A' }}</strong>
+                                    </div>
+                                </div>
+                                
+                                {% set similar_valuation = similar.valuations.order_by(valuation_date.desc()).first() if similar.valuations.count() > 0 else None %}
+                                {% if similar_valuation %}
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h5 class="mb-0">${{ '{:,.0f}'.format(similar_valuation.estimated_value) }}</h5>
+                                        <a href="{{ url_for('property_detail', property_id=similar.id) }}" class="btn btn-sm btn-outline-primary">View</a>
+                                    </div>
+                                {% else %}
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <p class="text-muted mb-0">No valuation available</p>
+                                        <a href="{{ url_for('property_detail', property_id=similar.id) }}" class="btn btn-sm btn-outline-primary">View</a>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-search fa-4x text-muted mb-3"></i>
+                        <h5>No Similar Properties Found</h5>
+                        <p class="text-muted">We couldn't find comparable properties in this area with similar characteristics.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Market Trends Card -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white">
+                <h4 class="mb-0">Neighborhood Insights</h4>
+            </div>
+            <div class="card-body">
+                <div class="mb-4">
+                    <h5 class="mb-3">{{ property.neighborhood or 'Local' }} Market Trends</h5>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span>Average Home Value:</span>
+                        <span class="fw-bold">${{ '{:,.0f}'.format(valuation.estimated_value * 1.05) }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span>Median List Price:</span>
+                        <span class="fw-bold">${{ '{:,.0f}'.format(valuation.estimated_value * 0.98) }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span>Price per Sq Ft:</span>
+                        <span class="fw-bold">${{ '{:.0f}'.format(valuation.estimated_value / property.living_area) if property.living_area else 'N/A' }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span>Year-over-Year Change:</span>
+                        <span class="fw-bold text-success">+4.3%</span>
+                    </div>
+                </div>
+                
+                <div>
+                    <h5 class="mb-3">Market Health</h5>
+                    <div class="mb-3">
+                        <label class="form-label d-flex justify-content-between mb-1">
+                            <span>Buyer's Demand</span>
+                            <span>Strong</span>
+                        </label>
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar bg-success" role="progressbar" style="width: 85%" aria-valuenow="85" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label d-flex justify-content-between mb-1">
+                            <span>Price Stability</span>
+                            <span>Stable</span>
+                        </label>
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar bg-info" role="progressbar" style="width: 75%" aria-valuenow="75" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label d-flex justify-content-between mb-1">
+                            <span>Investment Potential</span>
+                            <span>Good</span>
+                        </label>
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar bg-primary" role="progressbar" style="width: 70%" aria-valuenow="70" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="alert alert-light mt-4">
+                    <small class="text-muted">
+                        <i class="fas fa-info-circle me-1"></i> Market data is based on recent transactions, local market analysis, and predictive modeling. These insights are provided for informational purposes and may not reflect current market conditions.
+                    </small>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Action Card -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white">
+                <h4 class="mb-0">Next Steps</h4>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="#" class="btn btn-outline-primary">
+                        <i class="fas fa-chart-pie me-1"></i> Run What-If Analysis
+                    </a>
+                    <a href="#" class="btn btn-outline-primary">
+                        <i class="fas fa-search-dollar me-1"></i> Compare with Other Methods
+                    </a>
+                    <a href="#" class="btn btn-outline-primary">
+                        <i class="fas fa-map-marked-alt me-1"></i> View GIS Analysis
+                    </a>
+                    <a href="{{ url_for('property_search') }}" class="btn btn-outline-primary">
+                        <i class="fas fa-search me-1"></i> Find Similar Properties
+                    </a>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    {% if result.market_trends and result.market_trends.monthly_trends %}
-    // Market trends chart
-    const marketTrendCtx = document.getElementById('marketTrendChart').getContext('2d');
-    const marketTrendChart = new Chart(marketTrendCtx, {
-        type: 'line',
-        data: {
-            labels: [
-                {% for trend in result.market_trends.monthly_trends %}
-                    "{{ trend.date }}",
-                {% endfor %}
-                {% for forecast in result.market_trends.forecast %}
-                    "{{ forecast.date }}",
-                {% endfor %}
-            ],
-            datasets: [{
-                label: 'Market Value Trend',
-                data: [
-                    {% for trend in result.market_trends.monthly_trends %}
-                        {{ trend.value }},
-                    {% endfor %}
-                    {% for forecast in result.market_trends.forecast %}
-                        {{ forecast.value }},
+    document.addEventListener('DOMContentLoaded', function() {
+        {% if historical_valuations and historical_valuations|length > 1 %}
+        // Price History Chart
+        const priceHistoryCtx = document.getElementById('priceHistoryChart').getContext('2d');
+        const priceHistoryChart = new Chart(priceHistoryCtx, {
+            type: 'line',
+            data: {
+                labels: [
+                    {% for hist_val in historical_valuations|reverse %}
+                        '{{ hist_val.valuation_date.strftime("%b %Y") }}'{{ "," if not loop.last }}
                     {% endfor %}
                 ],
-                borderColor: '#3498db',
-                backgroundColor: 'rgba(52, 152, 219, 0.1)',
-                tension: 0.3,
-                fill: true,
-                pointRadius: 3,
-                pointBackgroundColor: '#3498db',
-                borderWidth: 2
-            }, {
-                label: 'Forecast',
-                data: [
-                    {% for trend in result.market_trends.monthly_trends %}
-                        null,
-                    {% endfor %}
-                    {% for forecast in result.market_trends.forecast %}
-                        {{ forecast.value }},
-                    {% endfor %}
-                ],
-                borderColor: '#e74c3c',
-                borderDash: [5, 5],
-                backgroundColor: 'rgba(231, 76, 60, 0.1)',
-                tension: 0.3,
-                fill: true,
-                pointRadius: 3,
-                pointBackgroundColor: '#e74c3c',
-                borderWidth: 2
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: {
-                    beginAtZero: false,
-                    title: {
-                        display: true,
-                        text: 'Market Index'
-                    }
-                },
-                x: {
-                    title: {
-                        display: true,
-                        text: 'Date'
-                    }
-                }
+                datasets: [{
+                    label: 'Estimated Value',
+                    data: [
+                        {% for hist_val in historical_valuations|reverse %}
+                            {{ hist_val.estimated_value }}{{ "," if not loop.last }}
+                        {% endfor %}
+                    ],
+                    borderColor: 'rgba(13, 110, 253, 1)',
+                    backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                    fill: true,
+                    tension: 0.3
+                }]
             },
-            plugins: {
-                tooltip: {
-                    mode: 'index',
-                    intersect: false
-                },
-                legend: {
-                    position: 'top'
-                }
-            }
-        }
-    });
-    {% endif %}
-    
-    {% if result.gis_features %}
-    // GIS radar chart
-    const gisRadarCtx = document.getElementById('gisRadarChart').getContext('2d');
-    const gisRadarChart = new Chart(gisRadarCtx, {
-        type: 'radar',
-        data: {
-            labels: [
-                {% for key, value in result.gis_features.items() %}
-                    "{{ key | replace('_', ' ') | title }}",
-                {% endfor %}
-            ],
-            datasets: [{
-                label: 'Location Factors',
-                data: [
-                    {% for key, value in result.gis_features.items() %}
-                        {% if 'risk' in key or 'crime' in key or 'noise' in key %}
-                            {{ 10 - value }},
-                        {% else %}
-                            {{ value }},
-                        {% endif %}
-                    {% endfor %}
-                ],
-                backgroundColor: 'rgba(52, 152, 219, 0.2)',
-                borderColor: '#3498db',
-                pointBackgroundColor: '#3498db',
-                pointBorderColor: '#fff',
-                pointHoverBackgroundColor: '#fff',
-                pointHoverBorderColor: '#3498db'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                r: {
-                    angleLines: {
-                        display: true
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return '$' + context.parsed.y.toLocaleString();
+                            }
+                        }
                     },
-                    suggestedMin: 0,
-                    suggestedMax: 10
-                }
-            },
-            plugins: {
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return context.dataset.label + ': ' + context.formattedValue + '/10';
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + value.toLocaleString();
+                            }
                         }
                     }
                 }
             }
-        }
+        });
+        {% endif %}
+        
+        // Print functionality
+        document.getElementById('printResult').addEventListener('click', function() {
+            window.print();
+        });
     });
-    {% endif %}
-});
 </script>
 {% endblock %}

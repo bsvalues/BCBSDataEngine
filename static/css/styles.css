@@ -1,146 +1,391 @@
-/*
- * BCBS Values - Main stylesheet
+/* 
+ * BCBS Property Valuation - Custom Stylesheet
+ * This file contains custom styles for the BCBS Property Valuation application.
  */
 
-/* Base styles */
+/* General styles */
 :root {
-  --primary-color: var(--bs-primary);
-  --secondary-color: var(--bs-secondary);
-  --success-color: var(--bs-success);
-  --info-color: var(--bs-info);
-  --warning-color: var(--bs-warning);
-  --danger-color: var(--bs-danger);
-  --light-color: var(--bs-light);
-  --dark-color: var(--bs-dark);
-  --gray-100: var(--bs-gray-100);
-  --gray-200: var(--bs-gray-200);
-  --gray-300: var(--bs-gray-300);
-  --gray-400: var(--bs-gray-400);
-  --gray-500: var(--bs-gray-500);
-  --gray-600: var(--bs-gray-600);
-  --gray-700: var(--bs-gray-700);
-  --gray-800: var(--bs-gray-800);
-  --gray-900: var(--bs-gray-900);
+    --primary-color: #0d6efd;
+    --secondary-color: #6c757d;
+    --success-color: #198754;
+    --info-color: #0dcaf0;
+    --warning-color: #ffc107;
+    --danger-color: #dc3545;
+    --light-color: #f8f9fa;
+    --dark-color: #212529;
 }
 
 body {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-main {
-  flex: 1;
-}
-
-.custom-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: var(--gray-600) var(--gray-800);
-}
-
-.custom-scrollbar::-webkit-scrollbar {
-  width: 8px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: var(--gray-800);
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: var(--gray-600);
-  border-radius: 20px;
-  border: 2px solid var(--gray-800);
-}
-
-/* Feature Icon styles */
-.feature-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 3rem;
-  height: 3rem;
-  font-size: 1.5rem;
-  border-radius: 0.5rem;
-}
-
-/* Cards */
+/* Custom card styling */
 .card {
-  background-color: var(--gray-800);
-  border-color: var(--gray-700);
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+}
+
+.card:hover {
+    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
 }
 
 .card-header {
-  background-color: var(--gray-900);
-  border-bottom-color: var(--gray-700);
+    font-weight: 600;
+    background-color: rgba(13, 110, 253, 0.05);
 }
 
-/* Avatar styles */
-.avatar {
-  object-fit: cover;
+/* Dashboard stat cards */
+.stat-card {
+    height: 100%;
+    border-left: 4px solid var(--primary-color);
 }
 
-.avatar-sm {
-  width: 2rem;
-  height: 2rem;
-  font-size: 1rem;
+.stat-card .stat-icon {
+    font-size: 2.5rem;
+    opacity: 0.7;
 }
 
-/* Error page */
-.error-page {
-  max-width: 600px;
-  margin: 0 auto;
-  padding: 3rem 0;
+.stat-card .stat-value {
+    font-size: 1.8rem;
+    font-weight: 700;
 }
 
-/* Hero section */
-.hero {
-  background-color: var(--gray-900);
-  position: relative;
-  overflow: hidden;
+.stat-card .stat-label {
+    color: var(--secondary-color);
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
-.hero::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-image: linear-gradient(120deg, rgba(13, 110, 253, 0.1), rgba(13, 202, 240, 0.1));
-  z-index: 0;
+.stat-card.primary {
+    border-left-color: var(--primary-color);
 }
 
-.hero .container {
-  position: relative;
-  z-index: 1;
+.stat-card.success {
+    border-left-color: var(--success-color);
 }
 
-/* Data source cards */
-.data-source-card {
-  background-color: var(--gray-800);
-  border-color: var(--gray-700);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+.stat-card.info {
+    border-left-color: var(--info-color);
 }
 
-.data-source-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+.stat-card.warning {
+    border-left-color: var(--warning-color);
 }
 
-.data-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 80px;
+.stat-card.danger {
+    border-left-color: var(--danger-color);
 }
 
-/* CTA section */
-.cta {
-  background-color: var(--primary-color);
+/* Property cards */
+.property-card {
+    height: 100%;
 }
 
-/* Footer */
-.footer {
-  background-color: var(--gray-900) !important;
-  border-top: 1px solid var(--gray-800);
+.property-card .property-type-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+}
+
+.property-card .property-image {
+    height: 180px;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-color: #e9ecef;
+    border-top-left-radius: 0.5rem;
+    border-top-right-radius: 0.5rem;
+}
+
+.property-card .property-price {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.property-card .property-address {
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.property-card .property-features {
+    font-size: 0.9rem;
+}
+
+.property-card .property-features i {
+    width: 16px;
+    text-align: center;
+    margin-right: 5px;
+}
+
+/* Agent status indicators */
+.status-indicator {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 5px;
+}
+
+.status-indicator.active {
+    background-color: var(--success-color);
+    box-shadow: 0 0 5px var(--success-color);
+}
+
+.status-indicator.idle {
+    background-color: var(--warning-color);
+    box-shadow: 0 0 5px var(--warning-color);
+}
+
+.status-indicator.error {
+    background-color: var(--danger-color);
+    box-shadow: 0 0 5px var(--danger-color);
+}
+
+.status-indicator.processing {
+    background-color: var(--info-color);
+    box-shadow: 0 0 5px var(--info-color);
+}
+
+.status-indicator.completed {
+    background-color: var(--success-color);
+    box-shadow: 0 0 5px var(--success-color);
+}
+
+.status-indicator.queued {
+    background-color: var(--secondary-color);
+    box-shadow: 0 0 5px var(--secondary-color);
+}
+
+/* Progress bars */
+.progress-thin {
+    height: 6px;
+    margin-bottom: 5px;
+}
+
+/* Chart containers */
+.chart-container {
+    position: relative;
+    height: 270px;
+    width: 100%;
+}
+
+/* Log level colors */
+.log-info {
+    border-left: 4px solid var(--info-color);
+}
+
+.log-warning {
+    border-left: 4px solid var(--warning-color);
+}
+
+.log-error {
+    border-left: 4px solid var(--danger-color);
+}
+
+/* API key styling */
+.api-key {
+    font-family: 'Courier New', Courier, monospace;
+    background-color: var(--light-color);
+    padding: 0.5rem;
+    border-radius: 0.25rem;
+    overflow-x: auto;
+    white-space: nowrap;
+}
+
+/* Valuation methods */
+.method-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.method-enhanced_regression {
+    background-color: #e3f2fd;
+    color: #0d47a1;
+}
+
+.method-lightgbm {
+    background-color: #e0f7fa;
+    color: #006064;
+}
+
+.method-xgboost {
+    background-color: #e8f5e9;
+    color: #1b5e20;
+}
+
+.method-linear_regression {
+    background-color: #f3e5f5;
+    color: #4a148c;
+}
+
+.method-ridge_regression {
+    background-color: #fff3e0;
+    color: #e65100;
+}
+
+.method-lasso_regression {
+    background-color: #ffebee;
+    color: #b71c1c;
+}
+
+.method-elastic_net {
+    background-color: #fffde7;
+    color: #f57f17;
+}
+
+/* Custom pagination */
+.page-item.active .page-link {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.page-link {
+    color: var(--primary-color);
+}
+
+/* Responsive adjustments */
+@media (max-width: 992px) {
+    .stat-card .stat-value {
+        font-size: 1.5rem;
+    }
+    
+    .stat-card .stat-icon {
+        font-size: 2rem;
+    }
+    
+    .chart-container {
+        height: 220px;
+    }
+}
+
+@media (max-width: 768px) {
+    .stat-card {
+        margin-bottom: 1rem;
+    }
+    
+    .chart-container {
+        height: 180px;
+    }
+}
+
+/* Custom animations */
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+.animate-pulse {
+    animation: pulse 2s infinite;
+}
+
+/* Custom utilities */
+.cursor-pointer {
+    cursor: pointer;
+}
+
+.border-dashed {
+    border-style: dashed !important;
+}
+
+/* Property detail page */
+.property-detail-header {
+    background-color: rgba(13, 110, 253, 0.05);
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.property-detail-header h1 {
+    margin-bottom: 0.5rem;
+}
+
+.property-detail-section {
+    margin-bottom: 2rem;
+}
+
+.property-map {
+    height: 300px;
+    background-color: #e9ecef;
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.valuation-history-item {
+    border-left: 3px solid var(--primary-color);
+    padding-left: 1rem;
+    margin-bottom: 1.5rem;
+    position: relative;
+}
+
+.valuation-history-item::before {
+    content: "";
+    position: absolute;
+    left: -7px;
+    top: 0;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: var(--primary-color);
+}
+
+.valuation-history-item .date {
+    font-size: 0.9rem;
+    color: var(--secondary-color);
+}
+
+.valuation-history-item .price {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--dark-color);
+}
+
+.valuation-history-item .method {
+    font-size: 0.9rem;
+}
+
+.confidence-indicator {
+    display: inline-block;
+    width: 100%;
+    height: 6px;
+    background-color: #e9ecef;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.confidence-indicator .confidence-level {
+    height: 100%;
+    background-color: var(--success-color);
+}
+
+/* Error pages */
+.error-container {
+    text-align: center;
+    padding: 3rem 0;
+}
+
+.error-code {
+    font-size: 6rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+}
+
+.error-message {
+    font-size: 1.5rem;
+    color: var(--secondary-color);
+    margin-bottom: 2rem;
 }

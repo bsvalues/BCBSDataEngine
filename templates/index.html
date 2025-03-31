@@ -1,271 +1,142 @@
 {% extends "base.html" %}
 
-{% block title %}BCBS Values - Advanced Property Valuation{% endblock %}
-
-{% block header %}Welcome to BCBS Values{% endblock %}
-
 {% block content %}
-<div class="row align-items-center mb-5">
-    <div class="col-lg-6 mb-4 mb-lg-0">
-        <h2 class="mb-4">Advanced Real Estate Valuation Platform</h2>
-        <p class="lead mb-4">
-            BCBS Values provides state-of-the-art property valuation using machine learning, GIS integration, and statistical modeling to deliver accurate and reliable property assessments.
-        </p>
-        <div class="d-grid gap-2 d-md-flex">
-            <a href="{{ url_for('valuation') }}" class="btn btn-primary btn-lg px-4 me-md-2">
-                <i class="fas fa-calculator me-2"></i> Get Property Valuation
-            </a>
-            <a href="{{ url_for('properties') }}" class="btn btn-outline-secondary btn-lg px-4">
-                <i class="fas fa-search me-2"></i> Search Properties
-            </a>
-        </div>
+<div class="jumbotron bg-light p-5 rounded-3 mb-4">
+    <div class="container">
+        <h1 class="display-4">Welcome to BCBS Property Valuation</h1>
+        <p class="lead">An advanced real estate valuation platform powered by machine learning and comprehensive property analysis.</p>
+        <hr class="my-4">
+        <p>Use our valuation tools to get accurate property assessments, analyze real estate data, and gain valuable market insights.</p>
+        {% if current_user.is_authenticated %}
+        <a class="btn btn-primary btn-lg" href="{{ url_for('dashboard') }}" role="button">Go to Dashboard</a>
+        {% else %}
+        <a class="btn btn-primary btn-lg" href="{{ url_for('register') }}" role="button">Get Started</a>
+        <a class="btn btn-outline-secondary btn-lg ms-2" href="{{ url_for('login') }}" role="button">Login</a>
+        {% endif %}
     </div>
-    <div class="col-lg-6">
-        <div class="card bg-light shadow-sm">
-            <div class="card-body p-4">
-                <div class="text-center mb-4">
-                    <div class="display-4 text-primary mb-3">
-                        <i class="fas fa-home"></i>
-                    </div>
-                    <h3>Quick Property Lookup</h3>
-                    <p class="text-muted">Find property information and valuation instantly</p>
-                </div>
-                <form action="{{ url_for('properties') }}" method="get">
+</div>
+
+<div class="container">
+    <div class="row mb-5">
+        <div class="col-md-4 mb-4">
+            <div class="card h-100">
+                <div class="card-body text-center">
                     <div class="mb-3">
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="fas fa-search"></i></span>
-                            <input type="text" class="form-control form-control-lg" name="search_query" placeholder="Address, City, or Neighborhood">
-                            <button type="submit" class="btn btn-primary">Search</button>
-                        </div>
+                        <i class="fas fa-chart-line fa-4x text-primary"></i>
                     </div>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-<hr class="my-5">
-
-<div class="row mb-5">
-    <div class="col-12 text-center mb-4">
-        <h2>Our Valuation Methods</h2>
-        <p class="lead text-muted">Comprehensive analysis powered by advanced algorithms</p>
-    </div>
-    
-    <div class="col-md-4 mb-4">
-        <div class="card h-100 dashboard-card">
-            <div class="card-body text-center p-4">
-                <div class="dashboard-icon">
-                    <i class="fas fa-chart-line"></i>
+                    <h3 class="card-title">Advanced Valuations</h3>
+                    <p class="card-text">Our platform uses multiple valuation methods including Enhanced Regression, LightGBM, and XGBoost to provide accurate property valuations with high confidence scores.</p>
                 </div>
-                <h4>Enhanced Regression</h4>
-                <p class="text-muted">
-                    Our primary valuation method combines multiple regression models with market trend analysis for optimal accuracy.
-                </p>
-                <ul class="text-start text-muted">
-                    <li>Incorporates seasonal market adjustments</li>
-                    <li>Accounts for property-specific features</li>
-                    <li>Includes neighborhood trend analysis</li>
-                </ul>
             </div>
         </div>
-    </div>
-    
-    <div class="col-md-4 mb-4">
-        <div class="card h-100 dashboard-card">
-            <div class="card-body text-center p-4">
-                <div class="dashboard-icon">
-                    <i class="fas fa-map-marked-alt"></i>
+        
+        <div class="col-md-4 mb-4">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <div class="mb-3">
+                        <i class="fas fa-map-marked-alt fa-4x text-primary"></i>
+                    </div>
+                    <h3 class="card-title">Geospatial Analysis</h3>
+                    <p class="card-text">Analyze properties by location with our built-in geospatial features. Get insights on neighborhood trends and property comparisons.</p>
                 </div>
-                <h4>GIS Integration</h4>
-                <p class="text-muted">
-                    Geographic Information System integration enhances valuation accuracy by analyzing spatial factors.
-                </p>
-                <ul class="text-start text-muted">
-                    <li>School district quality assessment</li>
-                    <li>Proximity to amenities evaluation</li>
-                    <li>Neighborhood development patterns</li>
-                </ul>
             </div>
         </div>
-    </div>
-    
-    <div class="col-md-4 mb-4">
-        <div class="card h-100 dashboard-card">
-            <div class="card-body text-center p-4">
-                <div class="dashboard-icon">
-                    <i class="fas fa-brain"></i>
+        
+        <div class="col-md-4 mb-4">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <div class="mb-3">
+                        <i class="fas fa-code fa-4x text-primary"></i>
+                    </div>
+                    <h3 class="card-title">API Access</h3>
+                    <p class="card-text">Access our valuation services programmatically through our REST API. Generate API keys and integrate our platform with your applications.</p>
                 </div>
-                <h4>Machine Learning</h4>
-                <p class="text-muted">
-                    Advanced ML algorithms including gradient boosting methods for complex market pattern recognition.
-                </p>
-                <ul class="text-start text-muted">
-                    <li>XGBoost for feature importance</li>
-                    <li>LightGBM for handling categorical features</li>
-                    <li>Ensemble methods for improved accuracy</li>
-                </ul>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row mb-5">
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h4 class="mb-0">Features</h4>
+                </div>
+                <div class="card-body">
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item d-flex">
+                            <i class="fas fa-check-circle text-success me-3 mt-1"></i>
+                            <div>
+                                <strong>Multiple Valuation Models</strong>
+                                <p class="mb-0 text-muted">Choose from various models for different property types and scenarios.</p>
+                            </div>
+                        </li>
+                        <li class="list-group-item d-flex">
+                            <i class="fas fa-check-circle text-success me-3 mt-1"></i>
+                            <div>
+                                <strong>Batch Processing</strong>
+                                <p class="mb-0 text-muted">Process multiple properties at once with our efficient batch valuation system.</p>
+                            </div>
+                        </li>
+                        <li class="list-group-item d-flex">
+                            <i class="fas fa-check-circle text-success me-3 mt-1"></i>
+                            <div>
+                                <strong>Historical Tracking</strong>
+                                <p class="mb-0 text-muted">Monitor property value changes over time with our historical valuation tracking.</p>
+                            </div>
+                        </li>
+                        <li class="list-group-item d-flex">
+                            <i class="fas fa-check-circle text-success me-3 mt-1"></i>
+                            <div>
+                                <strong>Confidence Scores</strong>
+                                <p class="mb-0 text-muted">Each valuation includes a confidence score to help you assess its reliability.</p>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h4 class="mb-0">Getting Started</h4>
+                </div>
+                <div class="card-body">
+                    <ol class="list-group list-group-numbered mb-4">
+                        <li class="list-group-item d-flex">
+                            <div>
+                                <strong>Create an Account</strong>
+                                <p class="mb-0 text-muted">Register to access all valuation features and dashboard analytics.</p>
+                            </div>
+                        </li>
+                        <li class="list-group-item d-flex">
+                            <div>
+                                <strong>Add Properties</strong>
+                                <p class="mb-0 text-muted">Input property details manually or import them from supported formats.</p>
+                            </div>
+                        </li>
+                        <li class="list-group-item d-flex">
+                            <div>
+                                <strong>Generate Valuations</strong>
+                                <p class="mb-0 text-muted">Select a valuation method and run the analysis on your properties.</p>
+                            </div>
+                        </li>
+                        <li class="list-group-item d-flex">
+                            <div>
+                                <strong>Analyze Results</strong>
+                                <p class="mb-0 text-muted">View detailed reports, charts, and insights from your property valuations.</p>
+                            </div>
+                        </li>
+                    </ol>
+                    
+                    {% if not current_user.is_authenticated %}
+                    <div class="text-center">
+                        <a href="{{ url_for('register') }}" class="btn btn-primary">Create Account</a>
+                    </div>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>
 </div>
-
-<div class="row mb-5 align-items-center bg-light p-4 rounded">
-    <div class="col-lg-6 mb-4 mb-lg-0">
-        <h2 class="mb-3">What-If Analysis</h2>
-        <p class="lead">
-            Explore how different factors impact property value with our interactive analysis tool.
-        </p>
-        <p class="text-muted mb-4">
-            Adjust parameters such as property features, market conditions, and neighborhood factors to see how they affect valuation in real-time.
-        </p>
-        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-primary">
-            <i class="fas fa-sliders-h me-2"></i> Try What-If Analysis
-        </a>
-    </div>
-    <div class="col-lg-6">
-        <div class="chart-container" style="height: 300px;">
-            <!-- Placeholder for a chart illustrating what-if analysis -->
-            <canvas id="whatIfChart"></canvas>
-        </div>
-    </div>
-</div>
-
-<div class="row mb-5">
-    <div class="col-12 text-center mb-4">
-        <h2>Why Choose BCBS Values?</h2>
-        <p class="lead text-muted">Industry-leading accuracy and comprehensive analysis</p>
-    </div>
-    
-    <div class="col-md-3 mb-4">
-        <div class="stat-card card h-100">
-            <div class="card-body">
-                <div class="stat-value text-primary">97%</div>
-                <div class="stat-label">Accuracy Rate</div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-md-3 mb-4">
-        <div class="stat-card card h-100">
-            <div class="card-body">
-                <div class="stat-value text-primary">500K+</div>
-                <div class="stat-label">Properties Analyzed</div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-md-3 mb-4">
-        <div class="stat-card card h-100">
-            <div class="card-body">
-                <div class="stat-value text-primary">50+</div>
-                <div class="stat-label">GIS Data Layers</div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-md-3 mb-4">
-        <div class="stat-card card h-100">
-            <div class="card-body">
-                <div class="stat-value text-primary">7</div>
-                <div class="stat-label">Valuation Methods</div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row">
-    <div class="col-12 text-center mb-4">
-        <h2>Get Started Today</h2>
-        <p class="lead text-muted mb-5">Accurate property valuation is just a few clicks away</p>
-    </div>
-    
-    <div class="col-md-4 mb-4">
-        <div class="card h-100">
-            <div class="card-body p-4">
-                <h4 class="card-title mb-3"><i class="fas fa-home text-primary me-2"></i> Property Valuation</h4>
-                <p class="card-text">Get an accurate valuation for any property with our advanced algorithms and comprehensive analysis.</p>
-                <a href="{{ url_for('valuation') }}" class="btn btn-sm btn-outline-primary">Start Valuation</a>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-md-4 mb-4">
-        <div class="card h-100">
-            <div class="card-body p-4">
-                <h4 class="card-title mb-3"><i class="fas fa-search-location text-primary me-2"></i> Property Search</h4>
-                <p class="card-text">Search our database of properties to find detailed information and valuation history.</p>
-                <a href="{{ url_for('properties') }}" class="btn btn-sm btn-outline-primary">Search Properties</a>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-md-4 mb-4">
-        <div class="card h-100">
-            <div class="card-body p-4">
-                <h4 class="card-title mb-3"><i class="fas fa-chart-bar text-primary me-2"></i> Market Insights</h4>
-                <p class="card-text">Explore market trends, neighborhood statistics, and property value forecasts.</p>
-                <a href="{{ url_for('dashboard') }}" class="btn btn-sm btn-outline-primary">View Dashboard</a>
-            </div>
-        </div>
-    </div>
-</div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // What-If Analysis Demo Chart
-    const whatIfCtx = document.getElementById('whatIfChart').getContext('2d');
-    const whatIfChart = new Chart(whatIfCtx, {
-        type: 'bar',
-        data: {
-            labels: ['Base Value', 'Updated Square Footage', 'Added Bathroom', 'Updated Kitchen', 'Market Growth'],
-            datasets: [{
-                label: 'Property Value ($)',
-                data: [425000, 450000, 475000, 510000, 535000],
-                backgroundColor: [
-                    'rgba(52, 152, 219, 0.5)',
-                    'rgba(52, 152, 219, 0.6)',
-                    'rgba(52, 152, 219, 0.7)',
-                    'rgba(52, 152, 219, 0.8)',
-                    'rgba(52, 152, 219, 0.9)'
-                ],
-                borderColor: [
-                    'rgba(52, 152, 219, 1)',
-                    'rgba(52, 152, 219, 1)',
-                    'rgba(52, 152, 219, 1)',
-                    'rgba(52, 152, 219, 1)',
-                    'rgba(52, 152, 219, 1)'
-                ],
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: {
-                    beginAtZero: false,
-                    min: 400000,
-                    ticks: {
-                        callback: function(value) {
-                            return '$' + value.toLocaleString();
-                        }
-                    }
-                }
-            },
-            plugins: {
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return 'Value: $' + context.raw.toLocaleString();
-                        }
-                    }
-                }
-            }
-        }
-    });
-});
-</script>
 {% endblock %}

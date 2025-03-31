@@ -1,0 +1,445 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+<style>
+    .search-form {
+        background-color: rgba(240, 245, 255, 0.7);
+        border-radius: 0.375rem;
+        box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    }
+    
+    .property-card {
+        transition: transform 0.3s ease;
+        cursor: pointer;
+    }
+    
+    .property-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 .5rem 1rem rgba(0,0,0,.15) !important;
+    }
+    
+    .property-card .card-img-top {
+        height: 180px;
+        object-fit: cover;
+        background-color: #e9ecef;
+    }
+    
+    .property-badge {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 10;
+    }
+    
+    .property-feature {
+        display: inline-block;
+        margin-right: 1rem;
+    }
+    
+    .property-feature i {
+        color: var(--bs-primary);
+        margin-right: 0.25rem;
+    }
+    
+    .no-results {
+        padding: 3rem 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1><i class="fas fa-search me-2"></i>Property Search</h1>
+        <p class="lead">Find and analyze properties based on your specific criteria.</p>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Search Filters Sidebar -->
+    <div class="col-lg-3 mb-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">Search Filters</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('property_search') }}">
+                    {{ form.hidden_tag() }}
+                    
+                    <div class="mb-3">
+                        <label for="{{ form.search_query.id }}" class="form-label">Search</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-search"></i></span>
+                            {{ form.search_query(class="form-control", placeholder="Address, neighborhood, etc.") }}
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="{{ form.neighborhood.id }}" class="form-label">Neighborhood</label>
+                        {{ form.neighborhood(class="form-select") }}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="{{ form.property_type.id }}" class="form-label">Property Type</label>
+                        {{ form.property_type(class="form-select") }}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="{{ form.min_bedrooms.id }}" class="form-label">Minimum Bedrooms</label>
+                        {{ form.min_bedrooms(class="form-select") }}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="{{ form.min_price.id }}" class="form-label">Price Range</label>
+                        <div class="input-group mb-2">
+                            <span class="input-group-text">$</span>
+                            {{ form.min_price(class="form-control", placeholder="Minimum") }}
+                        </div>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            {{ form.max_price(class="form-control", placeholder="Maximum") }}
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-search me-1"></i>Search Properties
+                        </button>
+                        <button type="button" id="resetFilters" class="btn btn-outline-secondary">
+                            <i class="fas fa-undo me-1"></i>Reset Filters
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card shadow-sm mt-4">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">Market Insights</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <h6 class="text-muted">Avg. Price by Property Type</h6>
+                    <div class="d-flex justify-content-between mb-1">
+                        <span>Single Family</span>
+                        <span class="fw-bold">$457,000</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-1">
+                        <span>Condo</span>
+                        <span class="fw-bold">$289,000</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-1">
+                        <span>Townhouse</span>
+                        <span class="fw-bold">$325,000</span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>Multi-Family</span>
+                        <span class="fw-bold">$510,000</span>
+                    </div>
+                </div>
+                
+                <div>
+                    <h6 class="text-muted">Market Trends</h6>
+                    <canvas id="marketTrendsChart" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Property Results Column -->
+    <div class="col-lg-9">
+        <!-- Search Results Header -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-body d-flex justify-content-between align-items-center">
+                <div>
+                    <h5 class="mb-0">{{ properties|length }} Properties Found</h5>
+                    <p class="text-muted mb-0">Showing results based on your search criteria</p>
+                </div>
+                <div class="d-flex align-items-center">
+                    <div class="me-3">
+                        <label for="sortOptions" class="form-label mb-0 me-2">Sort by:</label>
+                        <select class="form-select form-select-sm" id="sortOptions">
+                            <option value="newest">Newest</option>
+                            <option value="price_high">Price (High to Low)</option>
+                            <option value="price_low">Price (Low to High)</option>
+                            <option value="beds">Most Bedrooms</option>
+                            <option value="baths">Most Bathrooms</option>
+                            <option value="sqft">Largest Size</option>
+                        </select>
+                    </div>
+                    <div class="btn-group" role="group" aria-label="View options">
+                        <button type="button" class="btn btn-outline-secondary btn-sm active" id="gridView">
+                            <i class="fas fa-th-large"></i>
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="listView">
+                            <i class="fas fa-list"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Properties Grid -->
+        <div class="row" id="propertiesGrid">
+            {% if properties %}
+                {% for property in properties %}
+                    <div class="col-md-6 col-lg-4 mb-4">
+                        <div class="card shadow-sm property-card h-100" onclick="window.location.href='{{ url_for('property_detail', property_id=property.id) }}'">
+                            {% if property.property_type == 'single_family' %}
+                                <span class="badge bg-primary property-badge">Single Family</span>
+                                <div class="card-img-top d-flex align-items-center justify-content-center">
+                                    <i class="fas fa-home fa-4x text-muted"></i>
+                                </div>
+                            {% elif property.property_type == 'condo' %}
+                                <span class="badge bg-info property-badge">Condo</span>
+                                <div class="card-img-top d-flex align-items-center justify-content-center">
+                                    <i class="fas fa-building fa-4x text-muted"></i>
+                                </div>
+                            {% elif property.property_type == 'townhouse' %}
+                                <span class="badge bg-success property-badge">Townhouse</span>
+                                <div class="card-img-top d-flex align-items-center justify-content-center">
+                                    <i class="fas fa-city fa-4x text-muted"></i>
+                                </div>
+                            {% elif property.property_type == 'multi_family' %}
+                                <span class="badge bg-warning property-badge">Multi-Family</span>
+                                <div class="card-img-top d-flex align-items-center justify-content-center">
+                                    <i class="fas fa-warehouse fa-4x text-muted"></i>
+                                </div>
+                            {% elif property.property_type == 'land' %}
+                                <span class="badge bg-secondary property-badge">Land</span>
+                                <div class="card-img-top d-flex align-items-center justify-content-center">
+                                    <i class="fas fa-tree fa-4x text-muted"></i>
+                                </div>
+                            {% else %}
+                                <div class="card-img-top d-flex align-items-center justify-content-center">
+                                    <i class="fas fa-home fa-4x text-muted"></i>
+                                </div>
+                            {% endif %}
+                            
+                            <div class="card-body">
+                                <h5 class="card-title">{{ property.address }}</h5>
+                                <p class="text-muted">{{ property.neighborhood or property.city }}</p>
+                                
+                                <div class="mb-3">
+                                    <span class="property-feature">
+                                        <i class="fas fa-bed"></i> {{ property.bedrooms or 'N/A' }}
+                                    </span>
+                                    <span class="property-feature">
+                                        <i class="fas fa-bath"></i> {{ property.bathrooms or 'N/A' }}
+                                    </span>
+                                    <span class="property-feature">
+                                        <i class="fas fa-ruler-combined"></i> {{ '{:,}'.format(property.living_area|int) if property.living_area else 'N/A' }}
+                                    </span>
+                                </div>
+                                
+                                {% set latest_valuation = property.valuations.order_by(PropertyValuation.valuation_date.desc()).first() if property.valuations.count() > 0 else None %}
+                                
+                                {% if latest_valuation %}
+                                    <h4 class="card-text text-primary mb-0">${{ '{:,.0f}'.format(latest_valuation.estimated_value) }}</h4>
+                                    <small class="text-muted">Estimated Value ({{ latest_valuation.valuation_date.strftime('%b %Y') }})</small>
+                                {% else %}
+                                    <h4 class="card-text text-muted mb-0">No valuation</h4>
+                                    <small class="text-muted"><a href="{{ url_for('valuation_form') }}" class="text-decoration-none">Calculate value</a></small>
+                                {% endif %}
+                            </div>
+                            <div class="card-footer bg-white">
+                                <small class="text-muted">Property ID: {{ property.property_id }}</small>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <div class="col-12">
+                    <div class="card shadow-sm">
+                        <div class="card-body text-center no-results">
+                            <i class="fas fa-search fa-4x text-muted mb-3"></i>
+                            <h3>No Properties Found</h3>
+                            <p class="text-muted mb-4">Try adjusting your search criteria to find more properties.</p>
+                            <button id="clearAllFilters" class="btn btn-primary">
+                                <i class="fas fa-undo me-1"></i>Clear All Filters
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+        
+        <!-- Properties List (hidden by default) -->
+        <div class="d-none" id="propertiesList">
+            <div class="list-group">
+                {% if properties %}
+                    {% for property in properties %}
+                        <a href="{{ url_for('property_detail', property_id=property.id) }}" class="list-group-item list-group-item-action mb-2 shadow-sm">
+                            <div class="row align-items-center">
+                                <div class="col-md-8">
+                                    <h5 class="mb-1">{{ property.address }}</h5>
+                                    <p class="mb-1 text-muted">{{ property.neighborhood or property.city }}, {{ property.state }} {{ property.zip_code }}</p>
+                                    <div>
+                                        <span class="badge {{ 
+                                            'bg-primary' if property.property_type == 'single_family' else 
+                                            'bg-info' if property.property_type == 'condo' else 
+                                            'bg-success' if property.property_type == 'townhouse' else 
+                                            'bg-warning' if property.property_type == 'multi_family' else 
+                                            'bg-secondary' 
+                                        }}">{{ property.property_type|replace('_', ' ')|title }}</span>
+                                        
+                                        <span class="property-feature ms-2">
+                                            <i class="fas fa-bed"></i> {{ property.bedrooms or 'N/A' }}
+                                        </span>
+                                        <span class="property-feature">
+                                            <i class="fas fa-bath"></i> {{ property.bathrooms or 'N/A' }}
+                                        </span>
+                                        <span class="property-feature">
+                                            <i class="fas fa-ruler-combined"></i> {{ '{:,}'.format(property.living_area|int) if property.living_area else 'N/A' }} sq ft
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 text-md-end">
+                                    {% set latest_valuation = property.valuations.order_by(PropertyValuation.valuation_date.desc()).first() if property.valuations.count() > 0 else None %}
+                                    
+                                    {% if latest_valuation %}
+                                        <h4 class="text-primary mb-0">${{ '{:,.0f}'.format(latest_valuation.estimated_value) }}</h4>
+                                        <small class="text-muted">Estimated Value ({{ latest_valuation.valuation_date.strftime('%b %Y') }})</small>
+                                    {% else %}
+                                        <h4 class="text-muted mb-0">No valuation</h4>
+                                        <small class="text-muted">Run valuation to calculate</small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </a>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center no-results">
+                        <i class="fas fa-search fa-4x text-muted mb-3"></i>
+                        <h3>No Properties Found</h3>
+                        <p class="text-muted mb-4">Try adjusting your search criteria to find more properties.</p>
+                        <button id="clearAllFiltersList" class="btn btn-primary">
+                            <i class="fas fa-undo me-1"></i>Clear All Filters
+                        </button>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Pagination -->
+        {% if properties and properties|length > 12 %}
+            <nav aria-label="Property search results pages">
+                <ul class="pagination justify-content-center mt-4">
+                    <li class="page-item disabled">
+                        <a class="page-link" href="#" tabindex="-1" aria-disabled="true">Previous</a>
+                    </li>
+                    <li class="page-item active" aria-current="page">
+                        <a class="page-link" href="#">1</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="#">2</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="#">3</a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="#">Next</a>
+                    </li>
+                </ul>
+            </nav>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // View toggle (Grid/List)
+        const gridView = document.getElementById('gridView');
+        const listView = document.getElementById('listView');
+        const propertiesGrid = document.getElementById('propertiesGrid');
+        const propertiesList = document.getElementById('propertiesList');
+        
+        gridView.addEventListener('click', function() {
+            propertiesGrid.classList.remove('d-none');
+            propertiesList.classList.add('d-none');
+            gridView.classList.add('active');
+            listView.classList.remove('active');
+        });
+        
+        listView.addEventListener('click', function() {
+            propertiesGrid.classList.add('d-none');
+            propertiesList.classList.remove('d-none');
+            gridView.classList.remove('active');
+            listView.classList.add('active');
+        });
+        
+        // Reset filters
+        const resetFilters = document.getElementById('resetFilters');
+        const clearAllFilters = document.getElementById('clearAllFilters');
+        const clearAllFiltersList = document.getElementById('clearAllFiltersList');
+        
+        function clearFilters() {
+            document.querySelector('form').reset();
+            document.querySelector('form').submit();
+        }
+        
+        if (resetFilters) {
+            resetFilters.addEventListener('click', clearFilters);
+        }
+        
+        if (clearAllFilters) {
+            clearAllFilters.addEventListener('click', clearFilters);
+        }
+        
+        if (clearAllFiltersList) {
+            clearAllFiltersList.addEventListener('click', clearFilters);
+        }
+        
+        // Sort options
+        const sortOptions = document.getElementById('sortOptions');
+        if (sortOptions) {
+            sortOptions.addEventListener('change', function() {
+                // In a real application, this would trigger a re-sort of the results
+                // For this demo, we'll just simulate a loading state
+                document.body.style.cursor = 'wait';
+                setTimeout(() => {
+                    document.body.style.cursor = 'default';
+                }, 500);
+            });
+        }
+        
+        // Market Trends Chart
+        const marketTrendsCtx = document.getElementById('marketTrendsChart').getContext('2d');
+        const marketTrendsChart = new Chart(marketTrendsCtx, {
+            type: 'line',
+            data: {
+                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                datasets: [{
+                    label: 'Avg. Price',
+                    data: [425000, 427000, 435000, 442000, 450000, 457000],
+                    borderColor: 'rgba(13, 110, 253, 1)',
+                    backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + value.toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}
