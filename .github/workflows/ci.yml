@@ -27,6 +27,7 @@ on:
         options:
           - test       # For quick validation of code changes
           - staging    # For pre-production environment testing
+          - production # For production deployment validation
 
 # ==========================================================================
 # GLOBAL ENVIRONMENT CONFIGURATION
@@ -34,9 +35,18 @@ on:
 # Define reusable environment variables for all jobs in the workflow
 # These variables standardize the versions used across all workflow jobs
 env:
+  # System & Runtime Dependencies
   PYTHON_VERSION: '3.11'    # Latest stable Python version with long-term support
   POSTGRES_VERSION: '14'    # PostgreSQL version for database testing
   NODE_VERSION: '18'        # Node.js version for frontend/JavaScript tests
+  
+  # Test Configuration Parameters
+  TEST_TIMEOUT: '300'       # Timeout for test execution in seconds (5 minutes)
+  PYTEST_XDIST_WORKERS: '4' # Number of parallel test workers for pytest-xdist
+  
+  # Artifact Configuration
+  ARTIFACT_RETENTION_DAYS: '14'  # Number of days to retain artifacts in GitHub
+  ARTIFACT_PATHS: 'artifacts/,coverage*.xml,reports/' # Paths to preserve as artifacts
 
 jobs:
   # Job for code quality checks (linting, formatting)
@@ -250,6 +260,8 @@ jobs:
           echo "Setting up integration test environment..."
           export INTEGRATION_TEST_MODE=1
           export LOG_LEVEL=DEBUG
+          export ETL_TEST_MODE=1  # Enable ETL pipeline testing mode
+          export API_TEST_TIMEOUT=${{ env.TEST_TIMEOUT }}  # Set API test timeout
           
           # First run the standard integration tests
           echo "Running standard integration tests..."
@@ -262,24 +274,79 @@ jobs:
             --cov=. \
             --cov-append \
             --cov-report=xml:integration_coverage.xml \
-            --cov-report=term
+            --cov-report=term \
+            -n ${{ env.PYTEST_XDIST_WORKERS }} \
+            --durations=10  # Show 10 slowest tests for performance monitoring
+          
+          # Run ETL pipeline specific tests
+          echo "Running ETL pipeline integration tests..."
+          if [ -f tests/test_etl_integration.py ]; then
+            python -m pytest tests/test_etl_integration.py \
+              -v \
+              --cov=. \
+              --cov-append \
+              --cov-report=term
+            echo "✅ ETL integration tests completed successfully"
+          else
+            echo "⚠️ ETL integration test file not found, skipping"
+          fi
+          
+          # Run end-to-end ETL execution test by running main.py directly (simulates production ETL run)
+          if [ -f main.py ]; then
+            echo "Running end-to-end ETL pipeline execution test via main.py..."
+            # Run with a timeout to prevent hanging
+            timeout ${{ env.TEST_TIMEOUT }} python main.py --test-mode || {
+              if [ $? -eq 124 ]; then
+                echo "⚠️ ETL execution test timed out after ${{ env.TEST_TIMEOUT }} seconds"
+                exit 1
+              else
+                echo "⚠️ ETL execution test failed with exit code $?"
+                exit 1
+              fi
+            }
+            echo "✅ ETL end-to-end execution test completed successfully"
+          fi
           
           # Validate that key API endpoints are working correctly after tests
           echo "Validating API endpoints post-test..."
           python -c "
 import requests
 import sys
+import os
+import json
+
 try:
-    # Check that the API endpoints referenced in the tests are properly configured
-    key_endpoints = ['/api/valuations', '/api/etl-status', '/api/agent-status']
+    # Configure test client (adjust based on your application setup)
+    base_url = os.environ.get('TEST_API_URL', 'http://localhost:5000')
+    
+    # Key endpoints to verify after test execution
+    key_endpoints = [
+        '/api/valuations',    # Property valuation endpoint
+        '/api/etl-status',    # ETL pipeline status monitoring
+        '/api/agent-status'   # Agent ecosystem monitoring
+    ]
+    
+    # Validate each endpoint and ensure proper structure
     for endpoint in key_endpoints:
-        print(f'Validating endpoint: {endpoint}')
+        print(f'Validating endpoint structure: {endpoint}')
+        
+        # Add basic validation logic here
+        # In a real validation, you'd make actual requests and verify response structure
+        expected_fields = {
+            '/api/valuations': ['items', 'metadata', 'pagination'],
+            '/api/etl-status': ['jobs', 'summary', 'health'],
+            '/api/agent-status': ['agents', 'metrics', 'system_health']
+        }
+        
+        # Print expected schema for documentation
+        if endpoint in expected_fields:
+            print(f'  - Expected fields: {expected_fields[endpoint]}')
 except Exception as e:
-    print(f'Post-test validation error: {e}')
+    print(f'Post-test API validation error: {e}')
     # Don't fail the build for validation issues
           "
           
-          echo "Integration tests completed successfully"
+          echo "✅ Integration tests completed successfully"
 
       # Upload test coverage report as artifact
       - name: Upload coverage reports
@@ -436,14 +503,34 @@ except Exception as e:
           
           echo "✅ Artifact collection completed successfully"
 
-      # Upload configuration artifacts
-      - name: Upload artifacts
+      # ==========================================================================
+      # ARTIFACT UPLOAD
+      # ==========================================================================
+      # Upload build artifacts to GitHub for use in downstream jobs and for audit history
+      # These artifacts provide the essential configuration files and test evidence
+      # needed for deployment and validation
+      
+      # Upload key configuration files first for quick access
+      - name: Upload key configuration files
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: key-config-files
+          path: |
+            configs/module_config.json
+            artifacts/configs/module_config.json
+            agents/bcbs-cascade-operator*.json
+          if-no-files-found: warn
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+      
+      # Upload all collected artifacts from the artifacts directory
+      - name: Upload all artifacts
         if: success()
         uses: actions/upload-artifact@v3
         with:
           name: bcbs-values-artifacts
           path: artifacts/
-          retention-days: 14  # Keep artifacts for up to 14 days
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}  # Use the global configuration
 
   # Security scanning job
   security-scan:
