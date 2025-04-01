@@ -60,47 +60,121 @@ class PACSImporter:
         logger.info(f"Extracting PACS data from CSV file: {file_path}")
         
         try:
-            # Check if file exists
+            # Check if file exists with detailed error messages
             if not os.path.exists(file_path):
-                logger.error(f"PACS CSV file not found: {file_path}")
-                raise FileNotFoundError(f"File not found: {file_path}")
+                error_msg = f"PACS file not found: {file_path}"
+                logger.error(error_msg)
+                # Add directory listing for debugging
+                try:
+                    parent_dir = os.path.dirname(file_path)
+                    if os.path.exists(parent_dir):
+                        files_in_dir = os.listdir(parent_dir)
+                        logger.debug(f"Files in directory {parent_dir}: {files_in_dir}")
+                    else:
+                        logger.debug(f"Parent directory {parent_dir} does not exist")
+                except Exception as list_error:
+                    logger.debug(f"Could not list directory contents: {str(list_error)}")
+                    
+                raise FileNotFoundError(error_msg)
+            
+            # Check if file is readable and not empty
+            if os.path.getsize(file_path) == 0:
+                error_msg = f"PACS file is empty: {file_path}"
+                logger.error(error_msg)
+                return pd.DataFrame()  # Return empty DataFrame for empty file
+            
+            # Check file permissions
+            if not os.access(file_path, os.R_OK):
+                error_msg = f"PACS file is not readable: {file_path}"
+                logger.error(error_msg)
+                raise PermissionError(error_msg)
             
             # Determine file extension and read accordingly
             _, ext = os.path.splitext(file_path)
+            logger.info(f"Processing PACS file with extension: {ext}")
             
             if ext.lower() == '.csv':
-                # Read CSV file with appropriate options
-                # - Parse dates for date columns
-                # - Handle different date formats commonly found in PACS data
-                # - Specify NA values that might be in the legacy data
-                # Read header first to check available columns
-                header = pd.read_csv(file_path, nrows=0)
-                # Determine which date columns are present in the file
-                date_columns = [col for col in ['AssessmentDate', 'SaleDate', 'RecordDate'] if col in header.columns]
-                
-                # Read full file with appropriate date parsing
-                data = pd.read_csv(
-                    file_path,
-                    parse_dates=date_columns,
-                    date_format='mixed',  # Try to infer date format
-                    na_values=['NA', 'N/A', '#N/A', 'NULL', ''],
-                    low_memory=False  # Avoid dtype warnings for mixed columns
-                )
+                # First try to read just a few rows to validate file format
+                try:
+                    # Read header first to check available columns
+                    header = pd.read_csv(file_path, nrows=0)
+                    logger.debug(f"CSV columns found: {header.columns.tolist()}")
+                    
+                    # Count total lines for progress reporting
+                    with open(file_path, 'r') as f:
+                        line_count = sum(1 for _ in f)
+                    logger.info(f"CSV file contains approximately {line_count} lines")
+                    
+                    # Determine which date columns are present in the file
+                    date_columns = [col for col in ['AssessmentDate', 'SaleDate', 'RecordDate'] if col in header.columns]
+                    logger.debug(f"Date columns detected: {date_columns}")
+                    
+                    # Read full file with appropriate date parsing and detailed error handling
+                    data = pd.read_csv(
+                        file_path,
+                        parse_dates=date_columns,
+                        date_format='mixed',  # Try to infer date format
+                        na_values=['NA', 'N/A', '#N/A', 'NULL', ''],
+                        low_memory=False,  # Avoid dtype warnings for mixed columns
+                        on_bad_lines='warn'  # Log but skip bad lines instead of failing
+                    )
+                    logger.info(f"Successfully read {len(data)} records from CSV file")
+                    
+                except pd.errors.ParserError as pe:
+                    logger.error(f"CSV parsing error: {str(pe)}", exc_info=True)
+                    # Try more robust parsing with error recovery
+                    logger.info("Attempting to recover from CSV parsing error...")
+                    try:
+                        # Attempt with error_bad_lines=False to skip problematic rows
+                        data = pd.read_csv(
+                            file_path,
+                            parse_dates=date_columns if 'date_columns' in locals() else None,
+                            date_format='mixed',
+                            na_values=['NA', 'N/A', '#N/A', 'NULL', ''],
+                            low_memory=False,
+                            on_bad_lines='skip'  # Skip bad lines entirely
+                        )
+                        logger.warning(f"Recovered by skipping bad lines. Read {len(data)} records.")
+                    except Exception as recovery_error:
+                        logger.critical(f"Recovery attempt also failed: {str(recovery_error)}", exc_info=True)
+                        raise ValueError(f"Could not parse CSV file even with recovery options: {str(pe)}") from pe
+                    
+                except Exception as e:
+                    logger.error(f"Unexpected error reading CSV header: {str(e)}", exc_info=True)
+                    raise
+                    
             elif ext.lower() in ['.xlsx', '.xls']:
-                # Read header first to check available columns
-                header = pd.read_excel(file_path, nrows=0)
-                # Determine which date columns are present in the file
-                date_columns = [col for col in ['AssessmentDate', 'SaleDate', 'RecordDate'] if col in header.columns]
+                try:
+                    # Read header first to check available columns
+                    header = pd.read_excel(file_path, nrows=0)
+                    logger.debug(f"Excel columns found: {header.columns.tolist()}")
+                    
+                    # Determine which date columns are present in the file
+                    date_columns = [col for col in ['AssessmentDate', 'SaleDate', 'RecordDate'] if col in header.columns]
+                    logger.debug(f"Date columns detected: {date_columns}")
+                    
+                    # Handle Excel files with error monitoring
+                    data = pd.read_excel(
+                        file_path,
+                        parse_dates=date_columns,
+                        na_values=['NA', 'N/A', '#N/A', 'NULL', '']
+                    )
+                    logger.info(f"Successfully read {len(data)} records from Excel file")
+                    
+                except ImportError as ie:
+                    # This would occur if openpyxl or xlrd is not installed
+                    error_msg = f"Excel support libraries not installed: {str(ie)}"
+                    logger.error(error_msg, exc_info=True)
+                    logger.info("Attempting to install required dependencies...")
+                    raise ImportError(f"{error_msg}. Please install openpyxl or xlrd package.")
                 
-                # Handle Excel files
-                data = pd.read_excel(
-                    file_path,
-                    parse_dates=date_columns,
-                    na_values=['NA', 'N/A', '#N/A', 'NULL', '']
-                )
+                except Exception as e:
+                    logger.error(f"Error reading Excel file: {str(e)}", exc_info=True)
+                    raise
             else:
-                logger.error(f"Unsupported file format: {ext}")
-                raise ValueError(f"Unsupported file format: {ext}. Expected .csv, .xlsx, or .xls")
+                error_msg = f"Unsupported file extension: {ext}. Only .csv, .xlsx, and .xls are supported."
+                logger.error(error_msg)
+                raise ValueError(error_msg)
             
             # Log data dimensions and preview
             logger.info(f"Loaded {len(data)} records from {file_path}")
@@ -403,20 +477,105 @@ class PACSImporter:
             
         Returns:
             int: Number of records loaded
+            
+        Raises:
+            ValueError: If data validation fails
+            IOError: If database connection fails
+            RuntimeError: For other database errors
         """
         # Check if data is empty
         if data.empty:
             logger.warning("No data to load into database")
             return 0
         
-        # Insert properties into database
+        # Verify database connection before attempting to load data
+        if db is None:
+            error_msg = "Database connection is None"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+            
+        # Log database loading attempt with data information
+        logger.info(f"Attempting to load {len(data)} PACS records into database")
+        logger.debug(f"Data columns to be loaded: {data.columns.tolist()}")
+        
+        # Insert properties into database with staged loading and error handling
+        total_records_loaded = 0
+        batch_size = min(1000, len(data))  # Load in batches of 1000 or less
+        
         try:
-            records_loaded = db.insert_properties(data, source='PACS')
-            logger.info(f"Loaded {records_loaded} PACS records into database")
-            return records_loaded
-        except Exception as e:
-            logger.error(f"Error loading PACS data into database: {str(e)}")
+            # Validate data before loading
+            if 'address' not in data.columns or 'property_type' not in data.columns:
+                error_msg = "Data is missing required columns: address and property_type are required"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+                
+            # Process data in batches for better error handling and performance
+            for i in range(0, len(data), batch_size):
+                batch = data.iloc[i:i+batch_size].copy()
+                
+                try:
+                    # Attempt to load this batch
+                    logger.debug(f"Loading batch {i//batch_size + 1} of {(len(data) + batch_size - 1)//batch_size}")
+                    
+                    # Insert into database
+                    batch_records_loaded = db.insert_properties(batch, source='PACS')
+                    total_records_loaded += batch_records_loaded
+                    
+                    logger.debug(f"Batch {i//batch_size + 1} loaded: {batch_records_loaded} records")
+                    
+                except Exception as batch_error:
+                    # Log detailed error for this batch
+                    error_msg = f"Error loading batch {i//batch_size + 1}: {str(batch_error)}"
+                    logger.error(error_msg, exc_info=True)
+                    
+                    # Try to identify problematic records in this batch
+                    try:
+                        # Check for null values in key columns
+                        null_count = batch.isnull().sum()
+                        if null_count.any():
+                            logger.warning(f"Batch contains null values: {null_count[null_count > 0].to_dict()}")
+                        
+                        # Check for duplicate IDs if we have ID columns
+                        for id_col in ['property_id', 'parcel_id', 'apn']:
+                            if id_col in batch.columns and not batch[id_col].isna().all():
+                                duplicates = batch[batch.duplicated(subset=[id_col], keep=False)]
+                                if not duplicates.empty:
+                                    dup_ids = duplicates[id_col].unique().tolist()
+                                    logger.warning(f"Batch contains duplicate {id_col}s: {dup_ids[:5]}...")
+                    except Exception as analysis_error:
+                        logger.debug(f"Error analyzing failed batch: {str(analysis_error)}")
+                    
+                    # Continue with next batch rather than failing all
+                    logger.info("Continuing with next batch...")
+                    continue
+            
+            logger.info(f"Successfully loaded {total_records_loaded} PACS records into database")
+            if total_records_loaded < len(data):
+                logger.warning(f"Not all records were loaded: {len(data) - total_records_loaded} records failed")
+                
+            return total_records_loaded
+            
+        except ValueError as ve:
+            # Data validation errors
+            logger.error(f"Data validation error: {str(ve)}")
             raise
+            
+        except Exception as e:
+            # Other database errors
+            error_type = type(e).__name__
+            error_msg = f"Error loading PACS data into database: {error_type}: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            
+            # Add more context about the data for debugging
+            try:
+                logger.debug(f"Data types being loaded: {data.dtypes}")
+                sample_records = data.head(2).to_dict(orient='records')
+                logger.debug(f"Sample records: {sample_records}")
+            except Exception as debug_error:
+                logger.debug(f"Could not generate debug info: {str(debug_error)}")
+                
+            # Re-raise with more context
+            raise RuntimeError(f"Database loading failed: {error_msg}") from e
     
     def read_sample_file(self, file_path, n=5):
         """

@@ -88,9 +88,10 @@ class DiagnosticHandler(BaseHTTPRequestHandler):
                             </div>
                             <div class="card-body">
                                 <p><strong>Date:</strong> {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-                                <p><strong>Python:</strong> {sys.version.split()[0]}</p>
-                                <p><strong>OS:</strong> {html.escape(sys.platform)}</p>
-                                <p><strong>Database:</strong> <span class="warning">Connection not verified</span></p>
+                                <p><strong>Python Version:</strong> {sys.version.split()[0]}</p>
+                                <p><strong>Python Path:</strong> {html.escape(env_info.get('python_path', 'Unknown'))}</p>
+                                <p><strong>OS Platform:</strong> {html.escape(sys.platform)}</p>
+                                <p><strong>Database:</strong> <span class="{env_info.get('db_conn_class', 'warning')}">{env_info.get('db_conn_summary', 'Connection not verified')}</span></p>
                             </div>
                         </div>
                     </div>
@@ -102,7 +103,11 @@ class DiagnosticHandler(BaseHTTPRequestHandler):
                             </div>
                             <div class="card-body">
                                 <p><strong>DATABASE_URL:</strong> <span class="{env_info['db_url_class']}">{env_info['db_url_status']}</span></p>
-                                <p><strong>PGDATABASE:</strong> <span class="{env_info['pgdatabase_class']}">{env_info['pgdatabase_status']}</span></p>
+                                <p><strong>PGHOST:</strong> <span class="{env_info.get('pghost_class', 'warning')}">{env_info.get('pghost_status', 'Not checked')}</span></p>
+                                <p><strong>PGPORT:</strong> <span class="{env_info.get('pgport_class', 'warning')}">{env_info.get('pgport_status', 'Not checked')}</span></p>
+                                <p><strong>PGUSER:</strong> <span class="{env_info.get('pguser_class', 'warning')}">{env_info.get('pguser_status', 'Not checked')}</span></p>
+                                <p><strong>PGPASSWORD:</strong> <span class="{env_info.get('pgpassword_class', 'warning')}">{env_info.get('pgpassword_status', 'Not checked')}</span></p>
+                                <p><strong>PGDATABASE:</strong> <span class="{env_info.get('pgdatabase_class', 'warning')}">{env_info.get('pgdatabase_status', 'Not checked')}</span></p>
                                 <p><strong>SESSION_SECRET:</strong> <span class="{env_info['session_secret_class']}">{env_info['session_secret_status']}</span></p>
                                 <p><strong>API_KEY:</strong> <span class="{env_info['api_key_class']}">{env_info['api_key_status']}</span></p>
                             </div>
@@ -153,15 +158,39 @@ class DiagnosticHandler(BaseHTTPRequestHandler):
 
                 <div class="text-center mt-4 mb-5">
                     <h4>Diagnostic Results</h4>
-                    <p>This is a read-only diagnostic page. The Flask application is not fully operational.</p>
+                    <p>This is a read-only diagnostic page showing the environment configuration.</p>
                     <p>
-                        <strong>Summary:</strong> Python environment found, but Flask application dependencies 
-                        may not be properly installed. PostgreSQL database connection could not be verified.
+                        <strong>Summary:</strong> Python {sys.version.split()[0]} environment detected at {html.escape(env_info.get('python_path', 'Unknown'))}. 
+                        PostgreSQL database connection parameters are {env_info.get('db_conn_summary', 'not fully configured')}.
+                    </p>
+                    <p>
+                        Common issues:
+                        <ul class="list-inline">
+                            <li class="list-inline-item badge bg-info text-white">Missing environment variables</li>
+                            <li class="list-inline-item badge bg-info text-white">Missing Python dependencies</li>
+                            <li class="list-inline-item badge bg-info text-white">Invalid database connection</li>
+                        </ul>
                     </p>
                 </div>
                 
                 <div class="row">
-                    <div class="col-md-12">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header bg-secondary text-white">
+                                <h5 class="mb-0">Required Python Modules</h5>
+                            </div>
+                            <div class="card-body">
+                                <p><strong>Flask:</strong> <span class="{env_info.get('flask_class', 'warning')}">{env_info.get('flask_status', 'Not checked')}</span></p>
+                                <p><strong>Pandas:</strong> <span class="{env_info.get('pandas_class', 'warning')}">{env_info.get('pandas_status', 'Not checked')}</span></p>
+                                <p><strong>SQLAlchemy:</strong> <span class="{env_info.get('sqlalchemy_class', 'warning')}">{env_info.get('sqlalchemy_status', 'Not checked')}</span></p>
+                                <p><strong>Requests:</strong> <span class="{env_info.get('requests_class', 'warning')}">{env_info.get('requests_status', 'Not checked')}</span></p>
+                                <p><strong>Psycopg2:</strong> <span class="{env_info.get('psycopg2_class', 'warning')}">{env_info.get('psycopg2_status', 'Not checked')}</span></p>
+                                <p><strong>FastAPI:</strong> <span class="{env_info.get('fastapi_class', 'warning')}">{env_info.get('fastapi_status', 'Not checked')}</span></p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
                         <div class="card">
                             <div class="card-header bg-secondary text-white">
                                 <h5 class="mb-0">API Information</h5>
@@ -192,64 +221,145 @@ class DiagnosticHandler(BaseHTTPRequestHandler):
         # Check DATABASE_URL
         db_url = os.environ.get('DATABASE_URL')
         if db_url:
-            info['db_url_status'] = "Set (value hidden)"
-            info['db_url_class'] = "success"
+            # Check if it's a valid PostgreSQL URL
+            if db_url.startswith('postgresql://'):
+                info['db_url_status'] = "Set (valid PostgreSQL URL)"
+                info['db_url_class'] = "success"
+            else:
+                info['db_url_status'] = "Set, but may be invalid (doesn't start with postgresql://)"
+                info['db_url_class'] = "warning"
         else:
-            info['db_url_status'] = "Not set"
+            info['db_url_status'] = "Not set (required for database access)"
             info['db_url_class'] = "error"
         
-        # Check PGDATABASE
-        pgdatabase = os.environ.get('PGDATABASE')
-        if pgdatabase:
-            info['pgdatabase_status'] = pgdatabase
-            info['pgdatabase_class'] = "success"
+        # Check database connection params
+        db_params = ['PGHOST', 'PGPORT', 'PGUSER', 'PGPASSWORD', 'PGDATABASE']
+        all_pg_params_present = True
+        
+        for param in db_params:
+            value = os.environ.get(param)
+            param_key = param.lower()
+            
+            if value:
+                if param != 'PGPASSWORD':
+                    info[f'{param_key}_status'] = value
+                else:
+                    info[f'{param_key}_status'] = "Set (value hidden)"
+                info[f'{param_key}_class'] = "success"
+            else:
+                info[f'{param_key}_status'] = "Not set"
+                info[f'{param_key}_class'] = "error"
+                all_pg_params_present = False
+        
+        # Add a summary for database connection
+        if db_url or all_pg_params_present:
+            info['db_conn_summary'] = "Database connection parameters available"
+            info['db_conn_class'] = "success"
         else:
-            info['pgdatabase_status'] = "Not set"
-            info['pgdatabase_class'] = "error"
+            info['db_conn_summary'] = "Missing required database connection parameters"
+            info['db_conn_class'] = "error"
         
         # Check SESSION_SECRET
         session_secret = os.environ.get('SESSION_SECRET')
         if session_secret:
             if session_secret == "bcbs_values_session_secret_key_2025":
-                info['session_secret_status'] = "Default value (should be changed)"
+                info['session_secret_status'] = "Default value (should be changed in production)"
                 info['session_secret_class'] = "warning"
             else:
                 info['session_secret_status'] = "Set (value hidden)"
                 info['session_secret_class'] = "success"
         else:
-            info['session_secret_status'] = "Not set"
+            info['session_secret_status'] = "Not set (required for Flask sessions)"
             info['session_secret_class'] = "error"
         
         # Check API_KEY
         api_key = os.environ.get('API_KEY') or os.environ.get('BCBS_VALUES_API_KEY')
         if api_key:
             if api_key == "bcbs_values_api_key_2025":
-                info['api_key_status'] = "Default value (should be changed)"
+                info['api_key_status'] = "Default value (should be changed in production)"
                 info['api_key_class'] = "warning"
             else:
                 info['api_key_status'] = "Set (value hidden)"
                 info['api_key_class'] = "success"
         else:
-            info['api_key_status'] = "Not set"
+            info['api_key_status'] = "Not set (required for API authentication)"
             info['api_key_class'] = "error"
+        
+        # Check Python modules
+        module_info = [
+            {"name": "pandas", "required_for": "ETL and data processing", "attr": "pandas"},
+            {"name": "flask", "required_for": "web application", "attr": "flask"},
+            {"name": "sqlalchemy", "required_for": "database access", "attr": "sqlalchemy"},
+            {"name": "requests", "required_for": "API requests", "attr": "requests"},
+            {"name": "psycopg2", "required_for": "PostgreSQL connectivity", "attr": "psycopg2"},
+            {"name": "fastapi", "required_for": "API development", "attr": "fastapi"}
+        ]
+        
+        for module in module_info:
+            module_name = module["name"]
+            module_key = module_name.lower()
+            required_for = module["required_for"]
+            attr_name = module.get("attr", module_name)
+            
+            try:
+                __import__(attr_name)
+                mod = sys.modules[attr_name]
+                version = getattr(mod, "__version__", "unknown version")
+                info[f'{module_key}_status'] = f"Installed (version {version})"
+                info[f'{module_key}_class'] = "success"
+            except ImportError:
+                info[f'{module_key}_status'] = f"Not installed (required for {required_for})"
+                info[f'{module_key}_class'] = "warning"
+            except Exception as e:
+                info[f'{module_key}_status'] = f"Error checking ({str(e)})"
+                info[f'{module_key}_class'] = "warning"
+        
+        # Add Python executable path
+        info['python_path'] = sys.executable
         
         return info
 
 def run_server(port=5000):
     """Run the diagnostic server"""
-    server_address = ('', port)
+    server_address = ('0.0.0.0', port)
     httpd = HTTPServer(server_address, DiagnosticHandler)
     print(f"Starting diagnostic server on port {port}...")
     print(f"Python version: {sys.version}")
-    print(f"Server address: http://localhost:{port}/")
-    httpd.serve_forever()
+    print(f"Server address: http://0.0.0.0:{port}/")
+    print(f"You can access the server at the URL in your browser.")
+    try:
+        httpd.serve_forever()
+    except Exception as e:
+        print(f"Server error: {e}")
+        raise
 
 if __name__ == '__main__':
     try:
+        # Print detailed debugging information
+        print("=" * 50)
+        print("DIAGNOSTIC SERVER STARTUP")
+        print("=" * 50)
+        print(f"Python version: {sys.version}")
+        print(f"Python executable: {sys.executable}")
+        print(f"Current directory: {os.getcwd()}")
+        print(f"Path: {os.environ.get('PATH', 'Not set')}")
+        print(f"PYTHONPATH: {os.environ.get('PYTHONPATH', 'Not set')}")
+        print(f"Database URL: {'Set (hidden)' if os.environ.get('DATABASE_URL') else 'Not set'}")
+        
+        # Print loaded modules for debugging
+        print("\nLoaded modules:")
+        for i, module_name in enumerate(sorted(sys.modules.keys())[:20], 1):  # Show only first 20
+            print(f"  {i}. {module_name}")
+        if len(sys.modules) > 20:
+            print(f"  ... and {len(sys.modules) - 20} more")
+        
+        print("\nStarting server...")
         port = int(os.environ.get('PORT', 5000))
         run_server(port)
     except KeyboardInterrupt:
         print("\nShutting down server...")
     except Exception as e:
         print(f"Error starting server: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)

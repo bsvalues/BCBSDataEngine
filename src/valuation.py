@@ -195,18 +195,52 @@ def perform_valuation(property_obj, valuation_method='enhanced_regression'):
              - gis_features: Geographic and location factors
              - model_features: Features used in the valuation
     """
-    logger.info(f"Performing {valuation_method} valuation for property: {getattr(property_obj, 'address', 'Unknown')}")
-    
-    # Set default values
+    # Set default values - these will be returned if errors occur
     estimated_value = 0
     confidence_score = 0
-    performance_metrics = {}
+    performance_metrics = {
+        'error': None,
+        'warning': None
+    }
+    
+    # Extract property identifier for logging
+    property_id = getattr(property_obj, 'id', None)
+    property_address = getattr(property_obj, 'address', 'Unknown')
+    property_identifier = property_id if property_id else property_address
+    
+    logger.info(f"Performing {valuation_method} valuation for property: {property_identifier}")
     
     try:
+        # Validate property_obj has required attributes before proceeding
+        required_attributes = ['square_feet', 'bedrooms', 'bathrooms', 'year_built']
+        missing_attributes = [attr for attr in required_attributes 
+                             if not hasattr(property_obj, attr) or getattr(property_obj, attr) is None]
+        
+        if missing_attributes:
+            missing_attrs_str = ', '.join(missing_attributes)
+            logger.warning(f"Property {property_identifier} missing required attributes: {missing_attrs_str}")
+            performance_metrics['warning'] = f"Missing required attributes: {missing_attrs_str}"
+            confidence_score = 0.3  # Low confidence due to missing data
+        
         # Step 1: Prepare normalized features with robust preprocessing
         # This handles missing values, outliers, and applies appropriate scaling
-        property_features, feature_names = _prepare_property_features(property_obj)
-        logger.debug(f"Prepared {len(feature_names)} normalized features for valuation")
+        try:
+            property_features, feature_names = _prepare_property_features(property_obj)
+            logger.debug(f"Prepared {len(feature_names)} normalized features for valuation")
+        except Exception as e:
+            logger.error(f"Error preparing property features: {str(e)}", exc_info=True)
+            performance_metrics['error'] = f"Feature preparation error: {str(e)}"
+            # Return early with defaults and error information
+            return {
+                'estimated_value': estimated_value,
+                'confidence_score': 0.1,  # Very low confidence
+                'valuation_method': valuation_method,
+                'performance_metrics': performance_metrics,
+                'error_details': {
+                    'message': f"Failed to prepare property features: {str(e)}",
+                    'traceback': logging.traceback.format_exc()
+                }
+            }
         
         # Step 2: Model selection and valuation
         # If 'auto' is selected, we'll compare multiple models and choose the best one
@@ -217,43 +251,77 @@ def perform_valuation(property_obj, valuation_method='enhanced_regression'):
             model_results = {}
             model_metrics = {}
             
+            # Dictionary to track any errors in individual model execution
+            model_errors = {}
+            
             # Run multiple models in parallel and track their performance
             # 1. Enhanced regression model (our baseline traditional approach)
-            logger.debug("Running enhanced regression model")
-            enhanced_value, enhanced_confidence = _enhanced_regression_valuation(property_obj)
-            model_results['enhanced_regression'] = {
-                'estimated_value': enhanced_value,
-                'confidence_score': enhanced_confidence
-            }
+            try:
+                logger.debug("Running enhanced regression model")
+                enhanced_value, enhanced_confidence = _enhanced_regression_valuation(property_obj)
+                model_results['enhanced_regression'] = {
+                    'estimated_value': enhanced_value,
+                    'confidence_score': enhanced_confidence
+                }
+            except Exception as e:
+                error_msg = f"Enhanced regression model failed: {str(e)}"
+                logger.error(error_msg, exc_info=True)
+                model_errors['enhanced_regression'] = error_msg
             
             # 2. Advanced LightGBM model with GIS integration
             # This gradient boosting approach captures non-linear relationships
-            logger.debug("Running advanced LightGBM gradient boosting model")
-            lgbm_value, lgbm_confidence, lgbm_metrics = _advanced_lightgbm_valuation(
-                property_obj, property_features, feature_names
-            )
-            model_results['lightgbm'] = {
-                'estimated_value': lgbm_value, 
-                'confidence_score': lgbm_confidence,
-                'metrics': lgbm_metrics
-            }
-            model_metrics['lightgbm'] = lgbm_metrics
+            try:
+                logger.debug("Running advanced LightGBM gradient boosting model")
+                lgbm_value, lgbm_confidence, lgbm_metrics = _advanced_lightgbm_valuation(
+                    property_obj, property_features, feature_names
+                )
+                model_results['lightgbm'] = {
+                    'estimated_value': lgbm_value, 
+                    'confidence_score': lgbm_confidence,
+                    'metrics': lgbm_metrics
+                }
+                model_metrics['lightgbm'] = lgbm_metrics
+            except Exception as e:
+                error_msg = f"LightGBM model failed: {str(e)}"
+                logger.error(error_msg, exc_info=True)
+                model_errors['lightgbm'] = error_msg
             
             # 3. Advanced linear model with sophisticated feature engineering
             # This captures complex feature interactions while maintaining interpretability
-            logger.debug("Running advanced linear model with feature interactions")
-            linear_value, linear_confidence, linear_metrics = _advanced_linear_valuation(
-                property_obj, property_features, feature_names
-            )
-            model_results['advanced_linear'] = {
-                'estimated_value': linear_value,
-                'confidence_score': linear_confidence,
-                'metrics': linear_metrics
-            }
-            model_metrics['advanced_linear'] = linear_metrics
+            try:
+                logger.debug("Running advanced linear model with feature interactions")
+                linear_value, linear_confidence, linear_metrics = _advanced_linear_valuation(
+                    property_obj, property_features, feature_names
+                )
+                model_results['advanced_linear'] = {
+                    'estimated_value': linear_value,
+                    'confidence_score': linear_confidence,
+                    'metrics': linear_metrics
+                }
+                model_metrics['advanced_linear'] = linear_metrics
+            except Exception as e:
+                error_msg = f"Advanced linear model failed: {str(e)}"
+                logger.error(error_msg, exc_info=True)
+                model_errors['advanced_linear'] = error_msg
+            
+            # Handle case where all models failed
+            if not model_results:
+                error_msg = "All valuation models failed. See logs for details."
+                logger.critical(error_msg)
+                performance_metrics['error'] = error_msg
+                performance_metrics['model_errors'] = model_errors
+                return {
+                    'estimated_value': 0,
+                    'confidence_score': 0,
+                    'valuation_method': 'failed',
+                    'performance_metrics': performance_metrics,
+                    'error_details': {
+                        'message': "All models failed to produce valuations",
+                        'individual_errors': model_errors
+                    }
+                }
             
             # Step 3: Compare models and select the best one based on multiple criteria
-            # In production, we'd use cross-validation metrics for more robust selection
             logger.debug("Comparing model performance to select best model")
             
             # Extract R-squared values if available (preferred metric for comparison)
@@ -282,10 +350,14 @@ def perform_valuation(property_obj, valuation_method='enhanced_regression'):
             
             # Get detailed performance metrics from the best model
             if 'metrics' in model_results[best_model]:
-                performance_metrics = model_results[best_model]['metrics']
+                performance_metrics.update(model_results[best_model]['metrics'])
             
             # Update the method name to reflect the chosen model
             valuation_method = best_model
+            
+            # If there were any model errors, include them in performance metrics
+            if model_errors:
+                performance_metrics['failed_models'] = model_errors
             
             # Record detailed model comparison results for transparency
             performance_metrics['model_comparison'] = {
@@ -308,28 +380,55 @@ def perform_valuation(property_obj, valuation_method='enhanced_regression'):
             }
         else:
             # Regular single-model approach for specific methods
-            if valuation_method == 'linear_regression':
-                estimated_value, confidence_score = _linear_regression_valuation(property_obj)
-            elif valuation_method == 'ridge_regression':
-                estimated_value, confidence_score = _ridge_regression_valuation(property_obj)
-            elif valuation_method == 'lasso_regression':
-                estimated_value, confidence_score = _lasso_regression_valuation(property_obj)
-            elif valuation_method == 'elastic_net':
-                estimated_value, confidence_score = _elastic_net_valuation(property_obj)
-            elif valuation_method == 'advanced_lightgbm':
-                estimated_value, confidence_score, performance_metrics = _advanced_lightgbm_valuation(
-                    property_obj, property_features, feature_names
-                )
-            elif valuation_method == 'advanced_linear':
-                estimated_value, confidence_score, performance_metrics = _advanced_linear_valuation(
-                    property_obj, property_features, feature_names
-                )
-            elif valuation_method == 'lightgbm':
-                estimated_value, confidence_score = _lightgbm_valuation(property_obj)
-            elif valuation_method == 'xgboost':
-                estimated_value, confidence_score = _xgboost_valuation(property_obj)
-            else:  # default to enhanced_regression
-                estimated_value, confidence_score, performance_metrics = _enhanced_regression_valuation(property_obj)
+            try:
+                if valuation_method == 'linear_regression':
+                    estimated_value, confidence_score = _linear_regression_valuation(property_obj)
+                elif valuation_method == 'ridge_regression':
+                    estimated_value, confidence_score = _ridge_regression_valuation(property_obj)
+                elif valuation_method == 'lasso_regression':
+                    estimated_value, confidence_score = _lasso_regression_valuation(property_obj)
+                elif valuation_method == 'elastic_net':
+                    estimated_value, confidence_score = _elastic_net_valuation(property_obj)
+                elif valuation_method == 'advanced_lightgbm':
+                    estimated_value, confidence_score, performance_metrics = _advanced_lightgbm_valuation(
+                        property_obj, property_features, feature_names
+                    )
+                elif valuation_method == 'advanced_linear':
+                    estimated_value, confidence_score, performance_metrics = _advanced_linear_valuation(
+                        property_obj, property_features, feature_names
+                    )
+                elif valuation_method == 'lightgbm':
+                    estimated_value, confidence_score = _lightgbm_valuation(property_obj)
+                elif valuation_method == 'xgboost':
+                    estimated_value, confidence_score = _xgboost_valuation(property_obj)
+                else:  # default to enhanced_regression
+                    # If an unrecognized method is provided, log a warning and use enhanced regression
+                    if valuation_method != 'enhanced_regression':
+                        logger.warning(f"Unrecognized valuation method '{valuation_method}', "
+                                     f"defaulting to 'enhanced_regression'")
+                        performance_metrics['warning'] = f"Unrecognized method '{valuation_method}', used enhanced_regression"
+                        valuation_method = 'enhanced_regression'
+                    
+                    estimated_value, confidence_score, model_metrics = _enhanced_regression_valuation(property_obj)
+                    performance_metrics.update(model_metrics)
+            except Exception as e:
+                error_msg = f"Valuation method '{valuation_method}' failed: {str(e)}"
+                logger.error(error_msg, exc_info=True)
+                performance_metrics['error'] = error_msg
+                
+                # Fall back to simple valuation if specific method fails
+                logger.info("Attempting fallback to simple valuation method")
+                try:
+                    # Simple fallback calculation based on square footage and location
+                    estimated_value = _simple_fallback_valuation(property_obj)
+                    confidence_score = 0.3  # Low confidence for fallback method
+                    performance_metrics['warning'] = "Used fallback valuation due to model failure"
+                    logger.info(f"Fallback valuation completed: ${estimated_value:,.2f}")
+                except Exception as fallback_error:
+                    logger.critical(f"Fallback valuation also failed: {str(fallback_error)}", exc_info=True)
+                    estimated_value = 0
+                    confidence_score = 0
+                    performance_metrics['error'] = f"Both primary and fallback valuation failed: {str(e)}, {str(fallback_error)}"
         
         # Step 5: Apply GIS-based spatial adjustment
         # -------------------------------------------------------------
@@ -2142,3 +2241,118 @@ def _round_to_nearest(value, nearest=1000):
     d_nearest = Decimal(str(nearest))
     
     return float((d_value / d_nearest).quantize(Decimal('1'), rounding=ROUND_HALF_UP) * d_nearest)
+
+
+def _simple_fallback_valuation(property_obj):
+    """
+    Simple fallback valuation used when more sophisticated models fail.
+    
+    This function implements a basic calculation based only on square footage,
+    property type, and location (if available), with hard-coded multipliers.
+    It provides a reasonable estimate without relying on complex models.
+    
+    Args:
+        property_obj: Property object with at least square_feet attribute
+        
+    Returns:
+        float: Estimated property value
+    
+    Raises:
+        ValueError: If square_feet is not available or invalid
+    """
+    logger.info("Using simple fallback valuation method due to model failure")
+    
+    # Validate that we have square footage, which is the minimum required attribute
+    square_feet = getattr(property_obj, 'square_feet', None)
+    if not square_feet or not isinstance(square_feet, (int, float)) or square_feet <= 0:
+        square_feet = getattr(property_obj, 'square_footage', None)  # Try alternative name
+        
+    if not square_feet or not isinstance(square_feet, (int, float)) or square_feet <= 0:
+        # Last resort - use median value if we can't even get square footage
+        logger.warning("Cannot perform fallback valuation: no valid square footage available")
+        raise ValueError("Square footage is required for fallback valuation")
+    
+    # Determine property type (default to single_family if unknown)
+    property_type = getattr(property_obj, 'property_type', 'single_family')
+    if not property_type or not isinstance(property_type, str):
+        property_type = 'single_family'
+    
+    # Convert to lower case and handle common variations
+    property_type = property_type.lower()
+    if 'condo' in property_type or 'apartment' in property_type:
+        property_type = 'condo'
+    elif 'town' in property_type:
+        property_type = 'townhouse'
+    elif 'multi' in property_type or 'duplex' in property_type or 'triplex' in property_type:
+        property_type = 'multi_family'
+    elif 'land' in property_type or 'lot' in property_type:
+        property_type = 'land'
+    else:
+        property_type = 'single_family'  # Default
+    
+    # Get base price per square foot for this property type
+    # Use a safe default if the property type is not in our mapping
+    base_price = BASE_PRICE_PER_SQFT.get(property_type, 200)  # $200/sqft default
+    
+    # Start with the basic calculation
+    estimated_value = square_feet * base_price
+    
+    # Apply neighborhood multiplier if available
+    neighborhood = getattr(property_obj, 'neighborhood', None)
+    city = getattr(property_obj, 'city', None)
+    
+    # Try to use neighborhood data if available
+    neighborhood_multiplier = 1.0
+    if neighborhood and isinstance(neighborhood, str):
+        neighborhood = neighborhood.lower()
+        neighborhood_multiplier = NEIGHBORHOOD_MULTIPLIERS.get(neighborhood, 1.0)
+    # Otherwise try to use city data as a fallback
+    elif city and isinstance(city, str):
+        city = city.lower()
+        # Use city as a proxy for neighborhood if we don't have specific neighborhood data
+        neighborhood_multiplier = NEIGHBORHOOD_MULTIPLIERS.get(city, 1.0)
+    
+    estimated_value *= neighborhood_multiplier
+    
+    # Apply property age adjustment if available
+    year_built = getattr(property_obj, 'year_built', None)
+    current_year = datetime.now().year
+    
+    if year_built and isinstance(year_built, (int, float)) and year_built > 1800 and year_built <= current_year:
+        age = current_year - int(year_built)
+        
+        # Find the appropriate age factor range
+        age_factor = 0.95  # Default age factor
+        for (min_age, max_age), factor in PROPERTY_AGE_FACTORS.items():
+            if min_age <= age <= max_age:
+                age_factor = factor
+                break
+        
+        estimated_value *= age_factor
+    
+    # Apply simple adjustments for bedrooms and bathrooms if available
+    bedrooms = getattr(property_obj, 'bedrooms', None)
+    if bedrooms and isinstance(bedrooms, (int, float)) and 0 <= bedrooms <= 10:
+        # Slight premium for 3-4 bedrooms, discount for very few or too many
+        if bedrooms == 3:
+            estimated_value *= 1.05
+        elif bedrooms == 4:
+            estimated_value *= 1.08
+        elif bedrooms > 5:
+            estimated_value *= 0.95
+        elif bedrooms < 2:
+            estimated_value *= 0.9
+    
+    bathrooms = getattr(property_obj, 'bathrooms', None)
+    if bathrooms and isinstance(bathrooms, (int, float)) and 0 <= bathrooms <= 10:
+        # Premium for 2+ bathrooms
+        if bathrooms >= 2 and bathrooms <= 3.5:
+            estimated_value *= 1.07
+        elif bathrooms > 3.5:
+            estimated_value *= 1.1
+    
+    # Round to nearest thousand
+    estimated_value = _round_to_nearest(estimated_value, 1000)
+    
+    logger.info(f"Completed fallback valuation: ${estimated_value:,.2f}")
+    return estimated_value
