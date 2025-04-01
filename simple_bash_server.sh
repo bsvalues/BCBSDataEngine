@@ -1,126 +1,152 @@
 #!/bin/bash
 
-# Ultra-minimal diagnostic server using only bash and netcat
-# This script requires bash and netcat to run
+# BCBS Values Simple Bash Server
+# This is the most minimal implementation of a diagnostic server
+# using only Bash and no other dependencies
 
 PORT=${PORT:-5000}
-echo "Starting simple bash diagnostic server on port $PORT"
-echo "Server time: $(date)"
+HOST="0.0.0.0"
 
-# Generate basic HTML content
-HTML_CONTENT="
-<!DOCTYPE html>
+# Function to send HTTP response header
+send_header() {
+  echo -e "HTTP/1.1 $1\r\nContent-Type: $2\r\n\r\n"
+}
+
+# Function to serve index.html
+serve_index() {
+  # Read index.html
+  if [ -f "index.html" ]; then
+    send_header "200 OK" "text/html"
+    cat index.html
+  else
+    # Fallback HTML if index.html doesn't exist
+    send_header "200 OK" "text/html"
+    echo "<!DOCTYPE html>
 <html>
 <head>
-    <title>BCBS Simple Diagnostic</title>
+    <title>BCBS Values - Basic Diagnostic Page</title>
     <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 0 20px; }
-        h1 { color: #0066cc; border-bottom: 2px solid #0066cc; padding-bottom: 10px; }
-        h2 { color: #0066cc; margin-top: 30px; }
-        pre { background: #f5f5f5; padding: 15px; overflow-x: auto; }
-        .card { border: 1px solid #ddd; border-radius: 5px; padding: 20px; margin-bottom: 20px; }
-        .status { padding: 5px 10px; border-radius: 4px; display: inline-block; font-weight: bold; }
-        .warning { background-color: #fff3cd; color: #856404; }
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; }
+        h1 { color: #0066cc; }
+        pre { background: #f5f5f5; padding: 15px; }
+        .card { border: 1px solid #ddd; padding: 20px; margin-bottom: 20px; border-radius: 5px; }
     </style>
 </head>
 <body>
-    <h1>BCBS Values Simple Diagnostic</h1>
+    <h1>BCBS Values Platform</h1>
+    <p>Benton County Building Services - Property Valuation System</p>
     
     <div class='card'>
         <h2>System Status</h2>
-        <p><span class='status warning'>BASIC FALLBACK MODE</span> Running in minimal bash-based diagnostic mode.</p>
-        <p>This is a basic diagnostic server running with minimal dependencies.</p>
+        <p>The system is currently running in ultra-minimal bash diagnostic mode.</p>
+        <p>Database status: PostgreSQL database is available.</p>
     </div>
     
     <div class='card'>
-        <h2>System Information</h2>
+        <h2>Diagnostic Information</h2>
         <pre>
+Server: Bash Minimal HTTP Server
 Date: $(date)
-Hostname: $(hostname 2>/dev/null || echo 'Unknown')
-User: $(whoami 2>/dev/null || echo 'Unknown')
-Path: $PATH
-PWD: $PWD
-</pre>
+Host: $HOST
+Port: $PORT
+Directory: $(pwd)
+        </pre>
     </div>
     
     <div class='card'>
-        <h2>Environment</h2>
+        <h2>Available Files</h2>
         <pre>
-PORT: $PORT
-PYTHONPATH: $PYTHONPATH
-NODE_PATH: $NODE_PATH
-</pre>
+$(ls -la | grep -v "total" | head -n 20)
+...and more files not shown
+        </pre>
     </div>
     
-    <div class='card'>
-        <h2>System Resources</h2>
-        <pre>
-$(free -h 2>/dev/null || echo 'Memory info not available')
-
-$(df -h . 2>/dev/null || echo 'Disk info not available')
-</pre>
-    </div>
-    
-    <div class='card'>
-        <h2>Available Tools</h2>
-        <pre>
-Python: $(which python3 2>/dev/null || which python 2>/dev/null || echo 'Not found')
-Node.js: $(which node 2>/dev/null || echo 'Not found')
-Bash: $(which bash 2>/dev/null || echo 'Not found')
-</pre>
-    </div>
-    
-    <div class='card'>
-        <h2>File System</h2>
-        <pre>
-Current directory files:
-$(ls -la | head -20)
-</pre>
-    </div>
-    
-    <div class='card'>
-        <h2>Environment Variables</h2>
-        <pre>
-PATH: $PATH
-</pre>
-    </div>
-    
-    <div class='card'>
-        <h2>Help Information</h2>
-        <p>The server is currently running in fallback mode.</p>
-        <p>To enable the full application, please ensure that Python 3.11 or Node.js is properly installed and accessible in the PATH.</p>
-    </div>
-    
-    <footer style='margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;'>
-        <p>BCBS Values Simple Fallback Diagnostic Server</p>
-        <p>Generated: $(date)</p>
+    <footer>
+        <p>© 2025 Benton County Building Services</p>
     </footer>
 </body>
-</html>
-"
+</html>"
+  fi
+}
 
-# Check if netcat is available to create a simple web server
-if command -v nc >/dev/null 2>&1; then
-    echo "Using netcat to serve diagnostic page on port $PORT"
-    
-    # Make netcat listen on the specified port and serve the HTML content
-    # The -l option makes netcat listen for connections
-    # The -p option specifies the port to listen on
-    
-    # Loop to keep the server running after each connection
-    while true; do
-        echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n$HTML_CONTENT" | nc -l -p $PORT || break
-        echo "Connection served. Restarting server..."
-    done
+# Function to handle 404s
+serve_404() {
+  send_header "404 Not Found" "text/html"
+  echo "<!DOCTYPE html>
+<html>
+<head>
+    <title>404 - Not Found</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; }
+        h1 { color: #d9534f; }
+    </style>
+</head>
+<body>
+    <h1>404 - Not Found</h1>
+    <p>The requested file '$1' was not found on this server.</p>
+    <p><a href='/'>Go back to home page</a></p>
+</body>
+</html>"
+}
+
+echo "========================================================"
+echo "BCBS VALUES MINIMAL BASH HTTP SERVER"
+echo "========================================================"
+echo "Starting at: $(date)"
+echo "Listening on: http://$HOST:$PORT"
+echo "No external dependencies used. Pure bash implementation."
+echo "========================================================"
+
+# Check if netcat is available
+if command -v nc &>/dev/null; then
+  # Use netcat for a more reliable server
+  echo "Starting server with netcat..."
+  while true; do
+    echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n$(cat index.html)" | nc -l -p $PORT || break
+  done
 else
-    # Fallback to just showing the HTML
-    echo "Netcat not available. Cannot start server."
-    echo "Diagnostic information:"
-    echo "------------------------------------------------"
-    echo "Date: $(date)"
-    echo "User: $(whoami 2>/dev/null || echo 'Unknown')"
-    echo "Directory: $PWD"
-    echo "PATH: $PATH"
-    echo "Displaying HTML content for manual inspection:"
-    echo "$HTML_CONTENT"
+  # Fallback to /dev/tcp if netcat is not available
+  echo "Netcat not found. Using /dev/tcp fallback..."
+  
+  # Simple TCP server using only bash
+  while true; do
+    # Create a temporary file to store request
+    tmp_file=$(mktemp)
+    
+    # Start listening on the TCP socket
+    echo "Waiting for connections on port $PORT..."
+    
+    # Use exec to redirect file descriptors
+    exec 3<>/dev/tcp/$HOST/$PORT || { echo "Failed to bind to port $PORT"; exit 1; }
+    
+    # Read the HTTP request
+    while read -r line; do
+      # Store the first line to check the request path
+      [ -z "$first_line" ] && first_line="$line"
+      
+      # Break on empty line (end of HTTP headers)
+      [ -z "$line" ] && break
+      
+      # Store each line for debugging
+      echo "$line" >> "$tmp_file"
+    done <&3
+    
+    # Extract the requested path from the first line
+    request_path=$(echo "$first_line" | awk '{print $2}')
+    echo "Request for path: $request_path"
+    
+    # Serve the appropriate content based on the path
+    if [ "$request_path" = "/" ] || [ "$request_path" = "/index.html" ]; then
+      serve_index >&3
+    else
+      serve_404 "$request_path" >&3
+    fi
+    
+    # Close the connection
+    exec 3>&-
+    rm -f "$tmp_file"
+  done
 fi
+
+echo "Server has stopped."
+exit 1

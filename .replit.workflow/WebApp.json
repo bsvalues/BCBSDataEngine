@@ -1,9 +1,9 @@
 {
   "name": "WebApp",
   "display": "Web App",
-  "description": "Start BCBS Values Diagnostic Server",
-  "run": "node simple_server.js",
-  "language": "javascript",
+  "description": "Start BCBS Values Diagnostic Bash Server",
+  "run": "./run_diagnosis.sh",
+  "language": "bash",
   "onBoot": false,
   "restartable": true,
   "restart": "always",

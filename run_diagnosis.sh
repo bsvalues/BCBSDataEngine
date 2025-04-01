@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # BCBS Values Diagnostic Script
-# This script attempts to run various diagnostics in a hierarchical fallback manner
+# This script attempts to run various diagnostics with a focus on Node.js
 
 echo "========================================================"
 echo "BCBS VALUES DIAGNOSTIC SCRIPT"
@@ -17,16 +17,6 @@ command_exists() {
 # Set default port
 PORT=${PORT:-5000}
 export PORT
-
-# Define multiple possible Python paths
-PYTHON_PATHS=(
-  "/mnt/nixmodules/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.10-env/bin/python3"  # Known path from environment
-  "/nix/store/*/bin/python3"  # Try to find any Python in Nix store
-  "/usr/bin/python3"
-  "/usr/bin/python"
-  "python3"
-  "python"
-)
 
 # Define multiple possible Node.js paths
 NODE_PATHS=(
@@ -50,41 +40,47 @@ else
   echo "custom_diagnostic.sh not found. Trying alternative methods..."
 fi
 
-# Try Python-based diagnostic server
-echo "Trying Python diagnostic server..."
+# Try Python-based server
+echo "Trying Python-based diagnostic server..."
 
-# Function to try running simple_diagnostic.py with a given Python interpreter
+# Function to try running simple_python_server.py with a given Python interpreter
 try_python_diagnostic() {
   local python_cmd="$1"
   echo "Checking Python at: $python_cmd"
   
   if [ -x "$python_cmd" ] || command_exists "$python_cmd"; then
-    echo "Python found at $python_cmd. Trying simple_diagnostic.py..."
-    if [ -f "simple_diagnostic.py" ]; then
-      echo "Found simple_diagnostic.py. Running..."
+    echo "Python found at $python_cmd."
+    
+    # Try our Python server first
+    if [ -f "simple_python_server.py" ]; then
+      echo "Found simple_python_server.py. Running..."
       echo "You can access the diagnostic server at: http://0.0.0.0:5000"
-      
-      # Run directly - don't use background or nohup
-      # This is important for the workflow to stay alive
-      $python_cmd simple_diagnostic.py
-      
-      # If we get here, the server has exited
+      chmod +x simple_python_server.py
+      $python_cmd simple_python_server.py
       local exit_code=$?
-      echo "Python diagnostic server has stopped with exit code $exit_code."
+      echo "Python server has stopped with exit code $exit_code."
       return $exit_code
-    else
-      echo "simple_diagnostic.py not found."
-      return 1
     fi
+    
+    echo "No Python server scripts found."
+    return 1
   else
     echo "Python not found at $python_cmd."
     return 1
   fi
 }
 
+# Define Python common paths
+PYTHON_COMMON_PATHS=(
+  "/nix/store/*/bin/python3"
+  "/usr/bin/python3"
+  "/usr/local/bin/python3"
+  "python3"
+)
+
 # Try each Python path
 python_success=false
-for python_path in "${PYTHON_PATHS[@]}"; do
+for python_path in "${PYTHON_COMMON_PATHS[@]}"; do
   # If path contains a wildcard, try to expand it
   if [[ "$python_path" == *"*"* ]]; then
     # Try to find actual paths matching the pattern
@@ -224,9 +220,17 @@ echo "Disk space:"
 df -h . || echo "df command not available" 
 
 echo "Python paths:"
-for path in "${PYTHON_PATHS[@]}"; do
+# Check some common Python paths
+PYTHON_COMMON_PATHS=(
+  "/nix/store/*/bin/python3"
+  "/usr/bin/python3"
+  "/usr/local/bin/python3"
+  "python3"
+)
+
+for path in "${PYTHON_COMMON_PATHS[@]}"; do
   if [[ "$path" == *"*"* ]]; then
-    echo "- Wildcard path: $path"
+    echo "- Checking wildcard path: $path"
     # List any matching paths
     for actual_path in $path 2>/dev/null; do
       if [ -e "$actual_path" ]; then
@@ -234,7 +238,7 @@ for path in "${PYTHON_PATHS[@]}"; do
       fi
     done
   else
-    if [ -x "$path" ]; then
+    if command_exists "$path"; then
       echo "- Exists: $path"
     else
       echo "- Missing: $path"

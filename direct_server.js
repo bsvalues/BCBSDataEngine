@@ -1,185 +1,294 @@
 #!/usr/bin/env bash
-":"; //# comment; exec /usr/bin/env node "$0" "$@" || echo "Node.js not found, using bash fallback"; # -*- JavaScript -*-
+# This file is dual purpose - it's a bash script that extracts and executes embedded JavaScript code
+# It allows us to embed a Node.js server in a bash script for flexibility
 
+# Check if node exists, extract the JS part and run it
+if command -v node >/dev/null 2>&1; then
+  echo "Node.js found, executing server..."
+  # Extract JS code (everything after the marker) and pipe to node
+  sed -n '/^\/\/ --- BEGIN JAVASCRIPT ---$/,$ p' "$0" | tail -n +2 | node -
+  exit $?
+fi
+
+# If node isn't available, try to find another node
+NODE_PATHS=(
+  "/nix/store/*/bin/node"
+  "/usr/local/bin/node"
+  "/usr/bin/node"
+)
+
+for path_pattern in "${NODE_PATHS[@]}"; do
+  # If pattern has wildcards, expand them
+  if [[ "$path_pattern" == *"*"* ]]; then
+    for node_path in $path_pattern; do
+      if [ -x "$node_path" ]; then
+        echo "Found Node.js at $node_path"
+        sed -n '/^\/\/ --- BEGIN JAVASCRIPT ---$/,$ p' "$0" | tail -n +2 | "$node_path" -
+        exit $?
+      fi
+    done
+  elif [ -x "$path_pattern" ]; then
+    echo "Found Node.js at $path_pattern"
+    sed -n '/^\/\/ --- BEGIN JAVASCRIPT ---$/,$ p' "$0" | tail -n +2 | "$path_pattern" -
+    exit $?
+  fi
+done
+
+echo "Node.js not found. Cannot run server."
+exit 1
+
+// --- BEGIN JAVASCRIPT ---
 /**
- * BCBS Direct Server - Special hybrid script that can run on both Node.js and bash
- * This script is designed to be run directly with bash if Node.js is not available
+ * BCBS Direct Server - Minimal Node.js HTTP Server
+ * This server is embedded in a bash script for flexibility
  */
 
-// This script is designed as a hybrid script to provide fallback diagnostics
-// when conventional environments fail. It can run in two ways:
-// 1. As a Node.js script if Node.js is available
-// 2. With the embedded bash fallback if Node.js is not available
+// Create a basic HTTP server with just the built-in modules
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
-// ==== Node.js Implementation ====
-// This section only runs if the script is executed by Node.js
+// Configuration
+const PORT = process.env.PORT || 5000;
+const HOST = '0.0.0.0';
 
-if (typeof process !== 'undefined' && process.versions && process.versions.node) {
-  // We're running in Node.js
-  const http = require('http');
-  const os = require('os');
-  
-  // Server configuration
-  const PORT = process.env.PORT || 5000;
-  
-  // Create a simple HTTP server
-  const server = http.createServer((req, res) => {
-    const timestamp = new Date().toISOString();
-    console.log(`${timestamp} - ${req.method} ${req.url}`);
-    
-    res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>BCBS Direct Server</title>
-        <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 0 20px; }
-          h1 { color: #0066cc; border-bottom: 2px solid #0066cc; padding-bottom: 10px; }
-          h2 { color: #0066cc; margin-top: 30px; }
-          pre { background: #f5f5f5; padding: 15px; overflow-x: auto; }
-          .card { border: 1px solid #ddd; border-radius: 5px; padding: 20px; margin-bottom: 20px; }
-          .status { padding: 5px 10px; border-radius: 4px; display: inline-block; font-weight: bold; }
-          .warning { background-color: #fff3cd; color: #856404; }
-        </style>
-      </head>
-      <body>
-        <h1>BCBS Direct Server</h1>
-        
-        <div class='card'>
-          <h2>System Status</h2>
-          <p><span class='status warning'>DIRECT FALLBACK MODE</span> Running with direct Node.js server.</p>
-          <p>This is the minimal direct server implementation for diagnostics.</p>
-        </div>
-        
-        <div class='card'>
-          <h2>System Information</h2>
-          <pre>
-Date: ${new Date().toString()}
-Node.js: ${process.version}
-Platform: ${process.platform}
-Architecture: ${process.arch}
-Hostname: ${os.hostname()}
-</pre>
-        </div>
-        
-        <div class='card'>
-          <h2>Environment</h2>
-          <pre>
-PORT: ${process.env.PORT || 'Not set'}
-DATABASE_URL: ${process.env.DATABASE_URL ? '[REDACTED]' : 'Not set'}
-</pre>
-        </div>
-        
-        <div class='card'>
-          <h2>System Resources</h2>
-          <pre>
-Memory:
-  Total: ${(os.totalmem() / (1024 * 1024 * 1024)).toFixed(2)} GB
-  Free: ${(os.freemem() / (1024 * 1024 * 1024)).toFixed(2)} GB
-  Load Average: ${os.loadavg().join(', ')}
-</pre>
-        </div>
-        
-        <div class='card'>
-          <h2>Help Information</h2>
-          <p>The server is currently running in direct fallback mode.</p>
-          <p>To enable the full application, please ensure that the primary diagnostic servers can start correctly.</p>
-        </div>
-        
-        <footer style='margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;'>
-          <p>BCBS Direct Server (Node.js version)</p>
-          <p>Generated: ${new Date().toString()}</p>
-        </footer>
-      </body>
-      </html>
-    `);
-  });
-  
-  // Start the server
-  server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Direct server running on http://0.0.0.0:${PORT}`);
-    console.log(`Server started at: ${new Date().toISOString()}`);
-  });
-  
-  // Exit gracefully on SIGINT
-  process.on('SIGINT', () => {
-    console.log('\nShutting down server');
-    server.close(() => {
-      console.log('Server closed');
-      process.exit(0);
-    });
-  });
-  
-  // Don't proceed to the bash part
-  return;
+// Map of MIME types
+const MIME_TYPES = {
+  '.html': 'text/html',
+  '.css': 'text/css',
+  '.js': 'application/javascript',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.txt': 'text/plain',
+};
+
+// Function to get MIME type based on file extension
+function getMimeType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  return MIME_TYPES[ext] || 'application/octet-stream';
 }
 
-// ==== Bash Fallback Implementation ====
-// This section only runs if executed directly by bash when Node.js is not available
-// It's written in a way that bash will interpret it as commands
+// Function to generate diagnostics HTML
+function generateDiagnosticsHtml() {
+  const fileList = [];
+  try {
+    const files = fs.readdirSync('.');
+    files.forEach(file => {
+      const stats = fs.statSync(file);
+      fileList.push({
+        name: file,
+        size: stats.size,
+        isDirectory: stats.isDirectory(),
+        modified: stats.mtime
+      });
+    });
+  } catch (err) {
+    console.error('Error reading directory:', err);
+  }
 
-echo "Running direct server bash fallback mode"
-echo "Date: $(date)"
-
-# Try to determine a good port to use
-PORT=${PORT:-5000}
-echo "Using port: $PORT"
-
-# Generate static HTML
-cat << EOF
+  return `
 <!DOCTYPE html>
 <html>
 <head>
-    <title>BCBS Direct Server (Bash)</title>
-    <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 0 20px; }
-        h1 { color: #0066cc; border-bottom: 2px solid #0066cc; padding-bottom: 10px; }
-        h2 { color: #0066cc; margin-top: 30px; }
-        pre { background: #f5f5f5; padding: 15px; overflow-x: auto; }
-        .card { border: 1px solid #ddd; border-radius: 5px; padding: 20px; margin-bottom: 20px; }
-        .status { padding: 5px 10px; border-radius: 4px; display: inline-block; font-weight: bold; }
-        .warning { background-color: #fff3cd; color: #856404; }
-    </style>
+  <title>BCBS Diagnostic - Direct Server</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.6; }
+    h1 { color: #0066cc; border-bottom: 2px solid #0066cc; padding-bottom: 10px; }
+    h2 { color: #0066cc; margin-top: 30px; }
+    pre { background: #f5f5f5; padding: 15px; overflow-x: auto; }
+    .card { border: 1px solid #ddd; border-radius: 5px; padding: 20px; margin-bottom: 20px; }
+    .warning { background-color: #fff3cd; color: #856404; padding: 10px; border-radius: 4px; }
+    table { width: 100%; border-collapse: collapse; }
+    table th, table td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+    table th { background-color: #f2f2f2; }
+    .directory { color: #0066cc; font-weight: bold; }
+  </style>
 </head>
 <body>
-    <h1>BCBS Direct Server (Bash)</h1>
-    
-    <div class='card'>
-        <h2>System Status</h2>
-        <p><span class='status warning'>BASH FALLBACK MODE</span> Running with bash script server.</p>
-        <p>This is the absolute minimal bash fallback implementation for diagnostics.</p>
-    </div>
-    
-    <div class='card'>
-        <h2>System Information</h2>
-        <pre>
-Date: $(date)
-Bash: $(bash --version | head -n 1)
-</pre>
-    </div>
-    
-    <div class='card'>
-        <h2>Environment</h2>
-        <pre>
-PORT: $PORT
-PATH: $PATH
-</pre>
-    </div>
-    
-    <div class='card'>
-        <h2>Help Information</h2>
-        <p>The server is currently running in bash fallback mode, which means both Node.js and Python servers failed to start.</p>
-        <p>This is the most minimal diagnostic server possible.</p>
-    </div>
-    
-    <footer style='margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;'>
-        <p>BCBS Direct Server (Bash version)</p>
-        <p>Generated: $(date)</p>
-    </footer>
+  <h1>BCBS Values - Direct Server Diagnostic</h1>
+  
+  <div class="card">
+    <p class="warning"><strong>Note:</strong> You are viewing the direct fallback server. This indicates that primary servers failed to start.</p>
+    <p>This page is served by a minimal Node.js HTTP server.</p>
+    <p>Server started at: ${new Date().toLocaleString()}</p>
+  </div>
+  
+  <div class="card">
+    <h2>System Information</h2>
+    <pre>
+Hostname: ${os.hostname()}
+Platform: ${os.platform()}
+Architecture: ${os.arch()}
+OS Version: ${os.version ? os.version() : 'unknown'}
+Memory Total: ${Math.round(os.totalmem() / (1024 * 1024))} MB
+Memory Free: ${Math.round(os.freemem() / (1024 * 1024))} MB
+Uptime: ${Math.floor(os.uptime() / 3600)} hours, ${Math.floor((os.uptime() % 3600) / 60)} minutes
+    </pre>
+  </div>
+  
+  <div class="card">
+    <h2>Node.js Information</h2>
+    <pre>
+Node.js Version: ${process.version}
+V8 Version: ${process.versions.v8}
+Working Directory: ${process.cwd()}
+    </pre>
+  </div>
+  
+  <div class="card">
+    <h2>Environment Variables</h2>
+    <pre>
+PORT=${process.env.PORT || 'Not set'}
+PATH=${process.env.PATH || 'Not set'}
+PWD=${process.env.PWD || 'Not set'}
+    </pre>
+  </div>
+  
+  <div class="card">
+    <h2>Directory Contents</h2>
+    <table>
+      <tr>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Size</th>
+        <th>Modified</th>
+      </tr>
+      ${fileList.map(file => `
+      <tr>
+        <td${file.isDirectory ? ' class="directory"' : ''}>${file.name}</td>
+        <td>${file.isDirectory ? 'Directory' : 'File'}</td>
+        <td>${file.isDirectory ? '-' : file.size + ' bytes'}</td>
+        <td>${file.modified.toLocaleString()}</td>
+      </tr>`).join('')}
+    </table>
+  </div>
+  
+  <footer style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;">
+    <p>BCBS Values Direct Server Diagnostic</p>
+    <p>Generated at: ${new Date().toLocaleString()}</p>
+  </footer>
 </body>
 </html>
-EOF
+  `;
+}
 
-# Successfully exit the script for bash mode
-exit 0
+// Create the HTTP server
+const server = http.createServer((req, res) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  
+  // Parse the URL
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  let filePath = '.' + url.pathname;
+  
+  // Default to index.html if the path ends with /
+  if (filePath.endsWith('/')) {
+    filePath += 'index.html';
+  }
+  
+  // If the request is for the root, serve our diagnostic page
+  if (filePath === './index.html' && !fs.existsSync(filePath)) {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(generateDiagnosticsHtml());
+    return;
+  }
+  
+  // Check if the file exists
+  fs.access(filePath, fs.constants.F_OK, (err) => {
+    if (err) {
+      // File not found, serve the diagnostic page
+      res.writeHead(404, { 'Content-Type': 'text/html' });
+      res.end(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>404 - File Not Found</title>
+          <style>
+            body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; }
+            h1 { color: #d9534f; }
+            .back { margin-top: 20px; }
+          </style>
+        </head>
+        <body>
+          <h1>404 - File Not Found</h1>
+          <p>The requested file "${filePath}" was not found on the server.</p>
+          <div class="back">
+            <a href="/">Back to Diagnostics</a>
+          </div>
+        </body>
+        </html>
+      `);
+      return;
+    }
+    
+    // Read and serve the file
+    fs.readFile(filePath, (err, content) => {
+      if (err) {
+        res.writeHead(500, { 'Content-Type': 'text/html' });
+        res.end(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>500 - Server Error</title>
+            <style>
+              body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; }
+              h1 { color: #d9534f; }
+              .back { margin-top: 20px; }
+              pre { background: #f5f5f5; padding: 15px; }
+            </style>
+          </head>
+          <body>
+            <h1>500 - Server Error</h1>
+            <p>An error occurred while reading the file:</p>
+            <pre>${err.message}</pre>
+            <div class="back">
+              <a href="/">Back to Diagnostics</a>
+            </div>
+          </body>
+          </html>
+        `);
+        return;
+      }
+      
+      // Get the content type based on file extension
+      const contentType = getMimeType(filePath);
+      
+      // Send the response
+      res.writeHead(200, { 'Content-Type': contentType });
+      res.end(content);
+    });
+  });
+});
+
+// Start the server
+server.listen(PORT, HOST, () => {
+  console.log(`BCBS Direct Server running at http://${HOST}:${PORT}/`);
+  console.log(`Serving files from: ${process.cwd()}`);
+  console.log(`Server started at: ${new Date().toLocaleString()}`);
+});
+
+// Handle server errors
+server.on('error', (err) => {
+  console.error('Server error:', err);
+  
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use. Trying to use another port.`);
+    setTimeout(() => {
+      server.close();
+      server.listen(0, HOST);
+    }, 1000);
+  }
+});
+
+// Log when the server closes
+process.on('SIGINT', () => {
+  console.log('Server shutting down...');
+  server.close(() => {
+    console.log('Server closed.');
+    process.exit(0);
+  });
+});

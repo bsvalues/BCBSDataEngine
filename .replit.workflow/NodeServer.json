@@ -1,13 +1,14 @@
 {
   "name": "NodeServer",
   "display": "Node.js Server",
-  "description": "Start Node.js Server",
-  "run": "node server.js",
+  "description": "Start BCBS Values Emergency Node.js Server",
+  "run": "node emergency_server.js",
   "language": "nodejs",
   "onBoot": false,
   "restartable": true,
   "restart": "always",
   "exclusive": true,
+  "waitForPort": true,
   "permissions": {
     "allowNetwork": true,
     "allowFile": true,
@@ -16,11 +17,11 @@
   "colorIndex": 2,
   "ports": [
     {
-      "port": 3000,
-      "description": "Node.js Server",
+      "port": 5000,
+      "description": "Node.js Diagnostic Server",
       "label": "NodeServer",
       "export": true,
-      "internalPort": 3000
+      "internalPort": 5000
     }
   ]
 }
