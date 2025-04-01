@@ -1,66 +1,32 @@
 #!/bin/bash
 
-# BCBS Values Platform Diagnosis Script
-# This script attempts to start the server using multiple fallback options
+# BCBS Values Platform Dashboard with Micro-animations
+echo "BCBS Values Platform Dashboard Server"
+echo "===================================="
+echo "Starting enhanced dashboard with micro-animations..."
 
-echo "=== BCBS Values Platform Diagnosis ==="
-echo "Starting diagnostic process..."
+# Make the new Python script executable
+chmod +x run_enhanced_dashboard.py
 
-# Function to log messages with timestamps
-log_message() {
-  echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
-}
-
-# Check if we're in the root directory
-if [ ! -f "index.html" ]; then
-  log_message "Warning: index.html not found in current directory"
-  log_message "This script should be run from the project root"
-else
-  log_message "Found index.html in current directory"
-fi
-
-# Use direct Python path that we know exists
-PYTHON_PATH="/mnt/nixmodules/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.10-env/bin/python3"
-
-log_message "Attempting to start Python fallback server using direct path..."
-if [ -x "$PYTHON_PATH" ]; then
-  log_message "Python found at $PYTHON_PATH"
-  if [ -f "simple_python_server.py" ]; then
-    log_message "Found simple_python_server.py, executing with $PYTHON_PATH..."
-    "$PYTHON_PATH" simple_python_server.py
-    exit $?
-  else
-    log_message "simple_python_server.py not found in current directory, checking..."
-    ls -la
+# Try various Python versions
+python_found=0
+for py_cmd in python3 python python3.11 python3.10 python3.9 python3.8 /nix/store/*python*3.11*/bin/python3.11; do
+  if command -v $py_cmd >/dev/null 2>&1; then
+    echo "✅ Python found: $($py_cmd --version 2>&1)"
+    echo "🔄 Starting Dashboard Server with micro-animations..."
+    $py_cmd run_enhanced_dashboard.py
+    python_found=1
+    break
   fi
-else
-  log_message "Python not found at expected path: $PYTHON_PATH"
-  log_message "Checking directory..."
-  ls -la /mnt/nixmodules/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.10-env/bin/
-fi
+done
 
-# If Python server fails, try direct Node.js path
-NODE_PATH="/mnt/nixmodules/nix/store/7f3s06fx9khz3pyipkgj46j6p8mrbmcn-nodejs-18.19.1/bin/node"
-if [ -x "$NODE_PATH" ]; then
-  log_message "Found Node.js at $NODE_PATH"
-  if [ -f "basic_server.js" ]; then
-    log_message "Found basic_server.js, executing with direct Node.js path..."
-    "$NODE_PATH" basic_server.js
-    exit $?
-  else
-    log_message "basic_server.js not found, trying alternate methods"
-    ls -la
+# If no Python was found or the server couldn't start
+if [ $python_found -eq 0 ]; then
+  echo "❌ Python not found. Trying direct execution..."
+  ./run_enhanced_dashboard.py
+  
+  if [ $? -ne 0 ]; then
+    echo "❌ Failed to start Dashboard Server. Please check your environment."
+    exit 1
   fi
-else
-  log_message "Node.js not found at expected path: $NODE_PATH"
 fi
-
-# Final fallback - echo a message to guide the user
-log_message "All server startup methods failed"
-log_message "Please try manually accessing static_fallback.html in your browser"
-echo ""
-echo "===== SERVER STARTUP FAILED ====="
-echo "Try navigating to static_fallback.html in your browser"
-echo "===== SERVER STARTUP FAILED ====="
-
-exit 1

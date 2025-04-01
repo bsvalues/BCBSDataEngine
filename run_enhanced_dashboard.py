@@ -1,12 +1,13 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
-Simple HTTP server for hosting the BCBS Values Platform Dashboard
+Simple starter script for the BCBS Values Platform Dashboard
 with Micro-Animations
 """
 
 import http.server
 import socketserver
 import os
+import sys
 from urllib.parse import urlparse
 
 # Default port for the server
@@ -15,6 +16,15 @@ PORT = 5000
 # Set the directory containing the HTML files
 DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 os.chdir(DIRECTORY)
+
+print("BCBS Values Platform Dashboard Server")
+print("====================================")
+print(f"Python version: {sys.version}")
+print(f"Current directory: {os.getcwd()}")
+print("HTML files found:")
+html_files = [f for f in os.listdir(".") if f.endswith(".html")]
+for html_file in html_files:
+    print(f"  - {html_file}")
 
 class DashboardHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     """Custom HTTP request handler for dashboard HTML files"""

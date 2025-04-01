@@ -1,25 +1,25 @@
 {
   "WebApp": {
-    "displayName": "Diagnostic Server",
-    "description": "Runs the BCBS Values platform server directly",
+    "displayName": "BCBS Dashboard with Animations",
+    "description": "Runs the BCBS Values platform dashboard with micro-animations",
     "icon": "server",
     "colorIndex": 3,
-    "entrypoint": "run_server.sh",
+    "entrypoint": "serve_dashboard.js",
     "ignorePorts": false,
     "detached": true,
     "terminalDarkTheme": true,
     "showCommand": true,
-    "commands": ["./run_server.sh"],
+    "commands": ["node serve_dashboard.js"],
     "interpreter": {
-      "type": "shell",
+      "type": "nodejs",
       "module": {}
     },
     "ports": [
       {
         "internalPort": 5000,
         "externalPort": 5000,
-        "description": "Diagnostic Web Server",
-        "label": "Diagnostics",
+        "description": "Enhanced Dashboard with Animations",
+        "label": "WebApp",
         "export": true,
         "wait": true,
         "wait_timeout": 10000

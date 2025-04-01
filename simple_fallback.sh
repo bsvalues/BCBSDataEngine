@@ -1,122 +1,78 @@
 #!/bin/bash
 
-# Simple Fallback Diagnostic Server
-# This script provides a basic diagnostic server using only bash capabilities
+echo "BCBS Values Platform Simple Fallback Server"
+echo "=========================================="
 
-PORT=${PORT:-5000}
-echo "Starting simple fallback diagnostic server on port $PORT"
-echo "Server time: $(date)"
+# Try to find the python executable
+for py_path in $(which python3) /nix/store/*python*3.11*/bin/python3.11 /usr/bin/python3.11 /usr/local/bin/python3.11 /mnt/nixmodules/nix/store/*python*3.11*/bin/python3.11; do
+  if [ -x "$py_path" ]; then
+    echo "Using Python at: $py_path"
+    
+    # Check if we have the simple server
+    if [ -f "simple_python_server.py" ]; then
+      echo "Starting simple Python server..."
+      chmod +x simple_python_server.py
+      exec "$py_path" simple_python_server.py
+      exit 0
+    fi
+    
+    # If not, use the built-in http.server module
+    echo "Starting built-in Python HTTP server..."
+    exec "$py_path" -m http.server 5000 --bind 0.0.0.0
+    exit 0
+  fi
+done
 
-# Generate basic HTML content
-HTML_CONTENT="
-<!DOCTYPE html>
-<html>
-<head>
-    <title>BCBS Simple Diagnostic</title>
-    <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 0 20px; }
-        h1 { color: #0066cc; border-bottom: 2px solid #0066cc; padding-bottom: 10px; }
-        h2 { color: #0066cc; margin-top: 30px; }
-        pre { background: #f5f5f5; padding: 15px; overflow-x: auto; }
-        .card { border: 1px solid #ddd; border-radius: 5px; padding: 20px; margin-bottom: 20px; }
-        .status { padding: 5px 10px; border-radius: 4px; display: inline-block; font-weight: bold; }
-        .warning { background-color: #fff3cd; color: #856404; }
-    </style>
-</head>
-<body>
-    <h1>BCBS Values Simple Diagnostic</h1>
-    
-    <div class='card'>
-        <h2>System Status</h2>
-        <p><span class='status warning'>BASIC FALLBACK MODE</span> Running in minimal bash-based diagnostic mode.</p>
-        <p>The application server could not be started with Python or Node.js.</p>
-    </div>
-    
-    <div class='card'>
-        <h2>System Information</h2>
-        <pre>
-Date: $(date)
-Hostname: $(hostname 2>/dev/null || echo 'Unknown')
-User: $(whoami 2>/dev/null || echo 'Unknown')
-Path: $PATH
-PWD: $PWD
-</pre>
-    </div>
-    
-    <div class='card'>
-        <h2>Environment</h2>
-        <pre>
-PORT: $PORT
-PYTHONPATH: $PYTHONPATH
-NODE_PATH: $NODE_PATH
-</pre>
-    </div>
-    
-    <div class='card'>
-        <h2>System Resources</h2>
-        <pre>
-$(free -h 2>/dev/null || echo 'Memory info not available')
+echo "Python not found. Trying Node.js..."
 
-$(df -h . 2>/dev/null || echo 'Disk info not available')
-</pre>
-    </div>
+# Try to find the node executable
+for node_path in $(which node) /nix/store/*nodejs*20*/bin/node /nix/store/*nodejs*18*/bin/node /usr/bin/node /usr/local/bin/node; do
+  if [ -x "$node_path" ]; then
+    echo "Using Node.js at: $node_path"
     
-    <div class='card'>
-        <h2>Available Tools</h2>
-        <pre>
-Python: $(which python3 2>/dev/null || which python 2>/dev/null || echo 'Not found')
-Node.js: $(which node 2>/dev/null || echo 'Not found')
-Bash: $(which bash 2>/dev/null || echo 'Not found')
-</pre>
-    </div>
+    # Check if we have the node server
+    if [ -f "server.js" ]; then
+      echo "Starting Node.js server..."
+      exec "$node_path" server.js
+      exit 0
+    fi
     
-    <div class='card'>
-        <h2>File System</h2>
-        <pre>
-Current directory files:
-$(ls -la | head -20)
-</pre>
-    </div>
-    
-    <div class='card'>
-        <h2>Environment Variables</h2>
-        <pre>
-PATH: $PATH
-</pre>
-    </div>
-    
-    <div class='card'>
-        <h2>Help Information</h2>
-        <p>The server is currently running in fallback mode because neither Python nor Node.js could be started.</p>
-        <p>To enable the full application, please ensure that Python 3.11 or Node.js is properly installed and accessible in the PATH.</p>
-    </div>
-    
-    <footer style='margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;'>
-        <p>BCBS Values Simple Fallback Diagnostic Server</p>
-        <p>Generated: $(date)</p>
-    </footer>
-</body>
-</html>
-"
+    # If not, create a minimal HTTP server
+    echo "Creating minimal Node.js HTTP server..."
+    cat > minimal_server.js << 'EOF'
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
-# Check if netcat is available to create a simple web server
-if command -v nc >/dev/null 2>&1; then
-    echo "Using netcat to serve diagnostic page on port $PORT"
+const PORT = 5000;
+const server = http.createServer((req, res) => {
+  console.log('Request:', req.url);
+  let filePath = '.' + req.url;
+  if (filePath === './') filePath = './index.html';
+  
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      res.writeHead(404);
+      res.end('File not found!');
+      return;
+    }
+    res.writeHead(200);
+    res.end(data);
+  });
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running at http://0.0.0.0:${PORT}/`);
+});
+EOF
     
-    # Loop to keep the server running after each connection
-    while true; do
-        echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n$HTML_CONTENT" | nc -l -p $PORT || break
-        echo "Connection served. Restarting server..."
-    done
-else
-    # Fallback to just showing the HTML
-    echo "Netcat not available. Cannot start server."
-    echo "Diagnostic information:"
-    echo "------------------------------------------------"
-    echo "Date: $(date)"
-    echo "User: $(whoami 2>/dev/null || echo 'Unknown')"
-    echo "Directory: $PWD"
-    echo "PATH: $PATH"
-    echo "Displaying HTML content for manual inspection:"
-    echo "$HTML_CONTENT"
-fi
+    exec "$node_path" minimal_server.js
+    exit 0
+  fi
+done
+
+echo "Error: No Python or Node.js found!"
+echo "Falling back to static file listing:"
+ls -la *.html
+
+exit 1

@@ -1,7 +1,10 @@
-/**
- * Simple HTTP server to serve static files for BCBS Values Platform
- */
+#!/bin/bash
 
+# Simplified workflow runner that doesn't try to use python directly
+echo "Starting BCBS Values Platform..."
+
+# Create a very minimal Node.js server script
+cat > minimal_server.js << 'EOF'
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -64,3 +67,8 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`- Dashboard: http://0.0.0.0:${PORT}/dashboard.html`);
   console.log(`- Static Fallback: http://0.0.0.0:${PORT}/static_fallback.html`);
 });
+EOF
+
+# Try to run with node
+echo "Attempting to start Node.js server..."
+node minimal_server.js
