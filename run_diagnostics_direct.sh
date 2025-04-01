@@ -12,7 +12,24 @@ echo "Hostname: $(hostname)"
 echo "Current directory: $(pwd)"
 echo
 
-# Check Python versions
+# Use Python 3.11 absolute path to run simple_diagnostic.py
+PYTHON_PATH="/mnt/nixmodules/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.10-env/bin/python3"
+
+if [ -x "$PYTHON_PATH" ] && [ -f "simple_diagnostic.py" ]; then
+  echo "Found Python 3.11 at $PYTHON_PATH"
+  echo "Starting simple diagnostic server..."
+  $PYTHON_PATH simple_diagnostic.py &
+  SERVER_PID=$!
+  echo "Server started with PID $SERVER_PID"
+  echo "You can access the server at: http://0.0.0.0:5000"
+  
+  # Let the server run in the background
+  # Keep the script alive so the server doesn't terminate
+  wait $SERVER_PID
+  exit 0
+fi
+
+# Check Python versions (if direct execution failed)
 echo "Python versions available:"
 for pyver in python python3 python3.8 python3.9 python3.10 python3.11; do
   if command -v $pyver > /dev/null 2>&1; then

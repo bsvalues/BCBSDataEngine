@@ -9,7 +9,7 @@
     "detached": true,
     "terminalDarkTheme": true,
     "showCommand": true,
-    "commands": ["bash ./run_diagnosis.sh"],
+    "commands": ["chmod +x ./run_diagnosis.sh && ./run_diagnosis.sh"],
     "interpreter": {
       "type": "bash",
       "module": {}
@@ -34,7 +34,7 @@
     "detached": true,
     "terminalDarkTheme": true,
     "showCommand": true,
-    "commands": ["python3 start_webapp.py"],
+    "commands": ["/mnt/nixmodules/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.10-env/bin/python3 start_webapp.py"],
     "interpreter": {
       "type": "python3",
       "module": {}
@@ -59,7 +59,7 @@
     "detached": true,
     "terminalDarkTheme": true,
     "showCommand": true,
-    "commands": ["/mnt/nixmodules/nix/store/b03kwd9a5dm53k0z5vfzdhkvaa64c4g7-python3-3.10.13-env/bin/python3 api.py"],
+    "commands": ["/mnt/nixmodules/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.10-env/bin/python3 api.py"],
     "interpreter": {
       "type": "python3",
       "module": {}

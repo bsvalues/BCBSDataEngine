@@ -52,7 +52,27 @@ echo "========================================================"
 
 # Try Python-based diagnostic server
 echo "Attempting to run simple Python diagnostic server..."
-if command_exists python3 && [ -f "simple_diagnostic.py" ]; then
+
+# Try with absolute path to Python
+PYTHON_PATH="/mnt/nixmodules/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.10-env/bin/python3"
+
+if [ -x "$PYTHON_PATH" ] && [ -f "simple_diagnostic.py" ]; then
+  echo "Running simple_diagnostic.py with Python 3 at $PYTHON_PATH..."
+  $PYTHON_PATH simple_diagnostic.py &
+  # Store the PID to kill it later if needed
+  PYTHON_PID=$!
+  # Wait a moment for server to start
+  sleep 3
+  # Check if server is still running
+  if kill -0 $PYTHON_PID 2>/dev/null; then
+    echo "Python diagnostic server started successfully with PID $PYTHON_PID."
+    echo "You can access the server at: http://0.0.0.0:5000"
+    wait $PYTHON_PID
+    exit $?
+  else
+    echo "Python diagnostic server failed to start or crashed."
+  fi
+elif command_exists python3 && [ -f "simple_diagnostic.py" ]; then
   echo "Running simple_diagnostic.py with Python 3..."
   python3 simple_diagnostic.py &
   # Store the PID to kill it later if needed

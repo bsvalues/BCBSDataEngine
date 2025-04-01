@@ -34,29 +34,52 @@ fi
 
 # Try Python-based diagnostic server
 echo "Trying Python diagnostic server..."
-if command_exists python3; then
-  echo "Python 3 found. Trying simple_diagnostic.py..."
+# Try with absolute path to Python
+PYTHON_PATH="/mnt/nixmodules/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.10-env/bin/python3"
+
+if [ -x "$PYTHON_PATH" ]; then
+  echo "Python 3 found at $PYTHON_PATH. Trying simple_diagnostic.py..."
   if [ -f "simple_diagnostic.py" ]; then
     echo "Found simple_diagnostic.py. Running..."
-    if python3 simple_diagnostic.py; then
-      echo "Python diagnostic server completed successfully."
-      exit 0
-    else
-      echo "Python diagnostic server failed. Trying Node.js..."
-    fi
+    echo "You can access the diagnostic server at: http://0.0.0.0:5000"
+    
+    # Run directly - don't use background or nohup
+    # This is important for the workflow to stay alive
+    $PYTHON_PATH simple_diagnostic.py
+    
+    # If we get here, the server has exited
+    echo "Python diagnostic server has stopped."
+    exit $?
+  else
+    echo "simple_diagnostic.py not found. Trying Node.js..."
+  fi
+elif command_exists python3; then
+  echo "Python 3 found in PATH. Trying simple_diagnostic.py..."
+  if [ -f "simple_diagnostic.py" ]; then
+    echo "Found simple_diagnostic.py. Running..."
+    echo "You can access the diagnostic server at: http://0.0.0.0:5000"
+    
+    # Run directly - don't use background to keep the workflow alive
+    python3 simple_diagnostic.py
+    
+    # If we get here, the server has exited
+    echo "Python diagnostic server has stopped."
+    exit $?
   else
     echo "simple_diagnostic.py not found. Trying Node.js..."
   fi
 elif command_exists python; then
-  echo "Python found. Trying simple_diagnostic.py..."
+  echo "Python found in PATH. Trying simple_diagnostic.py..."
   if [ -f "simple_diagnostic.py" ]; then
     echo "Found simple_diagnostic.py. Running..."
-    if python simple_diagnostic.py; then
-      echo "Python diagnostic server completed successfully."
-      exit 0
-    else
-      echo "Python diagnostic server failed. Trying Node.js..."
-    fi
+    echo "You can access the diagnostic server at: http://0.0.0.0:5000"
+    
+    # Run directly - don't use background to keep the workflow alive
+    python simple_diagnostic.py
+    
+    # If we get here, the server has exited
+    echo "Python diagnostic server has stopped."
+    exit $?
   else
     echo "simple_diagnostic.py not found. Trying Node.js..."
   fi
@@ -70,24 +93,20 @@ if command_exists node; then
   echo "Node.js found. Trying server.js..."
   if [ -f "server.js" ]; then
     echo "Found server.js. Running..."
-    if node server.js; then
-      echo "Node.js server completed successfully."
-      exit 0
-    else
-      echo "Node.js server failed. Trying simple_http_server.js..."
-    fi
+    echo "You can access the diagnostic server at: http://0.0.0.0:5000"
+    node server.js
+    echo "Node.js server has stopped."
+    exit $?
   else
     echo "server.js not found. Trying simple_http_server.js..."
   fi
 
   if [ -f "simple_http_server.js" ]; then
     echo "Found simple_http_server.js. Running..."
-    if node simple_http_server.js; then
-      echo "Simple Node.js server completed successfully."
-      exit 0
-    else
-      echo "Simple Node.js server failed. Moving to static diagnostic..."
-    fi
+    echo "You can access the diagnostic server at: http://0.0.0.0:5000"
+    node simple_http_server.js
+    echo "Simple Node.js server has stopped."
+    exit $?
   else
     echo "simple_http_server.js not found. Moving to static diagnostic..."
   fi
