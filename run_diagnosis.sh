@@ -1,169 +1,132 @@
 #!/bin/bash
 
 # BCBS Values Diagnostic Script
-# This script attempts to run the diagnostic server, with multiple fallback options
+# This script attempts to run various diagnostics in a hierarchical fallback manner
 
 echo "========================================================"
 echo "BCBS VALUES DIAGNOSTIC SCRIPT"
 echo "========================================================"
 echo "Current directory: $(pwd)"
+echo "Date: $(date)"
 
-# Function to check if a command exists
+# Function to check if command exists
 command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
-# Try to find the Python executable
-PYTHON=""
+# Set default port
+PORT=${PORT:-5000}
+export PORT
 
-# Check common paths directly (not relying on PATH)
-for python_path in \
-  /usr/bin/python3 \
-  /usr/bin/python3.11 \
-  /usr/bin/python3.10 \
-  /usr/bin/python3.9 \
-  /usr/bin/python \
-  /usr/local/bin/python3 \
-  /usr/local/bin/python \
-  /nix/store/*/bin/python3 \
-  /nix/store/*/bin/python \
-  /home/runner/.local/bin/python3 \
-  /home/runner/.local/bin/python
-do
-  if [ -x "$python_path" ]; then
-    PYTHON="$python_path"
-    echo "Found Python at: $PYTHON"
-    break
-  fi
-done
-
-# If not found in common paths, try PATH
-if [ -z "$PYTHON" ]; then
-  for cmd in python3.11 python3.10 python3.9 python3 python; do
-    if command_exists "$cmd"; then
-      PYTHON="$cmd"
-      echo "Found Python in PATH: $PYTHON ($(which $PYTHON))"
-      break
-    fi
-  done
-fi
-
-# Last resort: use env to find python
-if [ -z "$PYTHON" ]; then
-  PYTHON=$(env python3 -c 'import sys; print(sys.executable)' 2>/dev/null)
-  if [ $? -eq 0 ] && [ -n "$PYTHON" ]; then
-    echo "Found Python via env: $PYTHON"
+# Try our custom diagnostic script first
+echo "Trying custom diagnostic script..."
+if [ -f "custom_diagnostic.sh" ]; then
+  echo "Found custom_diagnostic.sh. Running..."
+  if bash custom_diagnostic.sh; then
+    echo "Custom diagnostic script completed successfully."
+    exit 0
   else
-    PYTHON=$(env python -c 'import sys; print(sys.executable)' 2>/dev/null)
-    if [ $? -eq 0 ] && [ -n "$PYTHON" ]; then
-      echo "Found Python via env: $PYTHON"
-    fi
-  fi
-fi
-
-if [ -z "$PYTHON" ]; then
-  echo "ERROR: No Python executable found in PATH or common locations."
-  echo "Paths checked in PATH:"
-  which python python3 python3.11 python3.10 python3.9 2>/dev/null || echo "  No Python found via 'which'"
-  echo
-  echo "Attempt to locate python in /usr:"
-  find /usr -name "python*" -type f -executable 2>/dev/null | grep -v "config" | head -n 10 || echo "  No Python found in /usr"
-  echo
-  echo "Attempt to locate python in /nix/store:"
-  find /nix/store -name "python*" -type f -executable 2>/dev/null | head -n 5 || echo "  No Python found in /nix/store"
-  echo
-  echo "Will continue with shell-only diagnostics."
-fi
-
-# Only run Python-based diagnostics if we found Python
-if [ -n "$PYTHON" ]; then
-  echo "Using Python: $PYTHON"
-  echo "Python version: $($PYTHON --version 2>&1)"
-  echo
-
-  # Define server port
-  PORT=${PORT:-5000}
-
-  # Try to run the unified diagnostic script
-  echo "Attempting to run unified diagnostic server..."
-  if [ -f "run_diagnostics.py" ]; then
-    chmod +x run_diagnostics.py
-    $PYTHON run_diagnostics.py
-    if [ $? -eq 0 ]; then
-      echo "Diagnostic server completed successfully."
-      exit 0
-    else
-      echo "Unified diagnostic server failed, trying alternatives..."
-    fi
-  else
-    echo "Unified diagnostic script not found, trying alternatives..."
-  fi
-
-  # Try to run the advanced diagnostic server directly
-  echo "Attempting to run advanced diagnostic server directly..."
-  if [ -f "quick_diagnostic_server.py" ]; then
-    $PYTHON quick_diagnostic_server.py
-    if [ $? -eq 0 ]; then
-      echo "Advanced diagnostic server completed successfully."
-      exit 0
-    else
-      echo "Advanced diagnostic server failed, trying simple server..."
-    fi
-  else
-    echo "Advanced diagnostic script not found, trying simple server..."
-  fi
-
-  # Try to run the simple diagnostic server
-  echo "Attempting to run simple diagnostic server..."
-  if [ -f "simple_diagnostic.py" ]; then
-    chmod +x simple_diagnostic.py
-    $PYTHON simple_diagnostic.py
-    if [ $? -eq 0 ]; then
-      echo "Simple diagnostic server completed successfully."
-      exit 0
-    else
-      echo "Simple diagnostic server failed."
-    fi
-  else
-    echo "Simple diagnostic script not found."
+    echo "Custom diagnostic script failed. Trying alternative methods..."
   fi
 else
-  echo "========================================================"
-  echo "WARNING: Python not found, skipping Python-based diagnostics"
-  echo "========================================================"
+  echo "custom_diagnostic.sh not found. Trying alternative methods..."
 fi
 
-# Last resort: run a direct diagnostic
-echo "========================================================"
-echo "DIRECT DIAGNOSTIC INFORMATION"
-echo "========================================================"
-echo "Current time: $(date)"
-echo "Python version: $($PYTHON --version 2>&1)"
-echo "Python path: $(command -v $PYTHON)"
-echo "Current directory: $(pwd)"
-echo
+# Try Python-based diagnostic server
+echo "Trying Python diagnostic server..."
+if command_exists python3; then
+  echo "Python 3 found. Trying simple_diagnostic.py..."
+  if [ -f "simple_diagnostic.py" ]; then
+    echo "Found simple_diagnostic.py. Running..."
+    if python3 simple_diagnostic.py; then
+      echo "Python diagnostic server completed successfully."
+      exit 0
+    else
+      echo "Python diagnostic server failed. Trying Node.js..."
+    fi
+  else
+    echo "simple_diagnostic.py not found. Trying Node.js..."
+  fi
+elif command_exists python; then
+  echo "Python found. Trying simple_diagnostic.py..."
+  if [ -f "simple_diagnostic.py" ]; then
+    echo "Found simple_diagnostic.py. Running..."
+    if python simple_diagnostic.py; then
+      echo "Python diagnostic server completed successfully."
+      exit 0
+    else
+      echo "Python diagnostic server failed. Trying Node.js..."
+    fi
+  else
+    echo "simple_diagnostic.py not found. Trying Node.js..."
+  fi
+else
+  echo "Python not found. Trying Node.js..."
+fi
 
-echo "Environment variables:"
-env | grep -E "^(DATABASE_URL|PG|API_KEY|SESSION_SECRET|PORT|PYTHONPATH)" | grep -v "PASSWORD" | sort
+# Try Node.js-based server
+echo "Trying Node.js diagnostic server..."
+if command_exists node; then
+  echo "Node.js found. Trying server.js..."
+  if [ -f "server.js" ]; then
+    echo "Found server.js. Running..."
+    if node server.js; then
+      echo "Node.js server completed successfully."
+      exit 0
+    else
+      echo "Node.js server failed. Trying simple_http_server.js..."
+    fi
+  else
+    echo "server.js not found. Trying simple_http_server.js..."
+  fi
 
-echo
-echo "System information:"
+  if [ -f "simple_http_server.js" ]; then
+    echo "Found simple_http_server.js. Running..."
+    if node simple_http_server.js; then
+      echo "Simple Node.js server completed successfully."
+      exit 0
+    else
+      echo "Simple Node.js server failed. Moving to static diagnostic..."
+    fi
+  else
+    echo "simple_http_server.js not found. Moving to static diagnostic..."
+  fi
+else
+  echo "Node.js not found. Moving to static diagnostic..."
+fi
+
+# Final fallback: Just show plain text diagnostic info
+echo "========================================================"
+echo "STATIC DIAGNOSTIC INFORMATION"
+echo "========================================================"
+echo "No server could be started. Here's some basic diagnostic information:"
+
+echo "System:"
 uname -a
-echo
+
+echo "Memory:"
+free -h || echo "free command not available"
 
 echo "Disk space:"
-df -h .
-echo
+df -h . || echo "df command not available" 
 
-echo "Directory listing:"
-ls -la
-echo
+echo "Environment:"
+echo "- PATH: $PATH"
+echo "- PWD: $PWD"
+echo "- PORT: $PORT"
+
+echo "Files:"
+if [ -f "index.html" ]; then
+  echo "index.html exists"
+  echo "Try accessing index.html directly in your browser."
+else 
+  echo "index.html does not exist"
+fi
 
 echo "========================================================"
-echo "DIAGNOSTIC COMPLETE"
+echo "DIAGNOSTICS COMPLETE"
 echo "========================================================"
-echo "All diagnostic options have been tried."
-echo "This information may help troubleshoot any issues."
-echo "========================================================"
+echo "All diagnostic options have been exhausted."
+echo "Please check the diagnostic information above."
 
 exit 1

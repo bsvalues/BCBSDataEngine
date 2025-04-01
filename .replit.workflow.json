@@ -1,4 +1,29 @@
 {
+  "WebApp": {
+    "displayName": "Diagnostic Server",
+    "description": "Runs the BCBS Values diagnostic system with fallbacks",
+    "icon": "server",
+    "colorIndex": 3,
+    "entrypoint": "run_diagnosis.sh",
+    "ignorePorts": false,
+    "detached": true,
+    "terminalDarkTheme": true,
+    "showCommand": true,
+    "commands": ["bash ./run_diagnosis.sh"],
+    "interpreter": {
+      "type": "bash",
+      "module": {}
+    },
+    "ports": [
+      {
+        "internalPort": 5000,
+        "externalPort": 5000,
+        "description": "Diagnostic Web Server",
+        "label": "Diagnostics",
+        "export": true
+      }
+    ]
+  },
   "run": {
     "displayName": "Run Flask App",
     "description": "Starts the BCBS Values Flask web application",

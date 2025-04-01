@@ -1,5 +1,7 @@
 {pkgs}: {
   deps = [
+    pkgs.nodejs
+    pkgs.python3
     pkgs.gcc
     pkgs.opencl-headers
     pkgs.ocl-icd
