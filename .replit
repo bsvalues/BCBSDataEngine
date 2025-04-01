@@ -30,7 +30,7 @@ support = true
 transport = "mp_transport"
 
 [workflows]
-runButton = "DiagnosticServer"
+runButton = "TestPython"
 
 [[workflows.workflow]]
 name = "WebApp"
@@ -108,6 +108,15 @@ args = "python3 diagnose_env.py"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python3 direct_diagnostic.py"
+
+[[workflows.workflow]]
+name = "TestPython"
+author = 37274620
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "/mnt/nixmodules/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.10-env/bin/python3 test_python.py"
 
 [deployment]
 run = ["sh", "-c", "./run_diagnosis.sh"]
