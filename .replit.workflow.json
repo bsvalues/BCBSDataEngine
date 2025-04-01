@@ -1,104 +1,33 @@
 {
-  "WebApp": {
-    "displayName": "BCBS Dashboard with Animations",
-    "description": "Runs the BCBS Values platform dashboard with micro-animations",
-    "icon": "server",
-    "colorIndex": 3,
-    "entrypoint": "serve_dashboard.js",
-    "ignorePorts": false,
-    "detached": true,
-    "terminalDarkTheme": true,
-    "showCommand": true,
-    "commands": ["node serve_dashboard.js"],
-    "interpreter": {
-      "type": "nodejs",
-      "module": {}
-    },
-    "ports": [
-      {
-        "internalPort": 5000,
-        "externalPort": 5000,
-        "description": "Enhanced Dashboard with Animations",
-        "label": "WebApp",
-        "export": true,
-        "wait": true,
-        "wait_timeout": 10000
-      }
-    ]
-  },
-  "run": {
-    "displayName": "Run Flask App",
-    "description": "Starts the BCBS Values Flask web application",
-    "icon": "server",
-    "colorIndex": 3,
-    "entrypoint": "start_webapp.py",
-    "ignorePorts": false,
-    "detached": true,
-    "terminalDarkTheme": true,
-    "showCommand": true,
-    "commands": ["/mnt/nixmodules/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.10-env/bin/python3 start_webapp.py"],
-    "interpreter": {
-      "type": "python3",
-      "module": {}
-    },
-    "ports": [
-      {
-        "internalPort": 5000,
-        "externalPort": 5000,
-        "description": "Web user interface",
-        "label": "WebApp",
-        "export": true
-      }
-    ]
-  },
-  "APIServer": {
-    "displayName": "API Server",
-    "description": "Runs the enhanced API server with token authentication",
-    "icon": "api",
-    "colorIndex": 2,
-    "entrypoint": "api.py",
-    "ignorePorts": false,
-    "detached": true,
-    "terminalDarkTheme": true,
-    "showCommand": true,
-    "commands": ["/mnt/nixmodules/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.10-env/bin/python3 api.py"],
-    "interpreter": {
-      "type": "python3",
-      "module": {}
-    },
-    "ports": [
-      {
-        "internalPort": 5001,
-        "externalPort": 5001,
-        "description": "API Server",
-        "label": "API",
-        "export": true
-      }
-    ]
-  },
-  "NodeServer": {
-    "displayName": "Node.js Server",
-    "description": "Runs the Node.js Express server for the dashboard",
-    "icon": "server",
-    "colorIndex": 1,
-    "entrypoint": "run.js",
-    "ignorePorts": false,
-    "detached": true,
-    "terminalDarkTheme": true,
-    "showCommand": true,
-    "commands": ["node run.js"],
-    "interpreter": {
-      "type": "nodejs",
-      "module": {}
-    },
-    "ports": [
-      {
-        "internalPort": 5002,
-        "externalPort": 5002,
-        "description": "Node.js Server",
-        "label": "NodeServer",
-        "export": true
-      }
-    ]
-  }
+  "version": "1",
+  "workflows": [
+    {
+      "name": "WebApp",
+      "mode": "sequential",
+      "metadata": {
+        "agentRequireRestartOnSave": false
+      },
+      "tasks": [
+        {
+          "task": "packager.installForAll"
+        },
+        {
+          "task": "port.forward",
+          "args": {
+            "port": 5002
+          }
+        },
+        {
+          "task": "shell.exec",
+          "args": {
+            "command": "./webapp.sh",
+            "options": {
+              "waitForPort": 5002,
+              "waitForPortTimeout": 30000
+            }
+          }
+        }
+      ]
+    }
+  ]
 }
