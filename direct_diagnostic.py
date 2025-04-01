@@ -13,7 +13,12 @@ import socket
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # Default port
-PORT = int(os.environ.get("PORT", 5000))
+try:
+    PORT = int(os.environ.get("PORT", 5000))
+    if PORT <= 0 or PORT > 65535:
+        PORT = 5000
+except (TypeError, ValueError):
+    PORT = 5000
 
 class DiagnosticHandler(BaseHTTPRequestHandler):
     """HTTP request handler for the diagnostic server"""
