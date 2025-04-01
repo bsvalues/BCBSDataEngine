@@ -1,54 +1,89 @@
+#!/usr/bin/env python3
 """
-Startup script for the BCBS Values web application.
-This script seeds the database with sample data and then runs the web application.
+Launcher script for BCBS Values Platform web server
+This script auto-detects the environment and starts the appropriate server
 """
+
 import os
 import sys
 import logging
-from datetime import datetime
+import socket
+import time
+import subprocess
+import signal
+from http.server import HTTPServer, SimpleHTTPRequestHandler
 
-from app import app, db
-import seed_data
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
-)
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Default port to use
+PORT = 5000
 
-def init_database():
-    """Initialize the database with seed data if needed"""
-    logger.info("Checking database...")
+class BCBSHandler(SimpleHTTPRequestHandler):
+    """Custom handler for BCBS Values Platform"""
+    
+    def log_message(self, format, *args):
+        """Override to use our logger"""
+        logger.info("%s - %s", self.address_string(), format % args)
+
+def is_port_available(port):
+    """Check if a port is available"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(('localhost', port)) != 0
+
+def start_python_server(port):
+    """Start the Python HTTP server"""
+    server_address = ('0.0.0.0', port)
+    
+    # Create the server
+    httpd = HTTPServer(server_address, BCBSHandler)
+    
+    # Print server information
+    logger.info("Starting BCBS Values Platform Python server...")
+    logger.info(f"Server running at http://0.0.0.0:{port}/")
+    logger.info("Available pages:")
+    logger.info(f"- Home: http://0.0.0.0:{port}/")
+    logger.info(f"- Static Fallback: http://0.0.0.0:{port}/static_fallback.html")
+    logger.info(f"- Dashboard: http://0.0.0.0:{port}/dashboard.html")
+    logger.info(f"- What-If Analysis: http://0.0.0.0:{port}/what-if-analysis.html")
+    logger.info(f"- Agent Dashboard: http://0.0.0.0:{port}/agent-dashboard.html")
+    
+    # Check if required files exist
+    required_files = ['index.html', 'dashboard.html', 'static_fallback.html']
+    logger.info("Checking for required files:")
+    for file in required_files:
+        if os.path.exists(file):
+            logger.info(f"- {file}: Found")
+        else:
+            logger.warning(f"- {file}: Not found")
+    
+    # Start the server
     try:
-        with app.app_context():
-            # Create tables if they don't exist
-            db.create_all()
-            
-            # Seed the database with sample data
-            seed_data.seed_database()
-            
-            logger.info("Database initialization completed")
-    except Exception as e:
-        logger.error(f"Error initializing database: {e}")
-        raise
-
-
-def main():
-    """Main entry point"""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    logger.info(f"Starting BCBS Values web application at {timestamp}")
-    
-    # Initialize the database
-    init_database()
-    
-    # Start the web application
-    app.run(host="0.0.0.0", port=5000, debug=True)
-
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        logger.info("Server shutting down...")
+        httpd.server_close()
 
 if __name__ == "__main__":
-    main()
+    try:
+        logger.info("Starting BCBS Values Platform...")
+        
+        # Check if port is available
+        if not is_port_available(PORT):
+            logger.warning(f"Port {PORT} is already in use")
+            logger.info("Trying to find an available port...")
+            for test_port in range(PORT + 1, PORT + 10):
+                if is_port_available(test_port):
+                    PORT = test_port
+                    logger.info(f"Using port {PORT}")
+                    break
+            else:
+                logger.error("Unable to find an available port, exiting")
+                sys.exit(1)
+        
+        # Start the server
+        start_python_server(PORT)
+    except Exception as e:
+        logger.error(f"Error starting server: {e}")
+        sys.exit(1)

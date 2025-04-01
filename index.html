@@ -1,308 +1,151 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BCBS Values Platform - Diagnostic Page</title>
-  <style>
-    :root {
-      --primary-color: #0066cc;
-      --secondary-color: #004080;
-      --background-color: #f8f9fa;
-      --card-bg: #ffffff;
-      --text-color: #333333;
-      --border-color: #dddddd;
-      --success-color: #28a745;
-      --warning-color: #ffc107;
-      --danger-color: #dc3545;
-      --info-color: #17a2b8;
-    }
-    
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      line-height: 1.6;
-      color: var(--text-color);
-      background-color: var(--background-color);
-      margin: 0;
-      padding: 20px;
-    }
-    
-    .container {
-      max-width: 1140px;
-      margin: 0 auto;
-      padding: 20px;
-    }
-    
-    header {
-      margin-bottom: 30px;
-      border-bottom: 2px solid var(--primary-color);
-      padding-bottom: 20px;
-    }
-    
-    h1 {
-      color: var(--primary-color);
-      margin-top: 0;
-    }
-    
-    h2 {
-      color: var(--secondary-color);
-      margin-top: 25px;
-      border-bottom: 1px solid var(--border-color);
-      padding-bottom: 10px;
-    }
-    
-    .card {
-      background: var(--card-bg);
-      border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-      margin-bottom: 20px;
-      overflow: hidden;
-    }
-    
-    .card-header {
-      background-color: var(--primary-color);
-      color: white;
-      padding: 15px 20px;
-      font-weight: bold;
-    }
-    
-    .card-body {
-      padding: 20px;
-    }
-    
-    .alert {
-      padding: 15px;
-      margin-bottom: 20px;
-      border-radius: 4px;
-    }
-    
-    .alert-info {
-      background-color: rgba(23, 162, 184, 0.2);
-      border-left: 4px solid var(--info-color);
-      color: #0c5460;
-    }
-    
-    .alert-warning {
-      background-color: rgba(255, 193, 7, 0.2);
-      border-left: 4px solid var(--warning-color);
-      color: #856404;
-    }
-    
-    .alert-success {
-      background-color: rgba(40, 167, 69, 0.2);
-      border-left: 4px solid var(--success-color);
-      color: #155724;
-    }
-    
-    pre {
-      background-color: #f5f5f5;
-      padding: 15px;
-      border-radius: 4px;
-      overflow-x: auto;
-      font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      font-size: 14px;
-    }
-    
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 20px;
-    }
-    
-    th, td {
-      padding: 12px 15px;
-      text-align: left;
-      border-bottom: 1px solid var(--border-color);
-    }
-    
-    th {
-      background-color: #f2f2f2;
-      font-weight: bold;
-    }
-    
-    tr:hover {
-      background-color: rgba(0, 102, 204, 0.05);
-    }
-    
-    .badge {
-      display: inline-block;
-      padding: 0.25em 0.6em;
-      font-size: 75%;
-      font-weight: 700;
-      line-height: 1;
-      text-align: center;
-      white-space: nowrap;
-      vertical-align: baseline;
-      border-radius: 10rem;
-    }
-    
-    .badge-success {
-      background-color: var(--success-color);
-      color: white;
-    }
-    
-    .badge-warning {
-      background-color: var(--warning-color);
-      color: #212529;
-    }
-    
-    .badge-danger {
-      background-color: var(--danger-color);
-      color: white;
-    }
-    
-    .badge-info {
-      background-color: var(--info-color);
-      color: white;
-    }
-    
-    footer {
-      margin-top: 40px;
-      padding-top: 20px;
-      border-top: 1px solid var(--border-color);
-      text-align: center;
-      color: #6c757d;
-      font-size: 0.9rem;
-    }
-    
-    @media (max-width: 768px) {
-      .container {
-        padding: 10px;
-      }
-      
-      .card {
-        margin-bottom: 15px;
-      }
-      
-      pre {
-        font-size: 12px;
-      }
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BCBS Values Platform</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
-<body>
-  <div class="container">
-    <header>
-      <h1>BCBS Values Platform</h1>
-      <p>Benton County Building Services - Property Valuation System</p>
-    </header>
-    
-    <div class="alert alert-info">
-      <strong>Diagnostic Mode:</strong> This page is showing system diagnostic information. The platform is currently in maintenance mode.
+<body class="bg-gray-100 font-sans leading-normal tracking-normal">
+    <div class="flex flex-col min-h-screen">
+        <!-- Header -->
+        <header class="bg-blue-800 text-white shadow-lg">
+            <div class="container mx-auto flex flex-wrap p-5 flex-col md:flex-row items-center">
+                <a class="flex title-font font-medium items-center text-white mb-4 md:mb-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="w-10 h-10 text-white p-2 bg-blue-600 rounded-full" viewBox="0 0 24 24">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+                    </svg>
+                    <span class="ml-3 text-xl">BCBS Values Platform</span>
+                </a>
+                <nav class="md:ml-auto flex flex-wrap items-center text-base justify-center">
+                    <a href="index.html" class="mr-5 hover:text-gray-300">Home</a>
+                    <a href="dashboard.html" class="mr-5 hover:text-gray-300">Dashboard</a>
+                    <a href="what-if-analysis.html" class="mr-5 hover:text-gray-300">What-If Analysis</a>
+                    <a href="agent-dashboard.html" class="mr-5 hover:text-gray-300">Agent Dashboard</a>
+                </nav>
+            </div>
+        </header>
+
+        <!-- Main content -->
+        <main class="flex-grow">
+            <section class="bg-blue-700 text-white py-20">
+                <div class="container mx-auto px-4">
+                    <div class="max-w-3xl mx-auto text-center">
+                        <h1 class="text-4xl md:text-5xl font-bold mb-6">AI-Powered Real Estate Valuation Platform</h1>
+                        <p class="text-xl mb-10">Intelligent property insights through cutting-edge technology</p>
+                        <div class="flex flex-wrap justify-center gap-4">
+                            <a href="dashboard.html" class="bg-white text-blue-800 hover:bg-blue-100 px-6 py-3 rounded-lg font-semibold transition duration-300 shadow-lg">
+                                View Dashboard
+                            </a>
+                            <a href="what-if-analysis.html" class="bg-transparent border-2 border-white hover:bg-white hover:text-blue-800 px-6 py-3 rounded-lg font-semibold transition duration-300">
+                                Try What-If Analysis
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="py-16 bg-white">
+                <div class="container mx-auto px-4">
+                    <h2 class="text-3xl font-bold text-center mb-12 text-gray-800">Core Features</h2>
+                    <div class="grid md:grid-cols-3 gap-8">
+                        <div class="p-6 border rounded-lg shadow-md hover:shadow-lg transition-shadow">
+                            <div class="text-blue-600 mb-4">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                </svg>
+                            </div>
+                            <h3 class="text-xl font-semibold mb-2 text-gray-800">Interactive Dashboards</h3>
+                            <p class="text-gray-600">Dynamic visualizations of property data with real-time filtering and sorting capabilities.</p>
+                        </div>
+                        <div class="p-6 border rounded-lg shadow-md hover:shadow-lg transition-shadow">
+                            <div class="text-blue-600 mb-4">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                </svg>
+                            </div>
+                            <h3 class="text-xl font-semibold mb-2 text-gray-800">AI Valuation Models</h3>
+                            <p class="text-gray-600">Advanced machine learning algorithms to predict property values with high accuracy.</p>
+                        </div>
+                        <div class="p-6 border rounded-lg shadow-md hover:shadow-lg transition-shadow">
+                            <div class="text-blue-600 mb-4">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+                                </svg>
+                            </div>
+                            <h3 class="text-xl font-semibold mb-2 text-gray-800">What-If Analysis</h3>
+                            <p class="text-gray-600">Simulate property value changes by adjusting key parameters to explore potential scenarios.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="py-16 bg-gray-100">
+                <div class="container mx-auto px-4">
+                    <h2 class="text-3xl font-bold text-center mb-12 text-gray-800">How It Works</h2>
+                    <div class="max-w-4xl mx-auto">
+                        <div class="flex flex-col md:flex-row items-center mb-12">
+                            <div class="md:w-1/3 mb-8 md:mb-0 md:pr-8">
+                                <div class="bg-blue-700 text-white h-20 w-20 rounded-full flex items-center justify-center text-3xl font-bold mx-auto">1</div>
+                            </div>
+                            <div class="md:w-2/3">
+                                <h3 class="text-xl font-semibold mb-2 text-gray-800">Data Collection</h3>
+                                <p class="text-gray-600">Our ETL pipeline continuously collects and processes property data from multiple sources to ensure up-to-date information.</p>
+                            </div>
+                        </div>
+                        <div class="flex flex-col md:flex-row items-center mb-12">
+                            <div class="md:w-1/3 mb-8 md:mb-0 md:pr-8">
+                                <div class="bg-blue-700 text-white h-20 w-20 rounded-full flex items-center justify-center text-3xl font-bold mx-auto">2</div>
+                            </div>
+                            <div class="md:w-2/3">
+                                <h3 class="text-xl font-semibold mb-2 text-gray-800">AI Processing</h3>
+                                <p class="text-gray-600">The BS Army of Agents processes the data using various machine learning models to generate accurate property valuations.</p>
+                            </div>
+                        </div>
+                        <div class="flex flex-col md:flex-row items-center">
+                            <div class="md:w-1/3 mb-8 md:mb-0 md:pr-8">
+                                <div class="bg-blue-700 text-white h-20 w-20 rounded-full flex items-center justify-center text-3xl font-bold mx-auto">3</div>
+                            </div>
+                            <div class="md:w-2/3">
+                                <h3 class="text-xl font-semibold mb-2 text-gray-800">Interactive Analysis</h3>
+                                <p class="text-gray-600">Users can explore the data through interactive dashboards, run what-if scenarios, and monitor the status of the agent network.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="bg-blue-900 text-white py-8">
+            <div class="container mx-auto px-4">
+                <div class="flex flex-wrap justify-between">
+                    <div class="w-full md:w-1/3 mb-6 md:mb-0">
+                        <h3 class="text-xl font-semibold mb-3">BCBS Values Platform</h3>
+                        <p class="text-blue-200">Advanced real estate valuation and exploration platform powered by AI technology.</p>
+                    </div>
+                    <div class="w-full md:w-1/3 mb-6 md:mb-0">
+                        <h3 class="text-xl font-semibold mb-3">Quick Links</h3>
+                        <ul>
+                            <li class="mb-2"><a href="index.html" class="text-blue-200 hover:text-white">Home</a></li>
+                            <li class="mb-2"><a href="dashboard.html" class="text-blue-200 hover:text-white">Dashboard</a></li>
+                            <li class="mb-2"><a href="what-if-analysis.html" class="text-blue-200 hover:text-white">What-If Analysis</a></li>
+                            <li><a href="agent-dashboard.html" class="text-blue-200 hover:text-white">Agent Dashboard</a></li>
+                        </ul>
+                    </div>
+                    <div class="w-full md:w-1/3">
+                        <h3 class="text-xl font-semibold mb-3">Contact</h3>
+                        <p class="text-blue-200 mb-2">Benton County Building, Suite 400</p>
+                        <p class="text-blue-200 mb-2">Kennewick, WA 99336</p>
+                        <p class="text-blue-200">support@bcbsvalues.com</p>
+                    </div>
+                </div>
+                <div class="border-t border-blue-800 mt-8 pt-8 text-center text-blue-300">
+                    <p>&copy; 2025 BCBS Values Platform. All rights reserved.</p>
+                </div>
+            </div>
+        </footer>
     </div>
-    
-    <div class="card">
-      <div class="card-header">System Status</div>
-      <div class="card-body">
-        <div class="alert alert-warning">
-          <strong>Attention:</strong> The system is running in a diagnostic fallback mode. The main application server is not currently available.
-        </div>
-        
-        <h2>Available Services</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Service</th>
-              <th>Status</th>
-              <th>Description</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Web Server</td>
-              <td><span class="badge badge-success">Active</span></td>
-              <td>Basic diagnostic web server is running</td>
-            </tr>
-            <tr>
-              <td>API Server</td>
-              <td><span class="badge badge-danger">Offline</span></td>
-              <td>API endpoints for property valuation are not available</td>
-            </tr>
-            <tr>
-              <td>Database</td>
-              <td><span class="badge badge-success">Connected</span></td>
-              <td>PostgreSQL database connection is available</td>
-            </tr>
-            <tr>
-              <td>ETL Pipeline</td>
-              <td><span class="badge badge-warning">Paused</span></td>
-              <td>Data processing pipeline is currently paused</td>
-            </tr>
-            <tr>
-              <td>Agent System</td>
-              <td><span class="badge badge-danger">Offline</span></td>
-              <td>BS Army of Agents is not currently running</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="card-header">System Information</div>
-      <div class="card-body">
-        <h2>Environment</h2>
-        <pre id="environment-info">Loading environment information...</pre>
-        
-        <h2>Available Files</h2>
-        <pre id="files-info">Loading file information...</pre>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div class="card-header">Next Steps</div>
-      <div class="card-body">
-        <p>The BCBS Values Platform is temporarily running in diagnostic mode. Here's what you can do:</p>
-        
-        <ol>
-          <li>Check the system logs for error messages</li>
-          <li>Verify that all required environment variables are set correctly</li>
-          <li>Ensure that the database is properly configured and accessible</li>
-          <li>Check for any network connectivity issues</li>
-          <li>Review the application configuration files</li>
-        </ol>
-        
-        <div class="alert alert-success">
-          <strong>Help:</strong> For additional support, please contact the system administrator or refer to the documentation.
-        </div>
-      </div>
-    </div>
-    
-    <footer>
-      <p>BCBS Values Platform - Diagnostic Page</p>
-      <p>© 2025 Benton County Building Services</p>
-      <p>Generated: <span id="generation-time"></span></p>
-    </footer>
-  </div>
-  
-  <script>
-    // Set the generation time
-    document.getElementById('generation-time').textContent = new Date().toLocaleString();
-    
-    // Simulate loading environment info
-    setTimeout(() => {
-      document.getElementById('environment-info').textContent = 
-`HOST: ${window.location.hostname}
-PORT: ${window.location.port}
-PROTOCOL: ${window.location.protocol}
-USER AGENT: ${navigator.userAgent}
-DATE: ${new Date().toISOString()}`;
-    }, 500);
-    
-    // Fetch available files (this would normally come from the server)
-    setTimeout(() => {
-      document.getElementById('files-info').textContent = 
-`- index.html (current file)
-- server.js
-- simple_http_server.js
-- direct_server.js
-- simple_bash_server.sh
-- run_diagnosis.sh
-- models.py
-- app.py
-- main.py
-... and more files not shown`;
-    }, 1000);
-  </script>
 </body>
 </html>
