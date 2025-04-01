@@ -30,7 +30,7 @@ support = true
 transport = "mp_transport"
 
 [workflows]
-runButton = "Project"
+runButton = "DiagnosticServer"
 
 [[workflows.workflow]]
 name = "WebApp"
@@ -82,6 +82,28 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "WebApp"
+
+[[workflows.workflow]]
+name = "DiagnosticServer"
+author = 37274620
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python3 diagnose_env.py"
+
+[[workflows.workflow]]
+name = "WebAppFallback"
+author = 37274620
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python3 diagnose_env.py"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python3 direct_diagnostic.py"
 
 [deployment]
 run = ["sh", "-c", "./run_diagnosis.sh"]
