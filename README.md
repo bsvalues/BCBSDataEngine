@@ -21,6 +21,12 @@ A sophisticated real estate valuation platform specifically for Benton County, W
   - [Using the Dashboard](#using-the-dashboard)
   - [The Agent Dashboard](#the-agent-dashboard)
   - [What-If Analysis](#what-if-analysis)
+- [Diagnostic Procedures](#diagnostic-procedures)
+  - [Running the Environment Diagnostic Tool](#running-the-environment-diagnostic-tool)
+  - [Checking Application Startup Logs](#checking-application-startup-logs)
+  - [Using the Diagnostic Server](#using-the-diagnostic-server)
+  - [Common Startup Issues and Solutions](#common-startup-issues-and-solutions)
+  - [Workflow Diagnostics](#workflow-diagnostics)
 - [CI/CD and Testing](#cicd-and-testing)
 - [Contributing](#contributing)
 - [Feedback & Issues](#feedback--issues)
@@ -408,6 +414,118 @@ The What-If Analysis tool allows users to:
 - Visualize feature importance
 
 Access it at `http://localhost:5002/what-if` or view the static WhatIfAnalysis.js file for implementation details.
+
+## Diagnostic Procedures
+
+The BCBS Values system includes comprehensive diagnostic tools to verify your environment, troubleshoot startup issues, and ensure all components are functioning correctly.
+
+### Running the Environment Diagnostic Tool
+
+The `diagnose_env.py` script checks your Python environment for required modules, environment variables, and system configuration:
+
+```bash
+# Basic diagnostic check
+python diagnose_env.py
+
+# Redirect output to a file for later review
+python diagnose_env.py > diagnostic_report.txt
+```
+
+#### What the Diagnostic Tool Checks
+
+- **Required Python Modules**: Verifies all necessary libraries are installed (pandas, scikit-learn, lightgbm, etc.)
+- **Environment Variables**: Confirms that required environment variables like DATABASE_URL and API_KEY are set
+- **Database Connectivity**: Attempts to connect to the configured database
+- **File Permissions**: Verifies the application can read/write files
+- **Network Connectivity**: Checks if the system can access external networks
+- **GPU Availability**: Detects if GPU acceleration is available (optional)
+
+The tool generates a health score based on these checks and saves detailed results to `diagnostic_results.json`.
+
+### Checking Application Startup Logs
+
+The main application logs detailed information during startup that can help diagnose issues:
+
+```bash
+# Run the application with verbose logging
+python main.py --log-level=DEBUG
+
+# Check the latest startup log
+ls -la logs/bcbs_startup_*.log | tail -1
+```
+
+Application logs are stored in the `logs/` directory with the following files:
+- `bcbs_startup_YYYYMMDD_HHMMSS.log`: Detailed startup logs with timestamps
+- `api_YYYYMMDD_HHMMSS.log`: API-specific logs
+- `etl_pipeline_YYYYMMDD_HHMMSS.log`: ETL process logs
+- `valuation.log`: Valuation engine logs
+
+### Using the Diagnostic Server
+
+The system includes a progressive fallback diagnostic system through the `run_diagnosis.sh` script:
+
+```bash
+# Run the diagnostic server
+./run_diagnosis.sh
+```
+
+This script attempts multiple approaches to provide diagnostic information:
+1. First tries a custom diagnostic script if available
+2. Falls back to a Python-based diagnostic server
+3. Then tries a Node.js-based diagnostic server
+4. Finally displays basic system information if all else fails
+
+Access the diagnostic server at `http://0.0.0.0:5000` when it's running.
+
+### Common Startup Issues and Solutions
+
+#### Database Connection Problems
+
+**Symptoms**: Errors like "Could not connect to database" or "Database initialization failed"
+
+**Solutions**:
+- Verify DATABASE_URL environment variable is set correctly
+- Check if the database server is running
+- Try connecting with a database client tool to verify credentials
+- Ensure database name exists and user has proper permissions
+
+#### Missing Dependencies
+
+**Symptoms**: ImportError messages or "Module not found" errors
+
+**Solutions**:
+- Run `python diagnose_env.py` to identify missing modules
+- Install missing dependencies with `pip install -r requirements.txt`
+- For LightGBM issues, check if you need to install additional system libraries
+
+#### Permission Issues
+
+**Symptoms**: "Permission denied" errors when writing logs or creating files
+
+**Solutions**:
+- Check file/directory permissions in the application folders
+- Ensure the user running the application has write access to the logs directory
+- Verify temp directory permissions with `python -c "import tempfile; print(tempfile.gettempdir())"`
+
+#### Network Issues
+
+**Symptoms**: API timeout errors or ETL pipeline failures
+
+**Solutions**:
+- Verify network connectivity with `python diagnose_env.py`
+- Check firewall settings if connecting to external APIs
+- Verify proxy settings if your environment uses a proxy
+
+### Workflow Diagnostics
+
+When running the application as a Replit workflow, check the workflow logs:
+
+```bash
+# View the WebApp workflow status
+ls -la .replit.workflow/WebApp_*.log | tail -1
+```
+
+For workflow-specific diagnostics, the script automatically logs to the console which can be viewed in the Replit workflow panel.
 
 ## CI/CD and Testing
 
