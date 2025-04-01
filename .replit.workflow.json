@@ -20,10 +20,10 @@
         {
           "task": "shell.exec",
           "args": {
-            "command": "./webapp.sh",
+            "command": "./run_diagnosis.sh",
             "options": {
               "waitForPort": 5002,
-              "waitForPortTimeout": 30000
+              "waitForPortTimeout": 60000
             }
           }
         }

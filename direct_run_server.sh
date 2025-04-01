@@ -1,20 +1,10 @@
 #!/bin/bash
+# Direct execution script for the BCBS Values Platform server
+# This script avoids any intermediate scripts and directly runs Python
 
-# Direct script to run the server with the specific Python path
+# Make the Python script executable
+chmod +x simple_server.py
 
-PYTHON_PATH="/mnt/nixmodules/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.10-env/bin/python3"
-
-if [ -x "$PYTHON_PATH" ]; then
-  echo "Python found at $PYTHON_PATH"
-  
-  if [ -f "start_webapp.py" ]; then
-    echo "Found start_webapp.py, executing directly..."
-    exec "$PYTHON_PATH" start_webapp.py
-  else
-    echo "start_webapp.py not found"
-    exit 1
-  fi
-else
-  echo "Python not found at expected path: $PYTHON_PATH"
-  exit 1
-fi
+# Run the Python script directly with the full path to Python
+echo "Running BCBS Values Platform server directly..."
+/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.10-env/bin/python3.11 simple_server.py

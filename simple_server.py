@@ -1,146 +1,109 @@
-#!/usr/bin/env python3
 """
-Ultra-minimal diagnostic server for BCBS Values using Python's built-in HTTP server
+Simple HTTP Server for BCBS Values Platform
 """
 
+import os
+import sys
 import http.server
 import socketserver
-import os
-import socket
-import platform
-import datetime
-import json
-from urllib.parse import parse_qs, urlparse
 
-# Set the port (use PORT environment variable or default to 5000)
-PORT = int(os.environ.get('PORT', 5000))
+PORT = 5002
 
-class DiagnosticHandler(http.server.SimpleHTTPRequestHandler):
-    """Custom handler for diagnostic information"""
+class SimpleHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
+    """Simple HTTP request handler with GET support."""
     
-    def generate_html(self):
-        """Generate HTML for the diagnostic page"""
-        
-        # Basic system info
-        now = datetime.datetime.now().isoformat()
-        hostname = socket.gethostname()
-        python_version = platform.python_version()
-        system_info = f"{platform.system()} {platform.release()}"
-        
-        # Try to get memory info
-        memory_info = "Not available"
-        try:
-            import psutil
-            memory = psutil.virtual_memory()
-            memory_info = f"Total: {memory.total / (1024*1024):.2f} MB, Available: {memory.available / (1024*1024):.2f} MB"
-        except ImportError:
-            pass
-            
-        # Get directory info
-        current_dir = os.getcwd()
-        try:
-            files = ", ".join(os.listdir(".")[:20])
-            if len(os.listdir(".")) > 20:
-                files += "... (truncated)"
-        except Exception as e:
-            files = f"Error listing files: {e}"
-            
-        # Generate HTML
-        html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>BCBS Diagnostic</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; }}
-                h1 {{ color: #0066cc; border-bottom: 2px solid #0066cc; padding-bottom: 10px; }}
-                h2 {{ color: #0066cc; margin-top: 30px; }}
-                pre {{ background: #f5f5f5; padding: 15px; overflow-x: auto; }}
-                .card {{ border: 1px solid #ddd; border-radius: 5px; padding: 20px; margin-bottom: 20px; }}
-            </style>
-        </head>
-        <body>
-            <h1>BCBS Values Diagnostic Server</h1>
-            
-            <div class="card">
-                <h2>System Information</h2>
-                <pre>
-Time: {now}
-Hostname: {hostname}
-Platform: {system_info}
-Python Version: {python_version}
-Memory: {memory_info}
-                </pre>
-            </div>
-            
-            <div class="card">
-                <h2>File System Access</h2>
-                <pre>
-Current Directory: {current_dir}
-Files: {files}
-                </pre>
-            </div>
-            
-            <div class="card">
-                <h2>Environment Variables</h2>
-                <pre>
-PORT: {os.environ.get('PORT', 'Not set')}
-PYTHONPATH: {os.environ.get('PYTHONPATH', 'Not set')}
-                </pre>
-            </div>
-            
-            <div class="card">
-                <h2>Next Steps</h2>
-                <p>This is a minimal diagnostic server to confirm that Python is working in this environment.</p>
-                <p>For a more complete diagnostic, the full application needs to be properly installed.</p>
-            </div>
-            
-            <footer style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;">
-                <p>BCBS Values Minimal Diagnostic Server</p>
-                <p>Generated: {now}</p>
-            </footer>
-        </body>
-        </html>
-        """
-        return html
+    def log_message(self, format, *args):
+        """Log message with client address."""
+        sys.stderr.write("%s - - [%s] %s\n" %
+                         (self.client_address[0],
+                          self.log_date_time_string(),
+                          format % args))
     
     def do_GET(self):
-        """Handle GET requests"""
-        parsed_path = urlparse(self.path)
+        """Handle GET requests."""
+        print(f"GET request for {self.path}")
+        if self.path == '/':
+            self.path = '/index.html'
         
-        # API endpoint for health check
-        if parsed_path.path == '/api/health':
-            self.send_response(200)
+        if self.path.startswith('/api/'):
+            self.handle_api_request()
+            return
+        
+        try:
+            # Try to serve file
+            return http.server.SimpleHTTPRequestHandler.do_GET(self)
+        except Exception as e:
+            # If file not found, serve 404 page
+            self.send_error(404, f"File not found: {self.path}")
+            print(f"Error serving {self.path}: {e}")
+    
+    def handle_api_request(self):
+        """Handle API requests."""
+        import json
+        
+        # Parse API endpoint
+        parts = self.path.split('/')
+        endpoint = parts[2] if len(parts) > 2 else ''
+        
+        response_data = {}
+        
+        # Basic API endpoints
+        if endpoint == 'data':
+            response_data = {
+                "status": "success",
+                "data": {
+                    "propertyCount": 12548,
+                    "averageValue": 452000,
+                    "recentProperties": [
+                        {"address": "123 Main St", "value": 350000},
+                        {"address": "456 Oak Ave", "value": 475000},
+                        {"address": "789 Pine Blvd", "value": 560000}
+                    ]
+                }
+            }
+        elif endpoint == 'status':
+            import time
+            response_data = {
+                "status": "success",
+                "serverStatus": "running",
+                "uptime": time.time(),
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            }
+        else:
+            response_data = {
+                "status": "error",
+                "message": f"Unknown endpoint: {endpoint}"
+            }
+            self.send_response(404)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
-            
-            health_data = {
-                'status': 'python_diagnostic_mode',
-                'message': 'Running in minimal Python diagnostic mode',
-                'timestamp': datetime.datetime.now().isoformat(),
-                'python_version': platform.python_version(),
-                'system': f"{platform.system()} {platform.release()}"
-            }
-            
-            self.wfile.write(json.dumps(health_data).encode())
+            self.wfile.write(json.dumps(response_data).encode())
             return
-            
-        # Default: serve HTML diagnostic page
+        
         self.send_response(200)
-        self.send_header('Content-type', 'text/html')
+        self.send_header('Content-type', 'application/json')
         self.end_headers()
-        self.wfile.write(self.generate_html().encode())
+        self.wfile.write(json.dumps(response_data).encode())
 
 def run_server():
-    """Start the diagnostic server"""
-    print(f"Starting minimal diagnostic server on port {PORT}")
-    print(f"Server time: {datetime.datetime.now().isoformat()}")
-    print(f"Python version: {platform.python_version()}")
-    print(f"Open http://localhost:{PORT}/ to view diagnostic information")
-    
-    with socketserver.TCPServer(("0.0.0.0", PORT), DiagnosticHandler) as httpd:
-        print("Server started. Press Ctrl+C to stop.")
+    """Run the server."""
+    try:
+        handler = SimpleHTTPRequestHandler
+        httpd = socketserver.TCPServer(("0.0.0.0", PORT), handler)
+        
+        print(f"Server running at http://0.0.0.0:{PORT}/")
+        print(f"Current working directory: {os.getcwd()}")
+        
+        # List available HTML files
+        html_files = [f for f in os.listdir('.') if f.endswith('.html')]
+        print(f"HTML files available: {', '.join(html_files)}")
+        
         httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\nServer stopped.")
+    except Exception as e:
+        print(f"Error starting server: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     run_server()
