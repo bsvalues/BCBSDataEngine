@@ -1,8 +1,8 @@
 {
   "name": "WebApp",
   "display": "Web App",
-  "description": "Start BCBS Values Flask Web Application",
-  "run": "python3 start_webapp.py",
+  "description": "Start BCBS Values Diagnostic Server",
+  "run": "bash -c 'export PYTHONUNBUFFERED=1 && /mnt/nixmodules/nix/store/nqlc7ymyglrsfx1hlssssq6zzy0hmk2c-python-wrapped-0.1.0/bin/python3 quick_diagnostic_server.py'",
   "language": "python",
   "onBoot": false,
   "restartable": true,
@@ -17,7 +17,7 @@
   "ports": [
     {
       "port": 5000,
-      "description": "Flask Web App",
+      "description": "Diagnostic Web Server",
       "label": "WebApp",
       "export": true,
       "internalPort": 5000

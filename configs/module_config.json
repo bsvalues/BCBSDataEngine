@@ -1,39 +1,81 @@
 {
-  "module_name": "BCBS_Values",
-  "version": "1.0.0",
-  "description": "Real estate property valuation ETL and analytics system",
-  "maintainers": [
+  "modules": [
     {
-      "name": "Development Team",
-      "email": "dev@example.com"
-    }
-  ],
-  "components": {
-    "etl": {
-      "enable_mls": true,
-      "enable_narrpr": true,
-      "enable_pacs": true,
-      "batch_size": 100,
+      "name": "valuation",
+      "enabled": true,
+      "log_level": "info",
+      "default_model": "ensemble",
+      "available_models": ["linear", "lightgbm", "ensemble"],
+      "feature_importance": true,
+      "cache_predictions": true,
+      "cache_ttl": 3600,
+      "min_confidence_threshold": 0.7,
+      "max_features": 20,
       "validation": {
-        "use_standalone": false,
-        "numeric_tolerance": 0.01,
-        "date_max_future_days": 0
+        "enabled": true,
+        "method": "cross_val",
+        "folds": 5,
+        "test_size": 0.2,
+        "metrics": ["mae", "mse", "rmse", "r2", "mape"]
       }
     },
-    "database": {
-      "enable_indexes": true,
-      "pool_recycle": 300,
-      "pool_pre_ping": true
+    {
+      "name": "etl",
+      "enabled": true,
+      "log_level": "info",
+      "batch_size": 100,
+      "workers": 4,
+      "retry_attempts": 3,
+      "timeout": 300,
+      "extract_delay": 5,
+      "notification_enabled": true,
+      "notification_url": "/api/etl-status"
     },
-    "web": {
-      "enable_api": true,
-      "enable_ui": true,
-      "default_port": 5000
+    {
+      "name": "api",
+      "enabled": true,
+      "log_level": "info",
+      "rate_limit": 100,
+      "rate_limit_window": 60,
+      "request_timeout": 30,
+      "auth_required": true,
+      "cors_allowed_origins": ["*"],
+      "docs_enabled": true,
+      "cache_enabled": true,
+      "cache_ttl": 300
+    },
+    {
+      "name": "agents",
+      "enabled": true,
+      "log_level": "info",
+      "agent_count": 5,
+      "agent_types": ["data", "valuation", "notification", "reporting", "monitoring"],
+      "agent_idle_timeout": 300,
+      "agent_busy_timeout": 600,
+      "queue_size": 1000,
+      "retries": 3,
+      "backoff_factor": 1.5,
+      "health_check_interval": 60,
+      "circuit_breaker_threshold": 5
     }
+  ],
+  "logging": {
+    "default_level": "info",
+    "file_logging": true,
+    "console_logging": true,
+    "log_format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "log_dir": "logs",
+    "rotate_size": "10MB",
+    "backup_count": 5,
+    "log_request_body": false,
+    "log_response_body": false
   },
-  "dependencies": {
-    "python": ">=3.10",
-    "database": "PostgreSQL >=13.0"
-  },
-  "build_timestamp": "2025-03-29T22:00:00Z"
+  "performance": {
+    "thread_pool_size": 10,
+    "process_pool_size": 4,
+    "memory_limit": "2GB",
+    "profile_enabled": false,
+    "metrics_enabled": true,
+    "metrics_interval": 30
+  }
 }
