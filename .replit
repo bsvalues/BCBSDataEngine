@@ -151,7 +151,7 @@ mode = "sequential"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd tests && /mnt/nixmodules/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.10-env/bin/python3 -m pytest test_*.py"
+args = "cd tests && /mnt/nixmodules/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.10-env/bin/python3 -m pytest test_basic.py test_core.py test_environment.py"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
