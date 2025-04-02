@@ -30,7 +30,6 @@ support = true
 transport = "mp_transport"
 
 [workflows]
-runButton = "TestAndRun"
 
 [[workflows.workflow]]
 name = "WebApp"
