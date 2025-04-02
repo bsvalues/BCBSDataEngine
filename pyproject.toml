@@ -1,63 +1,25 @@
-[build-system]
-requires = ["setuptools>=42", "wheel"]
-build-backend = "setuptools.build_meta"
-
-[project]
+[tool.poetry]
 name = "bcbs-values"
 version = "0.1.0"
-description = "BCBS Values application for real estate valuation"
-authors = [
-    {name = "BCBS Engineering Team", email = "bcbs-team@example.com"}
-]
-requires-python = ">=3.10"
-dependencies = [
-    "flask>=2.0.0",
-    "fastapi>=0.95.0",
-    "psycopg2-binary>=2.9.5",
-    "sqlalchemy>=2.0.0",
-    "python-dotenv>=1.0.0",
-    "requests>=2.28.0",
-    "pandas>=2.0.0",
-    "numpy>=1.24.0",
-    "scikit-learn>=1.2.0",
-    "uvicorn>=0.21.0",
-    "pytest>=7.3.0",
-    "lightgbm>=3.3.5",
-    "python-jose>=3.3.0",
-    "passlib>=1.7.4"
-]
+description = "BCBS Values - Real Estate Valuation Platform for Benton County"
+authors = ["Replit"]
 
-[project.optional-dependencies]
-dev = [
-    "black>=23.1.0",
-    "isort>=5.12.0",
-    "mypy>=1.1.1",
-    "pytest-cov>=4.1.0",
-    "pytest-mock>=3.10.0"
-]
+[tool.poetry.dependencies]
+python = ">=3.10,<4.0"
+flask = "^2.3.3"
+flask-sqlalchemy = "^3.1.1"
+requests = "^2.31.0"
+python-dotenv = "^1.0.0"
+flask-migrate = "^4.0.5"
+flask-dance = "^7.0.0"
+werkzeug = "^2.3.7"
+pandas = "^2.1.4"
+numpy = "^1.26.4"
+scikit-learn = "^1.4.0"
+lightgbm = "^4.1.0"
+xgboost = "^2.0.3"
+statsmodels = "^0.14.1"
 
-[tool.black]
-line-length = 88
-target-version = ['py310']
-
-[tool.isort]
-profile = "black"
-line_length = 88
-
-[tool.mypy]
-python_version = "3.10"
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-strict_optional = true
-warn_redundant_casts = true
-warn_return_any = true
-warn_unused_ignores = true
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = "test_*.py"
-python_functions = "test_*"
-python_classes = "Test*"
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

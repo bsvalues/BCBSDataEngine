@@ -1,374 +1,221 @@
-{% extends "base.html" %}
-
-{% block extra_head %}
-<style>
-    .form-section {
-        border-left: 4px solid var(--bs-primary);
-        padding-left: 1rem;
-        margin-bottom: 2rem;
-    }
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Property Valuation Tool - BCBS Values</title>
     
-    .method-card {
-        cursor: pointer;
-        transition: all 0.3s ease;
-        height: 100%;
-    }
+    <!-- Bootstrap CSS from Replit CDN -->
+    <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
     
-    .method-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 .5rem 1rem rgba(0,0,0,.15) !important;
-    }
+    <style>
+        body {
+            background-color: #121212;
+            color: #e0e0e0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .navbar-brand {
+            font-weight: bold;
+        }
+        .card {
+            margin-bottom: 20px;
+            border: none;
+            border-radius: 8px;
+            background-color: #1e1e1e;
+        }
+        .card-header {
+            background-color: rgba(0,0,0,0.2);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .btn-primary {
+            background-color: #0d6efd;
+        }
+        .form-control {
+            background-color: #2a2a2a;
+            border-color: #444;
+            color: #e0e0e0;
+        }
+        .form-control:focus {
+            background-color: #333;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">BCBS Values</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/valuation">Valuation Tool</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="https://github.com/user/bcbs-values" target="_blank">GitHub</a>
+                    </li>
+                </ul>
+                <span class="navbar-text">
+                    Benton County, WA Property Valuation System
+                </span>
+            </div>
+        </div>
+    </nav>
     
-    .method-card.selected {
-        border-color: var(--bs-primary);
-        background-color: rgba(13, 110, 253, 0.05);
-    }
-    
-    .method-card.selected .card-header {
-        background-color: var(--bs-primary);
-        color: white;
-    }
-    
-    .method-radio {
-        position: absolute;
-        opacity: 0;
-    }
-</style>
-{% endblock %}
-
-{% block content %}
-<div class="row mb-4">
-    <div class="col-12">
-        <h1><i class="fas fa-calculator me-2"></i>New Property Valuation</h1>
-        <p class="lead">Enter property details to calculate an estimated market value using our AI-powered valuation models.</p>
-    </div>
-</div>
-
-<div class="card shadow-sm">
-    <div class="card-body">
-        <form method="POST" action="{{ url_for('valuation_form') }}">
-            {{ form.hidden_tag() }}
-            
-            <!-- Location Information Section -->
-            <div class="form-section">
-                <h3 class="mb-3">Location Information</h3>
-                <div class="row g-3">
-                    <div class="col-md-12 mb-3">
-                        <label for="{{ form.address.id }}" class="form-label">Property Address *</label>
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="fas fa-map-marker-alt"></i></span>
-                            {{ form.address(class="form-control", placeholder="Enter complete street address") }}
+    <!-- Main Content -->
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Property Valuation Tool</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="lead mb-4">
+                            Enter property details below to get an estimated valuation using our advanced machine learning models.
+                        </p>
+                        
+                        {% if error %}
+                        <div class="alert alert-danger" role="alert">
+                            {{ error }}
                         </div>
-                        {% if form.address.errors %}
-                            <div class="invalid-feedback d-block">
-                                {% for error in form.address.errors %}
-                                    {{ error }}
-                                {% endfor %}
-                            </div>
                         {% endif %}
-                    </div>
-                    
-                    <div class="col-md-6 mb-3">
-                        <label for="{{ form.city.id }}" class="form-label">City *</label>
-                        {{ form.city(class="form-control", placeholder="City name") }}
-                        {% if form.city.errors %}
-                            <div class="invalid-feedback d-block">
-                                {% for error in form.city.errors %}
-                                    {{ error }}
-                                {% endfor %}
+                        
+                        <form method="POST" action="/valuation">
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="square_feet" class="form-label">Square Feet</label>
+                                    <input type="number" class="form-control" id="square_feet" name="square_feet" 
+                                           placeholder="e.g. 2000" required min="500" max="10000">
+                                    <div class="form-text">Total living area in square feet</div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="year_built" class="form-label">Year Built</label>
+                                    <input type="number" class="form-control" id="year_built" name="year_built" 
+                                           placeholder="e.g. 2000" required min="1900" max="2025">
+                                    <div class="form-text">Year the property was constructed</div>
+                                </div>
                             </div>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="col-md-3 mb-3">
-                        <label for="{{ form.state.id }}" class="form-label">State *</label>
-                        {{ form.state(class="form-control", placeholder="State code (e.g., CA)") }}
-                        {% if form.state.errors %}
-                            <div class="invalid-feedback d-block">
-                                {% for error in form.state.errors %}
-                                    {{ error }}
-                                {% endfor %}
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <label for="bedrooms" class="form-label">Bedrooms</label>
+                                    <input type="number" class="form-control" id="bedrooms" name="bedrooms" 
+                                           placeholder="e.g. 3" required min="1" max="10" step="1">
+                                    <div class="form-text">Number of bedrooms</div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="bathrooms" class="form-label">Bathrooms</label>
+                                    <input type="number" class="form-control" id="bathrooms" name="bathrooms" 
+                                           placeholder="e.g. 2.5" required min="1" max="10" step="0.5">
+                                    <div class="form-text">Number of bathrooms (including half baths)</div>
+                                </div>
                             </div>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="col-md-3 mb-3">
-                        <label for="{{ form.zip_code.id }}" class="form-label">Zip Code *</label>
-                        {{ form.zip_code(class="form-control", placeholder="5-digit zip code") }}
-                        {% if form.zip_code.errors %}
-                            <div class="invalid-feedback d-block">
-                                {% for error in form.zip_code.errors %}
-                                    {{ error }}
-                                {% endfor %}
+                            
+                            <div class="row">
+                                <div class="col-12">
+                                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                                        <button type="reset" class="btn btn-secondary">Clear Form</button>
+                                        <button type="submit" class="btn btn-primary">Get Valuation</button>
+                                    </div>
+                                </div>
                             </div>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="col-md-12 mb-3">
-                        <label for="{{ form.neighborhood.id }}" class="form-label">Neighborhood</label>
-                        {{ form.neighborhood(class="form-control", placeholder="Enter neighborhood (optional)") }}
-                        <div class="form-text">Specifying the neighborhood improves valuation accuracy by comparing with similar properties in the area.</div>
-                        {% if form.neighborhood.errors %}
-                            <div class="invalid-feedback d-block">
-                                {% for error in form.neighborhood.errors %}
-                                    {{ error }}
-                                {% endfor %}
-                            </div>
-                        {% endif %}
+                        </form>
                     </div>
                 </div>
             </div>
-            
-            <!-- Property Characteristics Section -->
-            <div class="form-section">
-                <h3 class="mb-3">Property Characteristics</h3>
-                <div class="row g-3">
-                    <div class="col-md-6 mb-3">
-                        <label for="{{ form.property_type.id }}" class="form-label">Property Type *</label>
-                        {{ form.property_type(class="form-select") }}
-                        {% if form.property_type.errors %}
-                            <div class="invalid-feedback d-block">
-                                {% for error in form.property_type.errors %}
-                                    {{ error }}
-                                {% endfor %}
-                            </div>
-                        {% endif %}
+        </div>
+        
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">About Our Valuation Model</h5>
                     </div>
-                    
-                    <div class="col-md-6 mb-3">
-                        <label for="{{ form.year_built.id }}" class="form-label">Year Built</label>
-                        {{ form.year_built(class="form-control", placeholder="Construction year") }}
-                        {% if form.year_built.errors %}
-                            <div class="invalid-feedback d-block">
-                                {% for error in form.year_built.errors %}
-                                    {{ error }}
-                                {% endfor %}
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Features Used in Valuation</h6>
+                                <ul>
+                                    <li><strong>Square Footage:</strong> Total living area (most significant factor)</li>
+                                    <li><strong>Bedrooms and Bathrooms:</strong> Number and configuration</li>
+                                    <li><strong>Property Age:</strong> Calculated from year built</li>
+                                    <li><strong>Location Metrics:</strong> Benton County neighborhood data</li>
+                                    <li><strong>GIS Data:</strong> Proximity to amenities and services</li>
+                                </ul>
                             </div>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="col-md-4 mb-3">
-                        <label for="{{ form.bedrooms.id }}" class="form-label">Bedrooms</label>
-                        {{ form.bedrooms(class="form-control") }}
-                        {% if form.bedrooms.errors %}
-                            <div class="invalid-feedback d-block">
-                                {% for error in form.bedrooms.errors %}
-                                    {{ error }}
-                                {% endfor %}
+                            <div class="col-md-6">
+                                <h6>Model Performance</h6>
+                                <div class="mb-3">
+                                    <label class="form-label mb-0">Basic Linear Regression (R² = 0.79)</label>
+                                    <div class="progress">
+                                        <div class="progress-bar bg-info" role="progressbar" style="width: 79%"></div>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label mb-0">Ridge Regression (R² = 0.82)</label>
+                                    <div class="progress">
+                                        <div class="progress-bar bg-success" role="progressbar" style="width: 82%"></div>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label mb-0">Gradient Boosting (R² = 0.86)</label>
+                                    <div class="progress">
+                                        <div class="progress-bar bg-primary" role="progressbar" style="width: 86%"></div>
+                                    </div>
+                                </div>
                             </div>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="col-md-4 mb-3">
-                        <label for="{{ form.bathrooms.id }}" class="form-label">Bathrooms</label>
-                        {{ form.bathrooms(class="form-control") }}
-                        <div class="form-text">Decimal values allowed (e.g., 2.5 for 2 full + 1 half bath)</div>
-                        {% if form.bathrooms.errors %}
-                            <div class="invalid-feedback d-block">
-                                {% for error in form.bathrooms.errors %}
-                                    {{ error }}
-                                {% endfor %}
-                            </div>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="col-md-4 mb-3">
-                        <label for="{{ form.square_feet.id }}" class="form-label">Living Area (sq ft)</label>
-                        {{ form.square_feet(class="form-control", placeholder="Total living area") }}
-                        {% if form.square_feet.errors %}
-                            <div class="invalid-feedback d-block">
-                                {% for error in form.square_feet.errors %}
-                                    {{ error }}
-                                {% endfor %}
-                            </div>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="col-md-12 mb-3">
-                        <label for="{{ form.lot_size.id }}" class="form-label">Lot Size (acres)</label>
-                        {{ form.lot_size(class="form-control", placeholder="Property lot size in acres") }}
-                        {% if form.lot_size.errors %}
-                            <div class="invalid-feedback d-block">
-                                {% for error in form.lot_size.errors %}
-                                    {{ error }}
-                                {% endfor %}
-                            </div>
-                        {% endif %}
+                        </div>
                     </div>
                 </div>
             </div>
-            
-            <!-- Geolocation Section (Optional) -->
-            <div class="form-section">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h3 class="mb-0">Geolocation (Optional)</h3>
-                    <button type="button" class="btn btn-sm btn-outline-primary" id="detectLocation">
-                        <i class="fas fa-map-pin me-1"></i> Detect Coordinates
-                    </button>
-                </div>
-                <p class="text-muted mb-3">Providing precise coordinates allows our GIS system to analyze location-specific factors like proximity to amenities and geographical features.</p>
-                <div class="row g-3">
-                    <div class="col-md-6 mb-3">
-                        <label for="{{ form.latitude.id }}" class="form-label">Latitude</label>
-                        {{ form.latitude(class="form-control", placeholder="e.g., 37.7749") }}
-                        {% if form.latitude.errors %}
-                            <div class="invalid-feedback d-block">
-                                {% for error in form.latitude.errors %}
-                                    {{ error }}
-                                {% endfor %}
-                            </div>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="col-md-6 mb-3">
-                        <label for="{{ form.longitude.id }}" class="form-label">Longitude</label>
-                        {{ form.longitude(class="form-control", placeholder="e.g., -122.4194") }}
-                        {% if form.longitude.errors %}
-                            <div class="invalid-feedback d-block">
-                                {% for error in form.longitude.errors %}
-                                    {{ error }}
-                                {% endfor %}
-                            </div>
-                        {% endif %}
-                    </div>
-                </div>
-                <div id="map" style="height: 300px; background-color: #f8f9fa; border-radius: 0.25rem;" class="mb-3 d-none">
-                    <!-- Map will be displayed here if coordinates are provided -->
-                </div>
-            </div>
-            
-            <!-- Valuation Method Section -->
-            <div class="form-section">
-                <h3 class="mb-3">Valuation Method</h3>
-                <p class="text-muted mb-3">Select the valuation method that best suits your needs. Each method has different strengths and applications.</p>
-                
-                <div class="row g-3 mb-4">
-                    {% for subfield in form.valuation_method %}
-                    <div class="col-md-6 col-lg-3 mb-3">
-                        <label class="method-card card shadow-sm {% if subfield.checked %}selected{% endif %}" for="{{ subfield.id }}">
-                            {{ subfield(class="method-radio") }}
-                            <div class="card-header text-center">
-                                <h5 class="mb-0">{{ subfield.label.text.split('(')[0] }}</h5>
-                            </div>
-                            <div class="card-body">
-                                {% if 'Enhanced Regression' in subfield.label.text %}
-                                    <div class="text-center mb-3">
-                                        <i class="fas fa-chart-bar fa-3x text-primary"></i>
-                                    </div>
-                                    <p class="card-text">Our most comprehensive model that combines multiple techniques for maximum accuracy.</p>
-                                    <div class="text-center">
-                                        <span class="badge bg-success">Recommended</span>
-                                    </div>
-                                {% elif 'LightGBM' in subfield.label.text %}
-                                    <div class="text-center mb-3">
-                                        <i class="fas fa-tree fa-3x text-primary"></i>
-                                    </div>
-                                    <p class="card-text">Fast gradient boosting framework optimized for efficiency and large datasets.</p>
-                                {% elif 'XGBoost' in subfield.label.text %}
-                                    <div class="text-center mb-3">
-                                        <i class="fas fa-rocket fa-3x text-primary"></i>
-                                    </div>
-                                    <p class="card-text">High-performance gradient boosting that excels with complex property relationships.</p>
-                                {% elif 'Linear Regression' in subfield.label.text %}
-                                    <div class="text-center mb-3">
-                                        <i class="fas fa-chart-line fa-3x text-primary"></i>
-                                    </div>
-                                    <p class="card-text">Traditional statistical approach for straightforward property valuations.</p>
-                                {% elif 'Ridge Regression' in subfield.label.text %}
-                                    <div class="text-center mb-3">
-                                        <i class="fas fa-balance-scale fa-3x text-primary"></i>
-                                    </div>
-                                    <p class="card-text">Regularized regression that prevents overfitting with many property features.</p>
-                                {% elif 'Lasso Regression' in subfield.label.text %}
-                                    <div class="text-center mb-3">
-                                        <i class="fas fa-filter fa-3x text-primary"></i>
-                                    </div>
-                                    <p class="card-text">Feature-selecting regression that identifies most important property factors.</p>
-                                {% elif 'Elastic Net' in subfield.label.text %}
-                                    <div class="text-center mb-3">
-                                        <i class="fas fa-network-wired fa-3x text-primary"></i>
-                                    </div>
-                                    <p class="card-text">Hybrid approach that combines the strengths of Ridge and Lasso regression.</p>
-                                {% endif %}
-                            </div>
-                        </label>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-            
-            <div class="d-grid gap-2">
-                <button type="submit" class="btn btn-primary btn-lg">
-                    <i class="fas fa-calculator me-2"></i>Calculate Property Valuation
-                </button>
-                <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">
-                    <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
-                </a>
-            </div>
-        </form>
+        </div>
     </div>
-</div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-    // Make valuation method cards interactive
-    document.addEventListener('DOMContentLoaded', function() {
-        // Method card selection
-        const methodCards = document.querySelectorAll('.method-card');
-        const methodRadios = document.querySelectorAll('.method-radio');
-        
-        methodCards.forEach(card => {
-            card.addEventListener('click', function() {
-                // Remove selected class from all cards
-                methodCards.forEach(c => c.classList.remove('selected'));
-                // Add selected class to clicked card
-                this.classList.add('selected');
-            });
-        });
-        
-        // Detect location button functionality
-        const detectLocationBtn = document.getElementById('detectLocation');
-        const latitudeInput = document.getElementById('{{ form.latitude.id }}');
-        const longitudeInput = document.getElementById('{{ form.longitude.id }}');
-        const mapContainer = document.getElementById('map');
-        
-        detectLocationBtn.addEventListener('click', function() {
-            detectLocationBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Detecting...';
-            detectLocationBtn.disabled = true;
-            
-            // This is a simulated location detection
-            // In a production environment, this would use the Geolocation API
-            // or a geocoding service based on the entered address
-            setTimeout(() => {
-                // Simulated coordinates (San Francisco)
-                latitudeInput.value = '37.7749';
-                longitudeInput.value = '-122.4194';
-                
-                detectLocationBtn.innerHTML = '<i class="fas fa-check-circle me-1"></i> Coordinates Detected';
-                detectLocationBtn.classList.remove('btn-outline-primary');
-                detectLocationBtn.classList.add('btn-success');
-                
-                // Show map container and simulate a map
-                mapContainer.classList.remove('d-none');
-                mapContainer.innerHTML = `<div class="d-flex align-items-center justify-content-center h-100">
-                    <div class="text-center">
-                        <i class="fas fa-map-marked-alt fa-4x text-primary mb-3"></i>
-                        <h4>Map Preview</h4>
-                        <p class="mb-0">Latitude: ${latitudeInput.value}, Longitude: ${longitudeInput.value}</p>
-                        <small class="text-muted">In production, this would display an interactive map with the property location.</small>
-                    </div>
-                </div>`;
-                
-                // Re-enable button after a delay
-                setTimeout(() => {
-                    detectLocationBtn.disabled = false;
-                    detectLocationBtn.innerHTML = '<i class="fas fa-map-pin me-1"></i> Update Coordinates';
-                    detectLocationBtn.classList.remove('btn-success');
-                    detectLocationBtn.classList.add('btn-outline-primary');
-                }, 3000);
-            }, 1500);
-        });
-    });
-</script>
-{% endblock %}
+    
+    <!-- Footer -->
+    <footer class="bg-dark text-light py-4 mt-5">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <h5>BCBS Property Valuation System</h5>
+                    <p class="text-muted">Advanced real estate valuation platform for Benton County, WA</p>
+                </div>
+                <div class="col-md-3">
+                    <h5>Links</h5>
+                    <ul class="list-unstyled">
+                        <li><a href="/" class="text-decoration-none text-light">Dashboard</a></li>
+                        <li><a href="/valuation" class="text-decoration-none text-light">Valuation Tool</a></li>
+                        <li><a href="/api/docs" class="text-decoration-none text-light">API Documentation</a></li>
+                    </ul>
+                </div>
+                <div class="col-md-3">
+                    <h5>Resources</h5>
+                    <ul class="list-unstyled">
+                        <li><a href="#" class="text-decoration-none text-light">Documentation</a></li>
+                        <li><a href="#" class="text-decoration-none text-light">GitHub Repository</a></li>
+                        <li><a href="#" class="text-decoration-none text-light">Report Issues</a></li>
+                    </ul>
+                </div>
+            </div>
+            <hr class="mt-4 mb-3">
+            <div class="row">
+                <div class="col-12 text-center">
+                    <p class="mb-0">© 2025 BCBS Values - All rights reserved</p>
+                </div>
+            </div>
+        </div>
+    </footer>
+    
+    <!-- Bootstrap JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

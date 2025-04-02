@@ -1,247 +1,146 @@
-/* BCBS Values - Custom CSS Styles */
-
-/* 
- * This stylesheet contains custom styling for the BCBS Values application
- * It complements Bootstrap's default styling
+/*
+ * BCBS Values - Main stylesheet
  */
 
-/* General Styles */
+/* Base styles */
+:root {
+  --primary-color: var(--bs-primary);
+  --secondary-color: var(--bs-secondary);
+  --success-color: var(--bs-success);
+  --info-color: var(--bs-info);
+  --warning-color: var(--bs-warning);
+  --danger-color: var(--bs-danger);
+  --light-color: var(--bs-light);
+  --dark-color: var(--bs-dark);
+  --gray-100: var(--bs-gray-100);
+  --gray-200: var(--bs-gray-200);
+  --gray-300: var(--bs-gray-300);
+  --gray-400: var(--bs-gray-400);
+  --gray-500: var(--bs-gray-500);
+  --gray-600: var(--bs-gray-600);
+  --gray-700: var(--bs-gray-700);
+  --gray-800: var(--bs-gray-800);
+  --gray-900: var(--bs-gray-900);
+}
+
 body {
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    background-color: #f8f9fa;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
-.content-wrapper {
-    flex: 1;
+main {
+  flex: 1;
 }
 
-.footer {
-    margin-top: auto;
-    padding: 1.5rem 0;
-    background-color: #343a40;
-    color: #fff;
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--gray-600) var(--gray-800);
 }
 
-/* Navbar Styles */
-.navbar-brand {
-    font-weight: 700;
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
 }
 
-.navbar-brand .text-highlight {
-    color: #0d6efd;
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: var(--gray-800);
 }
 
-/* Card Styles */
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: var(--gray-600);
+  border-radius: 20px;
+  border: 2px solid var(--gray-800);
+}
+
+/* Feature Icon styles */
+.feature-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  font-size: 1.5rem;
+  border-radius: 0.5rem;
+}
+
+/* Cards */
 .card {
-    border-radius: 0.5rem;
-    border: none;
-    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+  background-color: var(--gray-800);
+  border-color: var(--gray-700);
 }
 
 .card-header {
-    border-bottom: 1px solid rgba(0, 0, 0, 0.125);
-    background-color: #fff;
-    border-top-left-radius: 0.5rem !important;
-    border-top-right-radius: 0.5rem !important;
+  background-color: var(--gray-900);
+  border-bottom-color: var(--gray-700);
 }
 
-.card-hover {
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
+/* Avatar styles */
+.avatar {
+  object-fit: cover;
 }
 
-.card-hover:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+.avatar-sm {
+  width: 2rem;
+  height: 2rem;
+  font-size: 1rem;
 }
 
-/* Button Styles */
-.btn {
-    border-radius: 0.35rem;
+/* Error page */
+.error-page {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 3rem 0;
 }
 
-.btn-primary {
-    background-color: #0d6efd;
-    border-color: #0d6efd;
+/* Hero section */
+.hero {
+  background-color: var(--gray-900);
+  position: relative;
+  overflow: hidden;
 }
 
-.btn-primary:hover {
-    background-color: #0b5ed7;
-    border-color: #0a58ca;
+.hero::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: linear-gradient(120deg, rgba(13, 110, 253, 0.1), rgba(13, 202, 240, 0.1));
+  z-index: 0;
 }
 
-/* Form Styles */
-.form-control {
-    border-radius: 0.35rem;
+.hero .container {
+  position: relative;
+  z-index: 1;
 }
 
-.form-control:focus {
-    border-color: #0d6efd;
-    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+/* Data source cards */
+.data-source-card {
+  background-color: var(--gray-800);
+  border-color: var(--gray-700);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
-/* Property Card Styles */
-.property-card {
-    border-radius: 0.5rem;
-    overflow: hidden;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
+.data-source-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
 }
 
-.property-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+.data-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 80px;
 }
 
-.property-img-container {
-    height: 200px;
-    overflow: hidden;
-    background-color: #e9ecef;
+/* CTA section */
+.cta {
+  background-color: var(--primary-color);
 }
 
-.property-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-.property-badge {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-}
-
-/* Table Styles */
-.table-hover tbody tr:hover {
-    background-color: rgba(13, 110, 253, 0.075);
-}
-
-/* Dashboard Specific Styles */
-.stats-card {
-    border-radius: 0.5rem;
-    overflow: hidden;
-    transition: transform 0.3s ease;
-}
-
-.stats-card:hover {
-    transform: translateY(-5px);
-}
-
-.activity-timeline .timeline-item {
-    position: relative;
-    padding-left: 45px;
-    margin-bottom: 20px;
-}
-
-.activity-timeline .timeline-item:before {
-    content: "";
-    position: absolute;
-    left: 22px;
-    top: 0;
-    height: 100%;
-    width: 2px;
-    background-color: #e9ecef;
-}
-
-.activity-timeline .timeline-item:last-child:before {
-    display: none;
-}
-
-.activity-timeline .timeline-icon {
-    position: absolute;
-    left: 10px;
-    top: 0;
-    width: 25px;
-    height: 25px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-}
-
-/* Agent Card Styles */
-.agent-card {
-    border-radius: 0.5rem;
-    overflow: hidden;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.agent-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-}
-
-.agent-status-indicator {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    display: inline-block;
-    margin-right: 5px;
-}
-
-.agent-status-indicator.active {
-    background-color: #28a745;
-}
-
-.agent-status-indicator.idle {
-    background-color: #6c757d;
-}
-
-.agent-status-indicator.error {
-    background-color: #dc3545;
-}
-
-/* Login and Register Page Styles */
-.auth-wrapper {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: calc(100vh - 200px);
-}
-
-.auth-card {
-    width: 100%;
-    max-width: 450px;
-    border-radius: 0.5rem;
-    overflow: hidden;
-}
-
-/* Property Detail Page Styles */
-.property-detail-header {
-    background-color: #f8f9fa;
-    border-radius: 0.5rem;
-    padding: 2rem;
-    margin-bottom: 2rem;
-}
-
-.property-feature-item {
-    padding: 1rem;
-    border-radius: 0.5rem;
-    background-color: #f8f9fa;
-    margin-bottom: 1rem;
-    transition: transform 0.3s ease;
-}
-
-.property-feature-item:hover {
-    transform: translateY(-5px);
-}
-
-.valuation-history-item {
-    padding: 1rem;
-    border-left: 3px solid #0d6efd;
-    margin-bottom: 1rem;
-    background-color: #f8f9fa;
-    border-radius: 0 0.5rem 0.5rem 0;
-}
-
-/* Media Queries */
-@media (max-width: 768px) {
-    .property-detail-header {
-        padding: 1rem;
-    }
-    
-    .stats-card {
-        margin-bottom: 1rem;
-    }
+/* Footer */
+.footer {
+  background-color: var(--gray-900) !important;
+  border-top: 1px solid var(--gray-800);
 }

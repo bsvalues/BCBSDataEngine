@@ -1,255 +1,265 @@
-#!/usr/bin/env python3
 """
-Test script for the enhanced property valuation module.
+Test script for the enhanced property valuation model.
 
-This script demonstrates the enhanced property valuation functionality
-with the new advanced regression models, GIS integration, and model comparison.
+This script demonstrates how to use the updated estimate_property_value function
+with multiple regression capabilities and GIS integration.
 """
-
+import pandas as pd
+import numpy as np
 import logging
-import json
 import sys
-from datetime import datetime
+import os
+from pathlib import Path
 
-# Set up logging
-logging.basicConfig(level=logging.INFO, 
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                    handlers=[logging.StreamHandler()])
-logger = logging.getLogger('valuation_test')
-
-# Create a property class for testing
-class Property:
-    """Test property object that mimics the properties of the real Property model."""
-    def __init__(self, **kwargs):
-        self.id = kwargs.get('id', 1)
-        self.address = kwargs.get('address', '123 Test Street')
-        self.city = kwargs.get('city', 'Seattle')
-        self.state = kwargs.get('state', 'WA')
-        self.zip_code = kwargs.get('zip_code', '98101')
-        self.neighborhood = kwargs.get('neighborhood', 'downtown')
-        self.property_type = kwargs.get('property_type', 'single_family')
-        self.bedrooms = kwargs.get('bedrooms', 3)
-        self.bathrooms = kwargs.get('bathrooms', 2.5)
-        self.square_feet = kwargs.get('square_feet', 2000)
-        self.year_built = kwargs.get('year_built', 1985)
-        self.lot_size = kwargs.get('lot_size', 0.25)  # In acres
-        self.latitude = kwargs.get('latitude', 47.6062)
-        self.longitude = kwargs.get('longitude', -122.3321)
-        self.description = kwargs.get('description', 'Test property for valuation module')
-
-
-def test_valuation_methods():
-    """Test all valuation methods and compare results."""
-    logger.info("Testing all valuation methods...")
-    
-    # Import the valuation module
-    from src.valuation import perform_valuation
-    
-    # Create a test property
-    test_property = Property()
-    
-    # List of valuation methods to test
-    valuation_methods = [
-        'enhanced_regression',
-        'linear_regression',
-        'ridge_regression',
-        'lasso_regression',
-        'elastic_net',
-        'lightgbm',
-        'xgboost',
-        'advanced_lightgbm',
-        'advanced_linear',
-        'auto'  # Automatic method comparison
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('enhanced_valuation_result.log')
     ]
-    
-    results = {}
-    
-    for method in valuation_methods:
-        logger.info(f"Testing valuation method: {method}")
-        
-        result = perform_valuation(test_property, valuation_method=method)
-        results[method] = {
-            'estimated_value': result['estimated_value'],
-            'confidence_score': result['confidence_score'],
-            'valuation_method': result['valuation_method']
-        }
-        
-        # Print the valuation and confidence
-        logger.info(f"{method} valuation: ${result['estimated_value']:,.2f} " +
-                   f"(confidence: {result['confidence_score']:.2f})")
-        
-        # For advanced methods, print the performance metrics
-        if 'performance_metrics' in result and result['performance_metrics']:
-            if 'r_squared' in result['performance_metrics']:
-                logger.info(f"R-squared: {result['performance_metrics']['r_squared']:.3f}")
-            
-            # Print model comparison results for the 'auto' method
-            if method == 'auto' and 'model_comparison' in result['performance_metrics']:
-                model_comp = result['performance_metrics']['model_comparison']
-                logger.info(f"Models evaluated: {', '.join(model_comp['models_evaluated'])}")
-                logger.info(f"Selected model: {model_comp['selected_model']}")
-                logger.info("Model values:")
-                for model, value in model_comp['model_values'].items():
-                    logger.info(f"  {model}: ${value:,.2f}")
-    
-    # Print a summary comparison
-    logger.info("\nSUMMARY COMPARISON OF VALUATION METHODS")
-    logger.info("=" * 60)
-    logger.info(f"{'Method':<20} {'Estimated Value':<20} {'Confidence':<10}")
-    logger.info("-" * 60)
-    
-    for method, result in results.items():
-        logger.info(f"{method:<20} ${result['estimated_value']:,.2f} {result['confidence_score']:.2f}")
-    
-    # Return results dictionary
-    return results
+)
+logger = logging.getLogger(__name__)
 
+# Import the valuation function
+try:
+    from src.valuation import estimate_property_value, has_lightgbm
+    logger.info(f"Successfully imported valuation functions from src package. LightGBM available: {has_lightgbm}")
+except ImportError:
+    logger.error("Failed to import valuation functions. Make sure they are accessible in your PYTHONPATH.")
+    raise
 
-def test_gis_integration():
-    """Test GIS integration for property valuation."""
-    logger.info("\nTesting GIS integration for property valuation...")
+def create_sample_data(n_samples=50):
+    """Create sample property data for testing."""
+    logger.info(f"Creating sample dataset with {n_samples} properties")
     
-    # Import the valuation and GIS modules
-    from src.valuation import perform_valuation
-    from src.gis_integration import get_location_score, get_school_district_info, get_flood_risk_assessment
+    # Set random seed for reproducibility
+    np.random.seed(42)
     
-    # Create properties with different locations
-    properties = [
-        Property(
-            id=1,
-            address='123 Downtown Street',
-            neighborhood='downtown',
-            latitude=47.6062,
-            longitude=-122.3321
-        ),
-        Property(
-            id=2,
-            address='456 Queen Anne Ave',
-            neighborhood='queen anne',
-            latitude=47.6370,
-            longitude=-122.3570
-        ),
-        Property(
-            id=3,
-            address='789 Beacon Hill Road',
-            neighborhood='beacon hill',
-            latitude=47.5867,
-            longitude=-122.3138
-        )
-    ]
+    # Generate basic property features
+    square_feet = np.random.normal(2000, 500, n_samples).astype(int).clip(min=800)
+    bedrooms = np.random.choice([2, 3, 4, 5], n_samples, p=[0.1, 0.5, 0.3, 0.1])
+    bathrooms = np.random.choice([1, 1.5, 2, 2.5, 3, 3.5, 4], n_samples, 
+                              p=[0.05, 0.1, 0.4, 0.2, 0.15, 0.05, 0.05])
+    year_built = np.random.randint(1960, 2022, n_samples)
     
-    for prop in properties:
-        logger.info(f"\nProperty: {prop.address} ({prop.neighborhood})")
-        
-        # Get location score
-        location_data = get_location_score(prop.latitude, prop.longitude)
-        logger.info(f"Location score: {location_data.get('score')}")
-        
-        # Get school district info
-        school_data = get_school_district_info(prop.latitude, prop.longitude)
-        logger.info(f"School district: {school_data.get('district_name')}")
-        logger.info(f"School rating: {school_data.get('overall_rating')}")
-        
-        # Get flood risk
-        flood_data = get_flood_risk_assessment(prop.latitude, prop.longitude)
-        logger.info(f"Flood risk: {flood_data.get('risk_level')} " +
-                   f"({flood_data.get('risk_factor', 0):.1f})")
-        
-        # Perform valuation with GIS integration
-        valuation = perform_valuation(prop, valuation_method='advanced_lightgbm')
-        logger.info(f"Valuation with GIS: ${valuation['estimated_value']:,.2f}")
-        
-        # Check if spatial adjustments were applied
-        if 'performance_metrics' in valuation and 'spatial_adjustment' in valuation['performance_metrics']:
-            spatial = valuation['performance_metrics']['spatial_adjustment']
-            if spatial.get('spatial_adjustment_applied', False):
-                logger.info(f"Spatial adjustment factor: {spatial.get('spatial_adjustment_factor', 1.0)}")
-                logger.info(f"Location impact: {spatial.get('percentage_impact', 0)}%")
-
-
-def test_property_modifications():
-    """Test how property modifications affect valuation."""
-    logger.info("\nTesting property modifications and their impact on valuation...")
+    # Generate locations (centered around Richland, WA)
+    center_lat, center_lon = 46.2804, -119.2752
+    radius = 0.05  # Approx 3-4 miles
     
-    # Import the valuation module
-    from src.valuation import perform_valuation, perform_what_if_analysis
+    # Create random points in a circle
+    angles = np.random.uniform(0, 2*np.pi, n_samples)
+    distances = radius * np.sqrt(np.random.uniform(0, 1, n_samples))
     
-    # Create a base property
-    base_property = Property(
-        square_feet=2000,
-        bedrooms=3,
-        bathrooms=2,
-        year_built=1985,
-        lot_size=0.25,
-        neighborhood='ballard'
+    latitudes = center_lat + distances * np.cos(angles)
+    longitudes = center_lon + distances * np.sin(angles)
+    
+    # Generate neighborhoods
+    neighborhoods = np.random.choice(
+        ['South Richland', 'North Richland', 'West Richland', 'Kennewick', 'Pasco'], 
+        n_samples,
+        p=[0.3, 0.2, 0.2, 0.15, 0.15]
     )
     
-    # Get base valuation
-    base_valuation = perform_valuation(base_property, valuation_method='advanced_lightgbm')
-    base_value = base_valuation['estimated_value']
-    logger.info(f"Base property valuation: ${base_value:,.2f}")
+    # Calculate base property values using a simple formula
+    # Base value depends on square footage, bedrooms, bathrooms, and age
+    base_values = (
+        square_feet * 100 +                     # $100 per sq ft
+        bedrooms * 15000 +                      # $15k per bedroom
+        bathrooms * 25000 +                     # $25k per bathroom
+        (2022 - year_built) * -500 +            # -$500 per year of age
+        np.random.normal(0, 20000, n_samples)   # Random noise
+    )
     
-    # Test what-if analysis for different modifications
-    modifications = [
-        # Test adding square footage
-        {'square_feet': 2500},
-        # Test adding a bedroom
-        {'bedrooms': 4},
-        # Test adding a bathroom
-        {'bathrooms': 3},
-        # Test newer construction
-        {'year_built': 2005},
-        # Test larger lot
-        {'lot_size': 0.5},
-        # Test premium neighborhood
-        {'neighborhood': 'queen anne'},
-        # Test multiple upgrades
-        {'square_feet': 2500, 'bathrooms': 3, 'year_built': 2000}
-    ]
+    # Add neighborhood effects
+    neighborhood_multipliers = {
+        'South Richland': 1.15,  # Premium area
+        'North Richland': 1.0,   # Average
+        'West Richland': 1.05,   # Slightly premium
+        'Kennewick': 0.9,        # Slightly below average
+        'Pasco': 0.85            # Below average
+    }
     
-    for mod in modifications:
-        # Create description of modifications
-        mod_desc = ", ".join([f"{k}={v}" for k, v in mod.items()])
-        logger.info(f"\nTesting modification: {mod_desc}")
-        
-        # Use what-if analysis to calculate the impact
-        result = perform_what_if_analysis(base_property, mod)
-        
-        adjusted_value = result['adjusted_valuation']['estimated_value']
-        value_change = result['total_impact_value']
-        percent_change = result['total_impact_percent']
-        
-        logger.info(f"Adjusted value: ${adjusted_value:,.2f}")
-        logger.info(f"Value change: ${value_change:,.2f} ({percent_change:+.1f}%)")
-        
-        # Print impact of individual parameters if multiple were changed
-        if len(mod) > 1 and 'parameter_impacts' in result:
-            logger.info("Individual parameter impacts:")
-            for param, impact in result['parameter_impacts'].items():
-                logger.info(f"  {param}: ${impact['impact_value']:,.2f} ({impact['impact_percent']:+.1f}%)")
+    # Apply neighborhood multipliers
+    list_prices = np.array([
+        base_values[i] * neighborhood_multipliers[neighborhoods[i]]
+        for i in range(n_samples)
+    ])
+    
+    # Create DataFrame
+    df = pd.DataFrame({
+        'property_id': [f'P{i:03d}' for i in range(n_samples)],
+        'square_feet': square_feet,
+        'bedrooms': bedrooms,
+        'bathrooms': bathrooms,
+        'year_built': year_built,
+        'neighborhood': neighborhoods,
+        'latitude': latitudes,
+        'longitude': longitudes,
+        'list_price': list_prices.clip(min=150000) # Ensure minimum price
+    })
+    
+    logger.info(f"Created sample dataset with price range: ${df['list_price'].min():,.0f} to ${df['list_price'].max():,.0f}")
+    return df
 
+def test_basic_valuation():
+    """Test the updated valuation engine without GIS data."""
+    logger.info("=" * 80)
+    logger.info("Testing basic valuation (without GIS)")
+    logger.info("=" * 80)
+    
+    # Create sample data
+    properties = create_sample_data(50)
+    
+    # Create a sample target property 
+    target_property = pd.DataFrame({
+        'square_feet': [1850],
+        'bedrooms': [3],
+        'bathrooms': [2.5],
+        'year_built': [2005],
+    })
+    
+    # Run simple valuation without GIS
+    result = estimate_property_value(
+        properties, 
+        target_property=target_property,
+        use_gis_features=False,
+        use_multiple_regression=True,
+        include_advanced_metrics=True
+    )
+    
+    # Print results
+    logger.info(f"Predicted value: ${result['predicted_value']:,.2f}")
+    logger.info(f"R² Score: {result['r2_score']:.4f}")
+    
+    if 'adj_r2_score' in result:
+        logger.info(f"Adjusted R² Score: {result['adj_r2_score']:.4f}")
+    
+    if 'rmse' in result:
+        logger.info(f"RMSE: ${result['rmse']:,.2f}")
+    
+    if 'mae' in result:
+        logger.info(f"MAE: ${result['mae']:,.2f}")
+    
+    # Print top features by importance
+    logger.info("Top features by importance:")
+    features = sorted(result['feature_importance'], key=lambda x: x['importance'], reverse=True)
+    for feature in features[:5]:  # Top 5 features
+        logger.info(f"  - {feature['feature']}: {feature['importance']:.4f} (coef: {feature['coefficient']:.4f})")
+    
+    # Print statistically significant features
+    if 'statistically_significant_features' in result:
+        logger.info("Statistically significant features (p < 0.05):")
+        for feature in result['statistically_significant_features']:
+            p_value = result['p_values'][feature]
+            logger.info(f"  - {feature}: p={p_value:.4f}")
+    
+    return result
+
+def test_enhanced_gis_valuation():
+    """Test the updated valuation engine with GIS data."""
+    logger.info("=" * 80)
+    logger.info("Testing enhanced valuation (with GIS)")
+    logger.info("=" * 80)
+    
+    # Create sample data
+    properties = create_sample_data(50)
+    
+    # Create a sample target property with location
+    target_property = pd.DataFrame({
+        'square_feet': [1850],
+        'bedrooms': [3],
+        'bathrooms': [2.5],
+        'year_built': [2005],
+        'neighborhood': ['South Richland'],
+        'latitude': [46.2743],
+        'longitude': [-119.2698]
+    })
+    
+    # Define reference points (key locations in the area)
+    ref_points = {
+        'downtown': {'lat': 46.2804, 'lon': -119.2752, 'weight': 1.0},
+        'columbia_river': {'lat': 46.2694, 'lon': -119.2871, 'weight': 0.8},
+        'shopping_center': {'lat': 46.2682, 'lon': -119.2546, 'weight': 0.6},
+        'hospital': {'lat': 46.2835, 'lon': -119.2834, 'weight': 0.5}
+    }
+    
+    # Define neighborhood ratings
+    neighborhood_ratings = {
+        'South Richland': 0.9,
+        'North Richland': 0.8,
+        'West Richland': 0.85,
+        'Kennewick': 0.7,
+        'Pasco': 0.65
+    }
+    
+    # Run enhanced valuation with GIS
+    result = estimate_property_value(
+        properties, 
+        target_property=target_property,
+        use_gis_features=True,
+        ref_points=ref_points,
+        neighborhood_ratings=neighborhood_ratings,
+        use_multiple_regression=True,
+        include_advanced_metrics=True
+    )
+    
+    # Print results
+    logger.info(f"Predicted value: ${result['predicted_value']:,.2f}")
+    logger.info(f"R² Score: {result['r2_score']:.4f}")
+    
+    if 'adj_r2_score' in result:
+        logger.info(f"Adjusted R² Score: {result['adj_r2_score']:.4f}")
+    
+    # Print GIS-specific information if available
+    if 'gis_metrics' in result:
+        logger.info("GIS metrics:")
+        for key, value in result['gis_metrics'].items():
+            if isinstance(value, (list, dict)):
+                logger.info(f"  - {key}: {value}")
+            else:
+                logger.info(f"  - {key}: {value}")
+    
+    return result
 
 def main():
-    """Main function to run the tests."""
-    logger.info("Starting enhanced valuation tests\n" + "=" * 50)
+    """Run the test script with multiple valuation scenarios."""
+    logger.info("Starting enhanced valuation engine test")
     
     try:
-        # Test different valuation methods
-        test_valuation_methods()
+        # Test without GIS
+        basic_result = test_basic_valuation()
         
-        # Test GIS integration for valuation
-        test_gis_integration()
+        # Test with GIS
+        gis_result = test_enhanced_gis_valuation()
         
-        # Test property modifications 
-        test_property_modifications()
+        # Compare results
+        basic_value = basic_result['predicted_value']
+        gis_value = gis_result['predicted_value']
         
-        logger.info("\nAll tests completed successfully!")
-        return 0
+        if basic_value and gis_value:
+            difference = gis_value - basic_value
+            percent_diff = (difference / basic_value) * 100
+            
+            logger.info("=" * 80)
+            logger.info("Results Comparison")
+            logger.info("=" * 80)
+            logger.info(f"Basic valuation: ${basic_value:,.2f}")
+            logger.info(f"GIS-enhanced valuation: ${gis_value:,.2f}")
+            logger.info(f"Difference: ${difference:+,.2f} ({percent_diff:+.2f}%)")
+            
+            # Effect of location factors
+            if 'gis_metrics' in gis_result and 'adjustment_factor' in gis_result['gis_metrics']:
+                adjustment = gis_result['gis_metrics']['adjustment_factor']
+                if adjustment:
+                    logger.info(f"GIS location adjustment factor: {adjustment:.4f}")
+                    logger.info(f"Location impact: {(adjustment-1)*100:+.2f}%")
+        
+        logger.info("Enhanced valuation engine test completed successfully")
         
     except Exception as e:
-        logger.error(f"Error during testing: {e}", exc_info=True)
-        return 1
-
-
+        logger.error(f"Error during valuation test: {str(e)}", exc_info=True)
+        
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

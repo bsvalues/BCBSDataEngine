@@ -1,33 +1,14 @@
 {
-  "version": "1",
-  "workflows": [
-    {
-      "name": "WebApp",
-      "mode": "sequential",
-      "metadata": {
-        "agentRequireRestartOnSave": false
-      },
-      "tasks": [
-        {
-          "task": "packager.installForAll"
-        },
-        {
-          "task": "port.forward",
-          "args": {
-            "port": 5002
-          }
-        },
-        {
-          "task": "shell.exec",
-          "args": {
-            "command": "./run_diagnosis.sh",
-            "options": {
-              "waitForPort": 5002,
-              "waitForPortTimeout": 60000
-            }
-          }
-        }
-      ]
-    }
-  ]
+  "version": 1,
+  "workflowConfig": {
+    "environments": [
+      {
+        "name": "Dashboard",
+        "description": "Serve the Dashboard Demo",
+        "modules": ["nodejs-20"],
+        "run": "node simple_http_server.js",
+        "port": 5000
+      }
+    ]
+  }
 }

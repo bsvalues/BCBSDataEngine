@@ -1,174 +1,444 @@
-{% extends "base.html" %}
+{% extends 'base.html' %}
 
-{% block head %}
-<style>
-    .stats-card {
-        transition: transform 0.3s ease;
-    }
-    
-    .stats-card:hover {
-        transform: translateY(-5px);
-    }
-    
-    .valuations-table tr {
-        cursor: pointer;
-    }
-    
-    .activity-timeline .timeline-item {
-        position: relative;
-        padding-left: 45px;
-        margin-bottom: 20px;
-    }
-    
-    .activity-timeline .timeline-item:before {
-        content: "";
-        position: absolute;
-        left: 22px;
-        top: 0;
-        height: 100%;
-        width: 2px;
-        background-color: #e9ecef;
-    }
-    
-    .activity-timeline .timeline-item:last-child:before {
-        display: none;
-    }
-    
-    .activity-timeline .timeline-icon {
-        position: absolute;
-        left: 10px;
-        top: 0;
-        width: 25px;
-        height: 25px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-    }
-    
-    .chart-container {
-        height: 250px;
-    }
-</style>
+{% block title %}BCBS Values - Dashboard{% endblock %}
+
+{% block additional_head %}
+<link rel="stylesheet" href="/static/css/dashboard.css">
 {% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <div>
-        <h1 class="mb-0">Dashboard</h1>
-        <p class="text-muted">Welcome back, {{ current_user.username }}!</p>
-    </div>
-    <div>
-        <button id="refreshDashboard" class="btn btn-outline-primary">
-            <i class="fas fa-sync-alt me-2"></i>Refresh Data
-        </button>
-    </div>
-</div>
-
-<!-- Summary Stats -->
-<div class="row mb-4">
-    <div class="col-md-3">
-        <div class="card stats-card bg-primary text-white shadow">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="card-title">Properties</h6>
-                        <h2 class="mb-0">{{ property_count }}</h2>
+<div class="container-fluid py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <h1 class="h3">Property Valuation Dashboard</h1>
+                <div class="btn-toolbar">
+                    <div class="btn-group me-2">
+                        <button id="refresh-btn" class="btn btn-outline-primary">
+                            <i class="bi bi-arrow-clockwise"></i> Refresh
+                        </button>
                     </div>
-                    <i class="fas fa-building fa-3x opacity-50"></i>
-                </div>
-                <div class="mt-3">
-                    <a href="{{ url_for('main.properties') }}" class="text-white">View all properties<i class="fas fa-arrow-right ms-2"></i></a>
+                    <div class="btn-group me-2">
+                        <button id="auto-refresh-toggle" class="btn btn-outline-secondary">
+                            <i class="bi bi-clock"></i> Auto Refresh: Off
+                        </button>
+                    </div>
+                    <div class="dropdown">
+                        <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="exportDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-download"></i> Export
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="exportDropdown">
+                            <li><a class="dropdown-item" href="#" id="export-csv">Export to CSV</a></li>
+                            <li><a class="dropdown-item" href="#" id="export-json">Export to JSON</a></li>
+                            <li><a class="dropdown-item" href="#" id="export-excel">Export to Excel</a></li>
+                        </ul>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="card stats-card bg-success text-white shadow">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="card-title">Valuations</h6>
-                        <h2 class="mb-0">{{ valuation_count }}</h2>
+    
+    <!-- Dashboard Tabs -->
+    <ul class="nav nav-tabs mb-4" id="dashboardTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="properties-tab" data-bs-toggle="tab" data-bs-target="#properties" type="button" role="tab" aria-controls="properties" aria-selected="true">
+                <i class="bi bi-buildings"></i> Properties
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="etl-tab" data-bs-toggle="tab" data-bs-target="#etl" type="button" role="tab" aria-controls="etl" aria-selected="false">
+                <i class="bi bi-database"></i> ETL Status
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="agents-tab" data-bs-toggle="tab" data-bs-target="#agents" type="button" role="tab" aria-controls="agents" aria-selected="false">
+                <i class="bi bi-robot"></i> Agents
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="analytics-tab" data-bs-toggle="tab" data-bs-target="#analytics" type="button" role="tab" aria-controls="analytics" aria-selected="false">
+                <i class="bi bi-graph-up"></i> Analytics
+            </button>
+        </li>
+    </ul>
+    
+    <!-- Tab Content -->
+    <div class="tab-content" id="dashboardTabContent">
+        <!-- Properties Tab -->
+        <div class="tab-pane fade show active" id="properties" role="tabpanel" aria-labelledby="properties-tab">
+            <div class="row">
+                <!-- Filters Sidebar -->
+                <div class="col-lg-3 mb-4">
+                    <div class="card filter-sidebar">
+                        <div class="card-body">
+                            <h5><i class="bi bi-funnel"></i> Filters</h5>
+                            
+                            <div class="mb-3">
+                                <label for="search" class="form-label">Search</label>
+                                <div class="search-box">
+                                    <input type="text" class="form-control" id="search" placeholder="Address, ID, etc.">
+                                    <i class="bi bi-search search-icon"></i>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="neighborhood" class="form-label">Neighborhood</label>
+                                <select class="form-select" id="neighborhood">
+                                    <option value="">All Neighborhoods</option>
+                                    <!-- Will be populated with API data -->
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="propertyType" class="form-label">Property Type</label>
+                                <select class="form-select" id="propertyType">
+                                    <option value="">All Types</option>
+                                    <!-- Will be populated with API data -->
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Price Range</label>
+                                <div class="d-flex align-items-center gap-2">
+                                    <input type="number" class="form-control" id="minPrice" placeholder="Min">
+                                    <span>-</span>
+                                    <input type="number" class="form-control" id="maxPrice" placeholder="Max">
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Bedrooms</label>
+                                <div class="btn-group w-100" role="group">
+                                    <input type="radio" class="btn-check" name="bedrooms" id="any-bed" value="" autocomplete="off" checked>
+                                    <label class="btn btn-outline-primary" for="any-bed">Any</label>
+                                    
+                                    <input type="radio" class="btn-check" name="bedrooms" id="bed-1" value="1" autocomplete="off">
+                                    <label class="btn btn-outline-primary" for="bed-1">1+</label>
+                                    
+                                    <input type="radio" class="btn-check" name="bedrooms" id="bed-2" value="2" autocomplete="off">
+                                    <label class="btn btn-outline-primary" for="bed-2">2+</label>
+                                    
+                                    <input type="radio" class="btn-check" name="bedrooms" id="bed-3" value="3" autocomplete="off">
+                                    <label class="btn btn-outline-primary" for="bed-3">3+</label>
+                                    
+                                    <input type="radio" class="btn-check" name="bedrooms" id="bed-4" value="4" autocomplete="off">
+                                    <label class="btn btn-outline-primary" for="bed-4">4+</label>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Last Updated</label>
+                                <select class="form-select" id="lastUpdated">
+                                    <option value="">Any time</option>
+                                    <option value="1">Last 24 hours</option>
+                                    <option value="7">Last 7 days</option>
+                                    <option value="30">Last 30 days</option>
+                                    <option value="90">Last 90 days</option>
+                                </select>
+                            </div>
+                            
+                            <div class="d-grid gap-2">
+                                <button id="apply-filters" class="btn btn-primary">Apply Filters</button>
+                                <button id="reset-filters" class="btn btn-outline-secondary">Reset</button>
+                            </div>
+                        </div>
                     </div>
-                    <i class="fas fa-dollar-sign fa-3x opacity-50"></i>
                 </div>
-                <div class="mt-3">
-                    <a href="{{ url_for('main.valuations') }}" class="text-white">View all valuations<i class="fas fa-arrow-right ms-2"></i></a>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card stats-card bg-info text-white shadow">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="card-title">Active Agents</h6>
-                        <h2 class="mb-0">{{ agent_count }}</h2>
+                
+                <!-- Properties List -->
+                <div class="col-lg-9">
+                    <!-- Summary Metrics -->
+                    <div class="row mb-4">
+                        <div class="col-md-3 mb-4 mb-md-0">
+                            <div class="dashboard-card">
+                                <div class="dashboard-card-body p-3 text-center">
+                                    <div class="small text-secondary mb-1">Total Properties</div>
+                                    <div class="h3 mb-0" id="total-properties">--</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-4 mb-md-0">
+                            <div class="dashboard-card">
+                                <div class="dashboard-card-body p-3 text-center">
+                                    <div class="small text-secondary mb-1">Avg. Valuation</div>
+                                    <div class="h3 mb-0" id="avg-valuation">--</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-4 mb-md-0">
+                            <div class="dashboard-card">
+                                <div class="dashboard-card-body p-3 text-center">
+                                    <div class="small text-secondary mb-1">Median Valuation</div>
+                                    <div class="h3 mb-0" id="median-valuation">--</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="dashboard-card">
+                                <div class="dashboard-card-body p-3 text-center">
+                                    <div class="small text-secondary mb-1">Filtered Results</div>
+                                    <div class="h3 mb-0" id="filtered-count">--</div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <i class="fas fa-robot fa-3x opacity-50"></i>
-                </div>
-                <div class="mt-3">
-                    <a href="{{ url_for('main.agents') }}" class="text-white">View all agents<i class="fas fa-arrow-right ms-2"></i></a>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card stats-card bg-warning text-white shadow">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="card-title">ETL Jobs</h6>
-                        <h2 class="mb-0">{{ etl_jobs|length }}</h2>
+                    
+                    <!-- Property Data Visualization -->
+                    <div class="row mb-4">
+                        <div class="col-md-6 mb-4">
+                            <div class="dashboard-card h-100">
+                                <div class="dashboard-card-header">
+                                    <h5 class="mb-0">Value Distribution</h5>
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="valueDistributionDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                                            Chart Type
+                                        </button>
+                                        <ul class="dropdown-menu" aria-labelledby="valueDistributionDropdown">
+                                            <li><a class="dropdown-item chart-type" href="#" data-chart="bar">Bar Chart</a></li>
+                                            <li><a class="dropdown-item chart-type" href="#" data-chart="pie">Pie Chart</a></li>
+                                            <li><a class="dropdown-item chart-type" href="#" data-chart="histogram">Histogram</a></li>
+                                        </ul>
+                                    </div>
+                                </div>
+                                <div class="dashboard-card-body">
+                                    <div class="chart-container">
+                                        <canvas id="valueDistributionChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-4">
+                            <div class="dashboard-card h-100">
+                                <div class="dashboard-card-header">
+                                    <h5 class="mb-0">Neighborhood Comparison</h5>
+                                    <button class="btn btn-sm btn-outline-secondary" id="neighborhood-toggle">
+                                        Show All
+                                    </button>
+                                </div>
+                                <div class="dashboard-card-body">
+                                    <div class="chart-container">
+                                        <canvas id="neighborhoodComparisonChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <i class="fas fa-sync fa-3x opacity-50"></i>
-                </div>
-                <div class="mt-3">
-                    <a href="{{ url_for('main.etl_jobs') }}" class="text-white">View all ETL jobs<i class="fas fa-arrow-right ms-2"></i></a>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row mb-4">
-    <!-- Charts -->
-    <div class="col-md-8">
-        <div class="card shadow mb-4">
-            <div class="card-header bg-white">
-                <h5 class="mb-0">Valuation Trends</h5>
-            </div>
-            <div class="card-body">
-                <div class="chart-container">
-                    <canvas id="valuationTrends"></canvas>
-                </div>
-            </div>
-        </div>
-        
-        <div class="row">
-            <div class="col-md-6">
-                <div class="card shadow mb-4">
-                    <div class="card-header bg-white">
-                        <h5 class="mb-0">Valuation Methods</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="chart-container">
-                            <canvas id="valuationMethods"></canvas>
+                    
+                    <!-- Property Table -->
+                    <div class="dashboard-card mb-4">
+                        <div class="dashboard-card-header">
+                            <h5 class="mb-0">Property Valuations</h5>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="input-group input-group-sm" style="width: 120px;">
+                                    <span class="input-group-text">Show</span>
+                                    <select class="form-select" id="page-size">
+                                        <option value="10">10</option>
+                                        <option value="25">25</option>
+                                        <option value="50">50</option>
+                                        <option value="100">100</option>
+                                    </select>
+                                </div>
+                                <button class="btn btn-sm btn-outline-secondary d-md-none" id="filter-toggle">
+                                    <i class="bi bi-funnel"></i> Filters
+                                </button>
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th class="sortable" data-sort="property_id">ID</th>
+                                        <th class="sortable" data-sort="address">Address</th>
+                                        <th class="sortable" data-sort="neighborhood">Neighborhood</th>
+                                        <th class="sortable" data-sort="bedrooms">Beds</th>
+                                        <th class="sortable" data-sort="square_feet">Sq Ft</th>
+                                        <th class="sortable" data-sort="estimated_value">Valuation</th>
+                                        <th class="sortable" data-sort="updated_at">Updated</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="property-table-body">
+                                    <!-- Will be populated with API data -->
+                                    <tr class="property-loading-placeholder">
+                                        <td colspan="8" class="text-center py-5">
+                                            <div class="spinner-border text-primary mb-3" role="status">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
+                                            <p class="mb-0">Loading property data...</p>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="card-footer d-flex justify-content-between align-items-center">
+                            <div>
+                                Showing <span id="showing-start">0</span> to <span id="showing-end">0</span> of <span id="total-count">0</span> properties
+                            </div>
+                            <nav aria-label="Property pagination">
+                                <ul class="pagination pagination-sm mb-0">
+                                    <li class="page-item disabled">
+                                        <a class="page-link" href="#" id="prev-page" tabindex="-1" aria-disabled="true">Previous</a>
+                                    </li>
+                                    <li class="page-item active"><a class="page-link" href="#" data-page="1">1</a></li>
+                                    <li class="page-item disabled">
+                                        <a class="page-link" href="#" id="next-page">Next</a>
+                                    </li>
+                                </ul>
+                            </nav>
                         </div>
                     </div>
                 </div>
             </div>
-            <div class="col-md-6">
-                <div class="card shadow mb-4">
-                    <div class="card-header bg-white">
-                        <h5 class="mb-0">Property Types</h5>
+        </div>
+        
+        <!-- ETL Status Tab -->
+        <div class="tab-pane fade" id="etl" role="tabpanel" aria-labelledby="etl-tab">
+            <div class="row">
+                <div class="col-md-4 mb-4">
+                    <div class="dashboard-card h-100">
+                        <div class="dashboard-card-header">
+                            <h5 class="mb-0">ETL Pipelines</h5>
+                        </div>
+                        <div class="dashboard-card-body">
+                            <div class="list-group list-group-flush" id="etl-pipeline-list">
+                                <!-- Will be populated with API data -->
+                                <div class="text-center py-5">
+                                    <div class="spinner-border text-primary mb-3" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <p class="mb-0">Loading ETL data...</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="card-body">
-                        <div class="chart-container">
-                            <canvas id="propertyTypes"></canvas>
+                </div>
+                <div class="col-md-8 mb-4">
+                    <div class="dashboard-card h-100">
+                        <div class="dashboard-card-header">
+                            <h5 class="mb-0">ETL Job History</h5>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Job Name</th>
+                                        <th>Start Time</th>
+                                        <th>Duration</th>
+                                        <th>Status</th>
+                                        <th>Records</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="etl-job-table">
+                                    <!-- Will be populated with API data -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Agents Tab -->
+        <div class="tab-pane fade" id="agents" role="tabpanel" aria-labelledby="agents-tab">
+            <div class="row">
+                <div class="col-md-8 mb-4">
+                    <div class="dashboard-card h-100">
+                        <div class="dashboard-card-header">
+                            <h5 class="mb-0">Agent Status</h5>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Agent</th>
+                                        <th>Status</th>
+                                        <th>Last Heartbeat</th>
+                                        <th>Current Task</th>
+                                        <th>Queue</th>
+                                        <th>Success Rate</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="agent-table">
+                                    <!-- Will be populated with API data -->
+                                    <tr class="agent-loading-placeholder">
+                                        <td colspan="7" class="text-center py-5">
+                                            <div class="spinner-border text-primary mb-3" role="status">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
+                                            <p class="mb-0">Loading agent data...</p>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="dashboard-card h-100">
+                        <div class="dashboard-card-header">
+                            <h5 class="mb-0">Agent Performance</h5>
+                        </div>
+                        <div class="dashboard-card-body">
+                            <div class="chart-container">
+                                <canvas id="agentPerformanceChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Analytics Tab -->
+        <div class="tab-pane fade" id="analytics" role="tabpanel" aria-labelledby="analytics-tab">
+            <div class="row">
+                <div class="col-md-6 mb-4">
+                    <div class="dashboard-card h-100">
+                        <div class="dashboard-card-header">
+                            <h5 class="mb-0">Valuation Trends</h5>
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-secondary active" data-period="30">30 Days</button>
+                                <button type="button" class="btn btn-outline-secondary" data-period="90">90 Days</button>
+                                <button type="button" class="btn btn-outline-secondary" data-period="365">Year</button>
+                            </div>
+                        </div>
+                        <div class="dashboard-card-body">
+                            <div class="chart-container">
+                                <canvas id="valuationTrendChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-4">
+                    <div class="dashboard-card h-100">
+                        <div class="dashboard-card-header">
+                            <h5 class="mb-0">Model Distribution</h5>
+                        </div>
+                        <div class="dashboard-card-body">
+                            <div class="chart-container">
+                                <canvas id="modelDistributionChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 mb-4">
+                    <div class="dashboard-card">
+                        <div class="dashboard-card-header">
+                            <h5 class="mb-0">Feature Importance</h5>
+                            <select class="form-select form-select-sm" style="width: auto;">
+                                <option>All Models</option>
+                                <option>Linear Regression</option>
+                                <option>Ridge Regression</option>
+                                <option>Gradient Boosting</option>
+                                <option>Elastic Net</option>
+                            </select>
+                        </div>
+                        <div class="dashboard-card-body">
+                            <div class="chart-container" style="height: 400px;">
+                                <canvas id="featureImportanceChart"></canvas>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -176,157 +446,49 @@
         </div>
     </div>
     
-    <!-- Recent Valuations & Activity -->
-    <div class="col-md-4">
-        <div class="card shadow mb-4">
-            <div class="card-header bg-white d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Recent Valuations</h5>
-                <a href="{{ url_for('main.valuations') }}" class="text-decoration-none">View All</a>
-            </div>
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover valuations-table mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Property</th>
-                                <th>Value</th>
-                                <th>Date</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for valuation in recent_valuations %}
-                            <tr onclick="window.location='{{ url_for('main.property_detail', property_id=valuation.property_id) }}'">
-                                <td>
-                                    {% if valuation.property %}
-                                    {{ valuation.property.address }}
-                                    {% else %}
-                                    Unknown
-                                    {% endif %}
-                                </td>
-                                <td>${{ "%.0f"|format(valuation.estimated_value) }}</td>
-                                <td>{{ valuation.valuation_date.strftime('%m/%d/%Y') }}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+    <!-- Property Detail Modal -->
+    <div class="modal fade" id="propertyDetailModal" tabindex="-1" aria-labelledby="propertyDetailModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="propertyDetailModalLabel">Property Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-            </div>
-        </div>
-        
-        <div class="card shadow">
-            <div class="card-header bg-white">
-                <h5 class="mb-0">ETL Pipeline Status</h5>
-            </div>
-            <div class="card-body">
-                <div class="activity-timeline">
-                    {% for job in etl_jobs %}
-                    <div class="timeline-item">
-                        {% if job.status == 'completed' %}
-                        <div class="timeline-icon bg-success">
-                            <i class="fas fa-check-circle fa-sm"></i>
+                <div class="modal-body" id="property-detail-content">
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
                         </div>
-                        {% elif job.status == 'running' %}
-                        <div class="timeline-icon bg-primary">
-                            <i class="fas fa-spinner fa-sm"></i>
-                        </div>
-                        {% elif job.status == 'failed' %}
-                        <div class="timeline-icon bg-danger">
-                            <i class="fas fa-times-circle fa-sm"></i>
-                        </div>
-                        {% else %}
-                        <div class="timeline-icon bg-secondary">
-                            <i class="fas fa-clock fa-sm"></i>
-                        </div>
-                        {% endif %}
-                        
-                        <h6 class="mb-1">{{ job.job_type|title }} Job</h6>
-                        <div class="text-muted small">
-                            <div><i class="fas fa-database me-1"></i> Source: {{ job.source }}</div>
-                            <div>
-                                <i class="far fa-calendar-alt me-1"></i> 
-                                {% if job.start_time %}
-                                {{ job.start_time.strftime('%m/%d/%Y %H:%M') }}
-                                {% else %}
-                                N/A
-                                {% endif %}
-                            </div>
-                            
-                            {% if job.status == 'running' and job.total_records %}
-                            <div class="mt-2">
-                                <div class="progress" style="height: 8px;">
-                                    <div class="progress-bar bg-primary" role="progressbar" 
-                                         style="width: {{ (job.records_processed / job.total_records) * 100 }}%"
-                                         aria-valuenow="{{ (job.records_processed / job.total_records) * 100 }}" 
-                                         aria-valuemin="0" aria-valuemax="100"></div>
-                                </div>
-                                <div class="d-flex justify-content-between mt-1">
-                                    <small>{{ job.records_processed }} of {{ job.total_records }}</small>
-                                    <small>{{ ((job.records_processed / job.total_records) * 100)|round(1) }}%</small>
-                                </div>
-                            </div>
-                            {% endif %}
-                        </div>
+                        <p class="mt-3">Loading property details...</p>
                     </div>
-                    {% endfor %}
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <a href="#" class="btn btn-primary" id="view-full-details">View Full Details</a>
                 </div>
             </div>
         </div>
     </div>
-</div>
-
-<!-- Agent Status -->
-<div class="row">
-    <div class="col-md-12">
-        <div class="card shadow">
-            <div class="card-header bg-white d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Agent Status</h5>
-                <a href="{{ url_for('main.agents') }}" class="text-decoration-none">View All</a>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    {% for agent in active_agents %}
-                    <div class="col-md-4 mb-3">
-                        <div class="card h-100">
-                            <div class="card-body">
-                                <div class="d-flex align-items-center mb-3">
-                                    {% if agent.status == 'idle' %}
-                                    <div class="badge bg-secondary rounded-pill me-2">Idle</div>
-                                    {% elif agent.status == 'processing' %}
-                                    <div class="badge bg-primary rounded-pill me-2">Processing</div>
-                                    {% elif agent.status == 'error' %}
-                                    <div class="badge bg-danger rounded-pill me-2">Error</div>
-                                    {% endif %}
-                                    <h6 class="mb-0">{{ agent.name }}</h6>
-                                </div>
-                                <div class="small text-muted mb-3">
-                                    <div><i class="fas fa-tag me-1"></i> Type: {{ agent.agent_type }}</div>
-                                    <div><i class="fas fa-code-branch me-1"></i> Version: {{ agent.model_version }}</div>
-                                    <div><i class="far fa-clock me-1"></i> Last Active: 
-                                        {% if agent.last_active %}
-                                        {{ agent.last_active.strftime('%m/%d/%Y %H:%M') }}
-                                        {% else %}
-                                        Never
-                                        {% endif %}
-                                    </div>
-                                </div>
-                                <div class="row text-center">
-                                    <div class="col-4">
-                                        <div class="h4 mb-0">{{ agent.processing_count }}</div>
-                                        <div class="small text-muted">Processed</div>
-                                    </div>
-                                    <div class="col-4">
-                                        <div class="h4 mb-0">{{ agent.success_count }}</div>
-                                        <div class="small text-muted">Success</div>
-                                    </div>
-                                    <div class="col-4">
-                                        <div class="h4 mb-0">{{ agent.error_count }}</div>
-                                        <div class="small text-muted">Errors</div>
-                                    </div>
-                                </div>
-                            </div>
+    
+    <!-- Agent Detail Modal -->
+    <div class="modal fade" id="agentDetailModal" tabindex="-1" aria-labelledby="agentDetailModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="agentDetailModalLabel">Agent Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="agent-detail-content">
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
                         </div>
+                        <p class="mt-3">Loading agent details...</p>
                     </div>
-                    {% endfor %}
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="restart-agent" disabled>Restart Agent</button>
                 </div>
             </div>
         </div>
@@ -335,112 +497,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Refresh Dashboard Button
-        document.getElementById('refreshDashboard').addEventListener('click', function() {
-            location.reload();
-        });
-        
-        // Valuation Trends Chart
-        var trendCtx = document.getElementById('valuationTrends').getContext('2d');
-        var trendChart = new Chart(trendCtx, {
-            type: 'line',
-            data: {
-                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-                datasets: [{
-                    label: 'Average Valuation',
-                    data: [850000, 870000, 920000, 905000, 950000, 980000],
-                    borderColor: '#0d6efd',
-                    tension: 0.1,
-                    fill: false
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'top',
-                    },
-                    title: {
-                        display: false
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: false,
-                        ticks: {
-                            callback: function(value) {
-                                return '$' + value.toLocaleString();
-                            }
-                        }
-                    }
-                }
-            }
-        });
-        
-        // Valuation Methods Chart
-        var methodsCtx = document.getElementById('valuationMethods').getContext('2d');
-        var methodsChart = new Chart(methodsCtx, {
-            type: 'doughnut',
-            data: {
-                labels: ['Regression', 'Ensemble', 'GIS Enhanced', 'LightGBM', 'XGBoost'],
-                datasets: [{
-                    data: [30, 25, 15, 20, 10],
-                    backgroundColor: [
-                        '#0d6efd',
-                        '#6f42c1',
-                        '#20c997',
-                        '#fd7e14',
-                        '#dc3545'
-                    ]
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'right',
-                    }
-                }
-            }
-        });
-        
-        // Property Types Chart
-        var typesCtx = document.getElementById('propertyTypes').getContext('2d');
-        var typesChart = new Chart(typesCtx, {
-            type: 'bar',
-            data: {
-                labels: ['Residential', 'Commercial', 'Industrial', 'Land', 'Multi-Family'],
-                datasets: [{
-                    label: 'Count',
-                    data: [60, 15, 10, 8, 7],
-                    backgroundColor: [
-                        '#0d6efd',
-                        '#20c997',
-                        '#ffc107',
-                        '#dc3545',
-                        '#6f42c1'
-                    ]
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true
-                    }
-                }
-            }
-        });
-    });
-</script>
+<script src="/static/js/dashboard.js"></script>
 {% endblock %}

@@ -1,27 +1,23 @@
 {
-  "name": "WebApp",
-  "display": "Web App",
-  "description": "Start BCBS Values Diagnostic Bash Server",
-  "run": "./run_diagnosis.sh",
-  "language": "bash",
-  "onBoot": false,
-  "restartable": true,
-  "restart": "always",
-  "exclusive": true,
-  "waitForPort": true,
-  "permissions": {
-    "allowNetwork": true,
-    "allowFile": true,
-    "allowEnv": true
+  "displayName": "Web Application",
+  "description": "Starts the BCBS Values web application",
+  "icon": "server",
+  "colorIndex": 3,
+  "entrypoint": "main.py",
+  "ignorePorts": false,
+  "detached": true,
+  "terminalDarkTheme": true,
+  "interpreter": {
+    "type": "python3",
+    "module": {}
   },
-  "colorIndex": 1,
   "ports": [
     {
-      "port": 5000,
-      "description": "Diagnostic Web Server",
+      "internalPort": 5002,
+      "externalPort": 5002,
+      "description": "Web user interface",
       "label": "WebApp",
-      "export": true,
-      "internalPort": 5000
+      "export": true
     }
   ]
 }

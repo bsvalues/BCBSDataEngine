@@ -1,8 +1,5 @@
 """
-BCBS Values - Property Valuation Module Package
-
-This package contains modules for property valuation, GIS integration,
-and related functionality for the BCBS Values application.
+BCBS Property Valuation System package.
 """
 
-__version__ = '1.0.0'
+__version__ = '0.1.0'

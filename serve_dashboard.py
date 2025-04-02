@@ -1,49 +1,29 @@
 #!/usr/bin/env python3
-"""
-Simple HTTP server for hosting the BCBS Values Platform Dashboard
-with Micro-Animations
-"""
-
 import http.server
 import socketserver
 import os
-from urllib.parse import urlparse
 
-# Default port for the server
+# Set port for the HTTP server
 PORT = 5000
 
-# Set the directory containing the HTML files
+# Set the directory to serve files from (current directory)
 DIRECTORY = os.path.dirname(os.path.abspath(__file__))
-os.chdir(DIRECTORY)
 
-class DashboardHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
-    """Custom HTTP request handler for dashboard HTML files"""
-    
-    def do_GET(self):
-        """Handle GET requests to the server"""
-        parsed_path = urlparse(self.path)
-        if parsed_path.path == '/' or parsed_path.path == '':
-            self.path = '/index.html'
-        return http.server.SimpleHTTPRequestHandler.do_GET(self)
-    
+class Handler(http.server.SimpleHTTPRequestHandler):
+    def __init__(self, *args, **kwargs):
+        # Change directory to where the script is located
+        os.chdir(DIRECTORY)
+        super().__init__(*args, **kwargs)
+
     def end_headers(self):
-        """Add CORS headers to allow local testing"""
+        # Add CORS headers to allow cross-origin requests
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        http.server.SimpleHTTPRequestHandler.end_headers(self)
+        self.send_header("Access-Control-Allow-Headers", "X-Requested-With, Content-Type, X-API-KEY")
+        super().end_headers()
 
-if __name__ == "__main__":
-    handler = DashboardHTTPRequestHandler
-    
-    # Create the server on the specified host and port
-    with socketserver.TCPServer(("0.0.0.0", PORT), handler) as httpd:
-        print(f"Serving BCBS Values Platform Dashboard at http://0.0.0.0:{PORT}/")
-        print("Access the enhanced dashboard at http://0.0.0.0:5000/dashboard.html")
-        print("Press Ctrl+C to stop the server")
-        
-        # Serve requests until interrupted
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            print("\nServer stopped.")
+# Create the HTTP server with the custom handler
+with socketserver.TCPServer(("0.0.0.0", PORT), Handler) as httpd:
+    print(f"Serving dashboard at http://0.0.0.0:{PORT}/dashboard_demo.html")
+    # Start serving requests
+    httpd.serve_forever()

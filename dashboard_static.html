@@ -1,639 +1,951 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BCBS Property Valuation Dashboard</title>
-    <style>
-        /* Core styles */
-        :root {
-            --primary: #0056b3;
-            --secondary: #6c757d;
-            --success: #28a745;
-            --danger: #dc3545;
-            --warning: #ffc107;
-            --info: #17a2b8;
-            --light: #f8f9fa;
-            --dark: #343a40;
-            --white: #ffffff;
-            --gray-100: #f8f9fa;
-            --gray-200: #e9ecef;
-            --gray-300: #dee2e6;
-            --gray-400: #ced4da;
-            --gray-500: #adb5bd;
-            --gray-600: #6c757d;
-            --gray-700: #495057;
-            --gray-800: #343a40;
-            --gray-900: #212529;
-        }
-        
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.6;
-            color: var(--gray-800);
-            background-color: var(--gray-100);
-            margin: 0;
-            padding: 0;
-        }
-        
-        /* Layout */
-        .container {
-            width: 100%;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 15px;
-        }
-        
-        .header {
-            background-color: var(--primary);
-            color: var(--white);
-            padding: 1rem 0;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .main {
-            padding: 2rem 0;
-        }
-        
-        .footer {
-            background-color: var(--gray-800);
-            color: var(--gray-400);
-            padding: 1.5rem 0;
-            margin-top: 2rem;
-        }
-        
-        /* Dashboard Components */
-        .dashboard-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 2rem;
-        }
-        
-        .dashboard-title {
-            margin: 0;
-            font-size: 1.75rem;
-            font-weight: 500;
-        }
-        
-        .dashboard-actions {
-            display: flex;
-            gap: 0.5rem;
-        }
-        
-        /* Cards */
-        .card {
-            background-color: var(--white);
-            border-radius: 4px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            margin-bottom: 1.5rem;
-            overflow: hidden;
-        }
-        
-        .card-header {
-            padding: 1rem 1.25rem;
-            background-color: rgba(0,0,0,0.03);
-            border-bottom: 1px solid var(--gray-300);
-            font-weight: 500;
-        }
-        
-        .card-body {
-            padding: 1.25rem;
-        }
-        
-        /* Tables */
-        .table-container {
-            overflow-x: auto;
-        }
-        
-        .table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 1rem;
-        }
-        
-        .table th, .table td {
-            padding: 0.75rem;
-            text-align: left;
-            border-bottom: 1px solid var(--gray-300);
-        }
-        
-        .table th {
-            background-color: var(--gray-200);
-            font-weight: 500;
-        }
-        
-        .table tr:hover {
-            background-color: var(--gray-100);
-        }
-        
-        /* Metrics */
-        .metrics-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-        }
-        
-        .metric-card {
-            background-color: var(--white);
-            border-radius: 4px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            padding: 1.25rem;
-            transition: transform 0.2s ease;
-        }
-        
-        .metric-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        
-        .metric-title {
-            font-size: 0.875rem;
-            color: var(--gray-600);
-            margin-bottom: 0.5rem;
-        }
-        
-        .metric-value {
-            font-size: 1.75rem;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-        }
-        
-        .metric-trend {
-            font-size: 0.875rem;
-            display: flex;
-            align-items: center;
-        }
-        
-        .metric-trend.positive {
-            color: var(--success);
-        }
-        
-        .metric-trend.negative {
-            color: var(--danger);
-        }
-        
-        /* Filters */
-        .filters {
-            background-color: var(--white);
-            border-radius: 4px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            padding: 1.25rem;
-            margin-bottom: 1.5rem;
-        }
-        
-        .filters-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 1rem;
-        }
-        
-        .filter-group {
-            margin-bottom: 1rem;
-        }
-        
-        .filter-label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 500;
-            font-size: 0.875rem;
-        }
-        
-        .filter-input {
-            width: 100%;
-            padding: 0.5rem;
-            border: 1px solid var(--gray-400);
-            border-radius: 4px;
-            font-size: 0.875rem;
-        }
-        
-        .filter-actions {
-            display: flex;
-            justify-content: flex-end;
-            gap: 0.5rem;
-            margin-top: 1rem;
-        }
-        
-        /* Buttons */
-        .btn {
-            display: inline-block;
-            font-weight: 400;
-            text-align: center;
-            white-space: nowrap;
-            vertical-align: middle;
-            user-select: none;
-            border: 1px solid transparent;
-            padding: 0.375rem 0.75rem;
-            font-size: 0.875rem;
-            line-height: 1.5;
-            border-radius: 0.25rem;
-            transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
-            cursor: pointer;
-        }
-        
-        .btn-primary {
-            color: var(--white);
-            background-color: var(--primary);
-            border-color: var(--primary);
-        }
-        
-        .btn-primary:hover {
-            background-color: #004494;
-            border-color: #003d80;
-        }
-        
-        .btn-outline-secondary {
-            color: var(--secondary);
-            background-color: transparent;
-            border-color: var(--secondary);
-        }
-        
-        .btn-outline-secondary:hover {
-            color: var(--white);
-            background-color: var(--secondary);
-            border-color: var(--secondary);
-        }
-        
-        .btn-sm {
-            padding: 0.25rem 0.5rem;
-            font-size: 0.75rem;
-        }
-        
-        /* Status Badges */
-        .badge {
-            display: inline-block;
-            padding: 0.25em 0.4em;
-            font-size: 75%;
-            font-weight: 500;
-            line-height: 1;
-            text-align: center;
-            white-space: nowrap;
-            vertical-align: baseline;
-            border-radius: 0.25rem;
-        }
-        
-        .badge-success {
-            color: var(--white);
-            background-color: var(--success);
-        }
-        
-        .badge-warning {
-            color: var(--gray-900);
-            background-color: var(--warning);
-        }
-        
-        .badge-danger {
-            color: var(--white);
-            background-color: var(--danger);
-        }
-        
-        .badge-info {
-            color: var(--white);
-            background-color: var(--info);
-        }
-        
-        /* Responsive */
-        @media (max-width: 768px) {
-            .metrics-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .filters-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .dashboard-header {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 1rem;
-            }
-            
-            .dashboard-actions {
-                width: 100%;
-                justify-content: flex-start;
-            }
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BCBS Values - Property Dashboard</title>
+  <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <style>
+    /* Custom styles */
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #f8f9fa;
+      color: #343a40;
+    }
+    
+    .dashboard-container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    
+    .metric-card {
+      transition: transform 0.2s;
+    }
+    
+    .metric-card:hover {
+      transform: translateY(-5px);
+    }
+    
+    .chart-container {
+      height: 300px;
+    }
+    
+    .property-table th {
+      cursor: pointer;
+    }
+    
+    .sort-icon {
+      display: inline-block;
+      width: 0;
+      height: 0;
+      margin-left: 5px;
+      vertical-align: middle;
+    }
+    
+    .sort-icon.asc {
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-bottom: 4px solid currentColor;
+    }
+    
+    .sort-icon.desc {
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 4px solid currentColor;
+    }
+    
+    .loading-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255, 255, 255, 0.7);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+    }
+    
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(0, 123, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: #007bff;
+      animation: spin 1s ease-in-out infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
 </head>
 <body>
-    <header class="header">
-        <div class="container">
-            <h1>BCBS Property Valuation</h1>
-        </div>
-    </header>
+  <div id="dashboard-app"></div>
+  
+  <script type="text/babel">
+    // Sample data
+    const sampleProperties = [
+      {
+        property_id: "BEN123456",
+        address: "123 Main St, West Richland, WA 99353",
+        estimated_value: 425000,
+        confidence_score: 0.92,
+        model_used: "advanced_regression",
+        valuation_date: "2025-03-15T14:30:00Z",
+        features: {
+          square_feet: 2400,
+          bedrooms: 4,
+          bathrooms: 2.5,
+          year_built: 2005,
+          lot_size: 8500
+        },
+        adj_r2_score: 0.89,
+        location_quality: 0.85,
+        neighborhood: "West Richland"
+      },
+      {
+        property_id: "BEN789012",
+        address: "456 Oak Ave, South Richland, WA 99352",
+        estimated_value: 675000,
+        confidence_score: 0.88,
+        model_used: "multiple_regression",
+        valuation_date: "2025-03-14T10:15:00Z",
+        features: {
+          square_feet: 3200,
+          bedrooms: 5,
+          bathrooms: 3,
+          year_built: 2010,
+          lot_size: 12000
+        },
+        adj_r2_score: 0.91,
+        location_quality: 0.92,
+        neighborhood: "South Richland"
+      },
+      {
+        property_id: "BEN345678",
+        address: "789 Pine St, Kennewick, WA 99336",
+        estimated_value: 380000,
+        confidence_score: 0.86,
+        model_used: "advanced_regression",
+        valuation_date: "2025-03-10T09:45:00Z",
+        features: {
+          square_feet: 1850,
+          bedrooms: 3,
+          bathrooms: 2,
+          year_built: 1998,
+          lot_size: 7500
+        },
+        adj_r2_score: 0.85,
+        location_quality: 0.78,
+        neighborhood: "Kennewick"
+      },
+      {
+        property_id: "BEN901234",
+        address: "321 Elm St, Pasco, WA 99301",
+        estimated_value: 310000,
+        confidence_score: 0.84,
+        model_used: "basic_valuation",
+        valuation_date: "2025-03-08T16:20:00Z",
+        features: {
+          square_feet: 1600,
+          bedrooms: 3,
+          bathrooms: 1.5,
+          year_built: 1985,
+          lot_size: 6000
+        },
+        adj_r2_score: 0.78,
+        location_quality: 0.71,
+        neighborhood: "Pasco"
+      },
+      {
+        property_id: "BEN567890",
+        address: "654 Maple Dr, Central Richland, WA 99354",
+        estimated_value: 495000,
+        confidence_score: 0.90,
+        model_used: "advanced_regression",
+        valuation_date: "2025-03-05T11:10:00Z",
+        features: {
+          square_feet: 2600,
+          bedrooms: 4,
+          bathrooms: 2.5,
+          year_built: 2008,
+          lot_size: 9000
+        },
+        adj_r2_score: 0.87,
+        location_quality: 0.82,
+        neighborhood: "Central Richland"
+      },
+      {
+        property_id: "BEN678901",
+        address: "987 Cedar Ln, East Richland, WA 99352",
+        estimated_value: 580000,
+        confidence_score: 0.91,
+        model_used: "multiple_regression",
+        valuation_date: "2025-03-03T13:40:00Z",
+        features: {
+          square_feet: 2850,
+          bedrooms: 4,
+          bathrooms: 3,
+          year_built: 2012,
+          lot_size: 9800
+        },
+        adj_r2_score: 0.90,
+        location_quality: 0.88,
+        neighborhood: "East Richland"
+      },
+      {
+        property_id: "BEN234567",
+        address: "876 Walnut St, North Richland, WA 99354",
+        estimated_value: 520000,
+        confidence_score: 0.89,
+        model_used: "advanced_regression",
+        valuation_date: "2025-03-01T09:25:00Z",
+        features: {
+          square_feet: 2700,
+          bedrooms: 4,
+          bathrooms: 2.5,
+          year_built: 2007,
+          lot_size: 8800
+        },
+        adj_r2_score: 0.87,
+        location_quality: 0.85,
+        neighborhood: "North Richland"
+      },
+      {
+        property_id: "BEN890123",
+        address: "543 Birch Dr, South Kennewick, WA 99337",
+        estimated_value: 405000,
+        confidence_score: 0.87,
+        model_used: "basic_valuation",
+        valuation_date: "2025-02-28T15:15:00Z",
+        features: {
+          square_feet: 2100,
+          bedrooms: 3,
+          bathrooms: 2,
+          year_built: 2001,
+          lot_size: 7800
+        },
+        adj_r2_score: 0.84,
+        location_quality: 0.79,
+        neighborhood: "South Kennewick"
+      },
+      {
+        property_id: "BEN456789",
+        address: "432 Aspen Way, West Pasco, WA 99301",
+        estimated_value: 340000,
+        confidence_score: 0.85,
+        model_used: "basic_valuation",
+        valuation_date: "2025-02-25T10:50:00Z",
+        features: {
+          square_feet: 1750,
+          bedrooms: 3,
+          bathrooms: 2,
+          year_built: 1992,
+          lot_size: 6500
+        },
+        adj_r2_score: 0.80,
+        location_quality: 0.74,
+        neighborhood: "West Pasco"
+      },
+      {
+        property_id: "BEN012345",
+        address: "321 Fir St, North Kennewick, WA 99336",
+        estimated_value: 390000,
+        confidence_score: 0.86,
+        model_used: "multiple_regression",
+        valuation_date: "2025-02-22T14:05:00Z",
+        features: {
+          square_feet: 1950,
+          bedrooms: 3,
+          bathrooms: 2,
+          year_built: 2000,
+          lot_size: 7200
+        },
+        adj_r2_score: 0.83,
+        location_quality: 0.77,
+        neighborhood: "North Kennewick"
+      }
+    ];
     
-    <main class="main">
-        <div class="container">
-            <div class="dashboard-header">
-                <h2 class="dashboard-title">Property Dashboard</h2>
-                <div class="dashboard-actions">
-                    <button class="btn btn-primary">Refresh Data</button>
-                    <button class="btn btn-outline-secondary">Export Results</button>
-                </div>
+    // Main Dashboard component
+    const Dashboard = () => {
+      // State for properties data
+      const [properties, setProperties] = React.useState([]);
+      
+      // State for filters
+      const [filters, setFilters] = React.useState({
+        neighborhood: '',
+        minValue: '',
+        maxValue: '',
+        searchQuery: '',
+        sortBy: 'estimated_value',
+        sortDirection: 'desc'
+      });
+      
+      // State for loading status
+      const [loading, setLoading] = React.useState(true);
+      
+      // State for selected property (for detail view)
+      const [selectedProperty, setSelectedProperty] = React.useState(null);
+      
+      // State for pagination
+      const [pagination, setPagination] = React.useState({
+        currentPage: 1,
+        itemsPerPage: 5,
+        totalItems: 0
+      });
+      
+      // Extract unique neighborhoods from properties
+      const neighborhoods = React.useMemo(() => {
+        const uniqueNeighborhoods = [...new Set(sampleProperties.map(p => p.neighborhood))];
+        return uniqueNeighborhoods.sort();
+      }, []);
+      
+      // Load properties data
+      React.useEffect(() => {
+        // Simulate API call with timeout
+        const loadData = async () => {
+          setLoading(true);
+          
+          // Simulate network delay
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Apply filters to sample data
+          let filteredData = [...sampleProperties];
+          
+          // Apply filters
+          if (filters.neighborhood) {
+            filteredData = filteredData.filter(p => 
+              p.neighborhood === filters.neighborhood
+            );
+          }
+          
+          if (filters.minValue) {
+            filteredData = filteredData.filter(p => 
+              p.estimated_value >= parseFloat(filters.minValue)
+            );
+          }
+          
+          if (filters.maxValue) {
+            filteredData = filteredData.filter(p => 
+              p.estimated_value <= parseFloat(filters.maxValue)
+            );
+          }
+          
+          if (filters.searchQuery) {
+            const query = filters.searchQuery.toLowerCase();
+            filteredData = filteredData.filter(p => 
+              p.address.toLowerCase().includes(query) || 
+              p.property_id.toLowerCase().includes(query)
+            );
+          }
+          
+          // Apply sorting
+          filteredData.sort((a, b) => {
+            if (a[filters.sortBy] < b[filters.sortBy]) {
+              return filters.sortDirection === 'asc' ? -1 : 1;
+            }
+            if (a[filters.sortBy] > b[filters.sortBy]) {
+              return filters.sortDirection === 'asc' ? 1 : -1;
+            }
+            return 0;
+          });
+          
+          // Set total items for pagination
+          setPagination(prev => ({
+            ...prev,
+            totalItems: filteredData.length
+          }));
+          
+          // Apply pagination
+          const startIndex = (pagination.currentPage - 1) * pagination.itemsPerPage;
+          const paginatedData = filteredData.slice(
+            startIndex, 
+            startIndex + pagination.itemsPerPage
+          );
+          
+          setProperties(paginatedData);
+          setLoading(false);
+        };
+        
+        loadData();
+      }, [filters, pagination.currentPage, pagination.itemsPerPage]);
+      
+      // Calculate dashboard metrics
+      const dashboardMetrics = React.useMemo(() => {
+        if (sampleProperties.length === 0) {
+          return {
+            totalProperties: 0,
+            averageValue: 0,
+            medianValue: 0,
+            minValue: 0,
+            maxValue: 0,
+            averageConfidence: 0
+          };
+        }
+        
+        const values = sampleProperties.map(p => p.estimated_value);
+        const sortedValues = [...values].sort((a, b) => a - b);
+        const confidences = sampleProperties.map(p => p.confidence_score);
+        
+        return {
+          totalProperties: sampleProperties.length,
+          averageValue: values.reduce((sum, val) => sum + val, 0) / sampleProperties.length,
+          medianValue: sortedValues[Math.floor(sampleProperties.length / 2)],
+          minValue: Math.min(...values),
+          maxValue: Math.max(...values),
+          averageConfidence: confidences.reduce((sum, val) => sum + val, 0) / sampleProperties.length
+        };
+      }, []);
+      
+      // Format currency
+      const formatCurrency = (value) => {
+        return new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD',
+          maximumFractionDigits: 0
+        }).format(value);
+      };
+      
+      // Format percentage
+      const formatPercentage = (value) => {
+        return `${(value * 100).toFixed(1)}%`;
+      };
+      
+      // Format date
+      const formatDate = (dateString) => {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        });
+      };
+      
+      // Handle filter changes
+      const handleFilterChange = (e) => {
+        const { name, value } = e.target;
+        setFilters(prev => ({
+          ...prev,
+          [name]: value
+        }));
+        
+        // Reset to first page when filter changes
+        setPagination(prev => ({
+          ...prev,
+          currentPage: 1
+        }));
+      };
+      
+      // Apply filters
+      const applyFilters = (e) => {
+        e.preventDefault();
+        // The effect will automatically re-run when filters change
+      };
+      
+      // Reset filters
+      const resetFilters = () => {
+        setFilters({
+          neighborhood: '',
+          minValue: '',
+          maxValue: '',
+          searchQuery: '',
+          sortBy: 'estimated_value',
+          sortDirection: 'desc'
+        });
+        
+        setPagination(prev => ({
+          ...prev,
+          currentPage: 1
+        }));
+      };
+      
+      // Handle sorting
+      const handleSort = (field) => {
+        setFilters(prev => ({
+          ...prev,
+          sortBy: field,
+          sortDirection: prev.sortBy === field && prev.sortDirection === 'asc' ? 'desc' : 'asc'
+        }));
+      };
+      
+      // Handle pagination
+      const handlePageChange = (newPage) => {
+        if (newPage >= 1 && newPage <= Math.ceil(pagination.totalItems / pagination.itemsPerPage)) {
+          setPagination(prev => ({
+            ...prev,
+            currentPage: newPage
+          }));
+        }
+      };
+      
+      // Handle property selection
+      const handlePropertySelect = (property) => {
+        setSelectedProperty(property);
+      };
+      
+      // Close property detail modal
+      const closePropertyDetail = () => {
+        setSelectedProperty(null);
+      };
+      
+      // Handle items per page change
+      const handleItemsPerPageChange = (e) => {
+        const value = parseInt(e.target.value);
+        setPagination(prev => ({
+          ...prev,
+          itemsPerPage: value,
+          currentPage: 1
+        }));
+      };
+      
+      return (
+        <div className="dashboard-container px-4 py-8">
+          <h1 className="text-3xl font-bold mb-6">BCBS Property Valuation Dashboard</h1>
+          
+          {/* Dashboard metrics */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
+            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500 metric-card">
+              <p className="text-sm text-gray-500 mb-1">Total Properties</p>
+              <p className="text-2xl font-bold">{dashboardMetrics.totalProperties.toLocaleString()}</p>
             </div>
             
-            <div class="metrics-grid">
-                <div class="metric-card">
-                    <div class="metric-title">Total Properties</div>
-                    <div class="metric-value">3,256</div>
-                    <div class="metric-trend positive">
-                        <span>↑ 12.5% from last month</span>
-                    </div>
-                </div>
-                
-                <div class="metric-card">
-                    <div class="metric-title">Average Valuation</div>
-                    <div class="metric-value">$385,750</div>
-                    <div class="metric-trend positive">
-                        <span>↑ 3.2% from last month</span>
-                    </div>
-                </div>
-                
-                <div class="metric-card">
-                    <div class="metric-title">Valuation Accuracy</div>
-                    <div class="metric-value">95.8%</div>
-                    <div class="metric-trend positive">
-                        <span>↑ 1.3% from last month</span>
-                    </div>
-                </div>
-                
-                <div class="metric-card">
-                    <div class="metric-title">Active Regions</div>
-                    <div class="metric-value">28</div>
-                    <div class="metric-trend">
-                        <span>No change from last month</span>
-                    </div>
-                </div>
+            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500 metric-card">
+              <p className="text-sm text-gray-500 mb-1">Average Value</p>
+              <p className="text-2xl font-bold">{formatCurrency(dashboardMetrics.averageValue)}</p>
             </div>
             
-            <div class="filters">
-                <h3>Filters</h3>
-                <div class="filters-grid">
-                    <div class="filter-group">
-                        <label class="filter-label" for="neighborhood">Neighborhood</label>
-                        <select class="filter-input" id="neighborhood">
-                            <option value="">All Neighborhoods</option>
-                            <option value="downtown">Downtown</option>
-                            <option value="westside">Westside</option>
-                            <option value="eastside">Eastside</option>
-                            <option value="northend">North End</option>
-                            <option value="southside">Southside</option>
-                        </select>
+            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-red-500 metric-card">
+              <p className="text-sm text-gray-500 mb-1">Median Value</p>
+              <p className="text-2xl font-bold">{formatCurrency(dashboardMetrics.medianValue)}</p>
+            </div>
+            
+            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-yellow-500 metric-card">
+              <p className="text-sm text-gray-500 mb-1">Minimum Value</p>
+              <p className="text-2xl font-bold">{formatCurrency(dashboardMetrics.minValue)}</p>
+            </div>
+            
+            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-purple-500 metric-card">
+              <p className="text-sm text-gray-500 mb-1">Maximum Value</p>
+              <p className="text-2xl font-bold">{formatCurrency(dashboardMetrics.maxValue)}</p>
+            </div>
+            
+            <div className="bg-white rounded-lg shadow p-4 border-l-4 border-indigo-500 metric-card">
+              <p className="text-sm text-gray-500 mb-1">Avg. Confidence</p>
+              <p className="text-2xl font-bold">{formatPercentage(dashboardMetrics.averageConfidence)}</p>
+            </div>
+          </div>
+          
+          {/* Filters section */}
+          <div className="bg-white rounded-lg shadow mb-8">
+            <div className="p-4 border-b">
+              <h2 className="text-xl font-semibold">Search & Filters</h2>
+            </div>
+            
+            <div className="p-4">
+              <form onSubmit={applyFilters}>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  {/* Search query */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Search
+                    </label>
+                    <input
+                      type="text"
+                      name="searchQuery"
+                      value={filters.searchQuery}
+                      onChange={handleFilterChange}
+                      placeholder="Search by address or ID"
+                      className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  
+                  {/* Neighborhood filter */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Neighborhood
+                    </label>
+                    <select
+                      name="neighborhood"
+                      value={filters.neighborhood}
+                      onChange={handleFilterChange}
+                      className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">All Neighborhoods</option>
+                      {neighborhoods.map(neighborhood => (
+                        <option key={neighborhood} value={neighborhood}>
+                          {neighborhood}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  {/* Min value filter */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Min Value
+                    </label>
+                    <input
+                      type="number"
+                      name="minValue"
+                      value={filters.minValue}
+                      onChange={handleFilterChange}
+                      placeholder="Minimum value"
+                      className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  
+                  {/* Max value filter */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Max Value
+                    </label>
+                    <input
+                      type="number"
+                      name="maxValue"
+                      value={filters.maxValue}
+                      onChange={handleFilterChange}
+                      placeholder="Maximum value"
+                      className="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                
+                {/* Filter actions */}
+                <div className="mt-4 flex justify-end space-x-2">
+                  <button
+                    type="button"
+                    onClick={resetFilters}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                  >
+                    Reset Filters
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    Apply Filters
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+          
+          {/* Properties table */}
+          <div className="bg-white rounded-lg shadow mb-8 relative">
+            <div className="p-4 border-b flex justify-between items-center">
+              <h2 className="text-xl font-semibold">Property Listings</h2>
+              
+              <div>
+                <label htmlFor="itemsPerPage" className="mr-2 text-sm font-medium text-gray-700">
+                  Items per page:
+                </label>
+                <select
+                  id="itemsPerPage"
+                  value={pagination.itemsPerPage}
+                  onChange={handleItemsPerPageChange}
+                  className="border border-gray-300 rounded p-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="5">5</option>
+                  <option value="10">10</option>
+                  <option value="20">20</option>
+                </select>
+              </div>
+            </div>
+            
+            {/* Loading overlay */}
+            {loading && (
+              <div className="loading-overlay">
+                <div className="spinner"></div>
+              </div>
+            )}
+            
+            {/* Table */}
+            <div className="overflow-x-auto">
+              <table className="min-w-full property-table">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                      onClick={() => handleSort('property_id')}
+                    >
+                      Property ID
+                      {filters.sortBy === 'property_id' && (
+                        <span className={`sort-icon ${filters.sortDirection}`}></span>
+                      )}
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                      onClick={() => handleSort('address')}
+                    >
+                      Address
+                      {filters.sortBy === 'address' && (
+                        <span className={`sort-icon ${filters.sortDirection}`}></span>
+                      )}
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                      onClick={() => handleSort('estimated_value')}
+                    >
+                      Estimated Value
+                      {filters.sortBy === 'estimated_value' && (
+                        <span className={`sort-icon ${filters.sortDirection}`}></span>
+                      )}
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                      onClick={() => handleSort('confidence_score')}
+                    >
+                      Confidence
+                      {filters.sortBy === 'confidence_score' && (
+                        <span className={`sort-icon ${filters.sortDirection}`}></span>
+                      )}
+                    </th>
+                    <th 
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                      onClick={() => handleSort('valuation_date')}
+                    >
+                      Valuation Date
+                      {filters.sortBy === 'valuation_date' && (
+                        <span className={`sort-icon ${filters.sortDirection}`}></span>
+                      )}
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Model Used
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {properties.map(property => (
+                    <tr 
+                      key={property.property_id} 
+                      className="hover:bg-gray-50 cursor-pointer"
+                      onClick={() => handlePropertySelect(property)}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {property.property_id}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {property.address}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {formatCurrency(property.estimated_value)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <div className="flex items-center">
+                          <div className="w-16 bg-gray-200 rounded-full h-2.5">
+                            <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${property.confidence_score * 100}%` }}></div>
+                          </div>
+                          <span className="ml-2">{formatPercentage(property.confidence_score)}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {formatDate(property.valuation_date)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                          property.model_used.includes('advanced') 
+                            ? 'bg-green-100 text-green-800' 
+                            : property.model_used.includes('multiple') 
+                              ? 'bg-blue-100 text-blue-800' 
+                              : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {property.model_used.replace('_', ' ')}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            
+            {/* Empty state */}
+            {!loading && properties.length === 0 && (
+              <div className="p-12 text-center">
+                <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <h3 className="mt-2 text-sm font-medium text-gray-900">No properties found</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  Try adjusting your search filters to find properties.
+                </p>
+              </div>
+            )}
+            
+            {/* Pagination */}
+            {!loading && properties.length > 0 && (
+              <div className="px-6 py-4 border-t flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-700">
+                    Showing <span className="font-medium">{(pagination.currentPage - 1) * pagination.itemsPerPage + 1}</span> to <span className="font-medium">{Math.min(pagination.currentPage * pagination.itemsPerPage, pagination.totalItems)}</span> of <span className="font-medium">{pagination.totalItems}</span> results
+                  </p>
+                </div>
+                
+                <div className="flex-1 flex justify-center sm:justify-end">
+                  <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
+                    <button
+                      onClick={() => handlePageChange(pagination.currentPage - 1)}
+                      disabled={pagination.currentPage === 1}
+                      className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <span className="sr-only">Previous</span>
+                      <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                    
+                    {/* Page numbers */}
+                    {Array.from({ length: Math.ceil(pagination.totalItems / pagination.itemsPerPage) }).map((_, index) => (
+                      <button
+                        key={index}
+                        onClick={() => handlePageChange(index + 1)}
+                        className={`
+                          relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium
+                          ${pagination.currentPage === index + 1 ? 'text-blue-600 bg-blue-50' : 'text-gray-700 hover:bg-gray-50'}
+                        `}
+                      >
+                        {index + 1}
+                      </button>
+                    ))}
+                    
+                    <button
+                      onClick={() => handlePageChange(pagination.currentPage + 1)}
+                      disabled={pagination.currentPage >= Math.ceil(pagination.totalItems / pagination.itemsPerPage)}
+                      className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <span className="sr-only">Next</span>
+                      <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                  </nav>
+                </div>
+              </div>
+            )}
+          </div>
+          
+          {/* Property Detail Modal */}
+          {selectedProperty && (
+            <div className="fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 overflow-hidden">
+                <div className="px-6 py-4 border-b flex justify-between items-center">
+                  <h2 className="text-xl font-semibold">Property Details</h2>
+                  <button
+                    className="text-gray-500 hover:text-gray-700"
+                    onClick={closePropertyDetail}
+                  >
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                
+                <div className="p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <h3 className="text-lg font-medium text-gray-900 mb-3">Basic Information</h3>
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <div className="mb-2">
+                          <span className="text-sm text-gray-500">Property ID:</span>
+                          <span className="ml-2 font-medium">{selectedProperty.property_id}</span>
+                        </div>
+                        <div className="mb-2">
+                          <span className="text-sm text-gray-500">Address:</span>
+                          <span className="ml-2 font-medium">{selectedProperty.address}</span>
+                        </div>
+                        <div className="mb-2">
+                          <span className="text-sm text-gray-500">Neighborhood:</span>
+                          <span className="ml-2 font-medium">{selectedProperty.neighborhood}</span>
+                        </div>
+                        <div className="mb-2">
+                          <span className="text-sm text-gray-500">Estimated Value:</span>
+                          <span className="ml-2 font-medium">{formatCurrency(selectedProperty.estimated_value)}</span>
+                        </div>
+                        <div className="mb-2">
+                          <span className="text-sm text-gray-500">Valuation Date:</span>
+                          <span className="ml-2 font-medium">{formatDate(selectedProperty.valuation_date)}</span>
+                        </div>
+                        <div className="mb-2">
+                          <span className="text-sm text-gray-500">Model Used:</span>
+                          <span className="ml-2 font-medium">{selectedProperty.model_used.replace('_', ' ')}</span>
+                        </div>
+                        <div className="mb-2">
+                          <span className="text-sm text-gray-500">Confidence Score:</span>
+                          <div className="mt-1 flex items-center">
+                            <div className="w-full bg-gray-200 rounded-full h-2.5">
+                              <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${selectedProperty.confidence_score * 100}%` }}></div>
+                            </div>
+                            <span className="ml-2 font-medium">{formatPercentage(selectedProperty.confidence_score)}</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                     
-                    <div class="filter-group">
-                        <label class="filter-label" for="property-type">Property Type</label>
-                        <select class="filter-input" id="property-type">
-                            <option value="">All Types</option>
-                            <option value="residential">Residential</option>
-                            <option value="commercial">Commercial</option>
-                            <option value="industrial">Industrial</option>
-                            <option value="land">Vacant Land</option>
-                        </select>
+                    <div>
+                      <h3 className="text-lg font-medium text-gray-900 mb-3">Property Features</h3>
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <div className="mb-2">
+                          <span className="text-sm text-gray-500">Square Feet:</span>
+                          <span className="ml-2 font-medium">{selectedProperty.features.square_feet}</span>
+                        </div>
+                        <div className="mb-2">
+                          <span className="text-sm text-gray-500">Bedrooms:</span>
+                          <span className="ml-2 font-medium">{selectedProperty.features.bedrooms}</span>
+                        </div>
+                        <div className="mb-2">
+                          <span className="text-sm text-gray-500">Bathrooms:</span>
+                          <span className="ml-2 font-medium">{selectedProperty.features.bathrooms}</span>
+                        </div>
+                        <div className="mb-2">
+                          <span className="text-sm text-gray-500">Year Built:</span>
+                          <span className="ml-2 font-medium">{selectedProperty.features.year_built}</span>
+                        </div>
+                        <div className="mb-2">
+                          <span className="text-sm text-gray-500">Lot Size:</span>
+                          <span className="ml-2 font-medium">{selectedProperty.features.lot_size} sq ft</span>
+                        </div>
+                      </div>
+                      
+                      <h3 className="text-lg font-medium text-gray-900 mb-3 mt-6">Model Metrics</h3>
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <div className="mb-2">
+                          <span className="text-sm text-gray-500">Adjusted R² Score:</span>
+                          <span className="ml-2 font-medium">{selectedProperty.adj_r2_score.toFixed(2)}</span>
+                        </div>
+                        <div className="mb-2">
+                          <span className="text-sm text-gray-500">Location Quality:</span>
+                          <span className="ml-2 font-medium">{selectedProperty.location_quality.toFixed(2)}</span>
+                        </div>
+                      </div>
                     </div>
-                    
-                    <div class="filter-group">
-                        <label class="filter-label" for="price-min">Min Price</label>
-                        <input type="number" class="filter-input" id="price-min" placeholder="Min Price">
-                    </div>
-                    
-                    <div class="filter-group">
-                        <label class="filter-label" for="price-max">Max Price</label>
-                        <input type="number" class="filter-input" id="price-max" placeholder="Max Price">
-                    </div>
+                  </div>
                 </div>
                 
-                <div class="filter-actions">
-                    <button class="btn btn-outline-secondary">Reset</button>
-                    <button class="btn btn-primary">Apply Filters</button>
+                <div className="px-6 py-4 bg-gray-50 border-t">
+                  <button
+                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                    onClick={closePropertyDetail}
+                  >
+                    Close
+                  </button>
                 </div>
+              </div>
             </div>
-            
-            <div class="card">
-                <div class="card-header">
-                    Recent Properties
-                </div>
-                <div class="card-body">
-                    <div class="table-container">
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Address</th>
-                                    <th>Type</th>
-                                    <th>Last Valuation</th>
-                                    <th>Value</th>
-                                    <th>Confidence</th>
-                                    <th>Status</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td>P-1001</td>
-                                    <td>123 Main St, Benton County</td>
-                                    <td>Residential</td>
-                                    <td>2025-03-25</td>
-                                    <td>$425,000</td>
-                                    <td>97.2%</td>
-                                    <td><span class="badge badge-success">Verified</span></td>
-                                    <td>
-                                        <button class="btn btn-sm btn-outline-secondary">View</button>
-                                        <button class="btn btn-sm btn-primary">Revaluate</button>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td>P-1002</td>
-                                    <td>456 Oak Ave, Benton County</td>
-                                    <td>Commercial</td>
-                                    <td>2025-03-24</td>
-                                    <td>$1,250,000</td>
-                                    <td>92.8%</td>
-                                    <td><span class="badge badge-info">Pending</span></td>
-                                    <td>
-                                        <button class="btn btn-sm btn-outline-secondary">View</button>
-                                        <button class="btn btn-sm btn-primary">Revaluate</button>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td>P-1003</td>
-                                    <td>789 Pine St, Westside</td>
-                                    <td>Residential</td>
-                                    <td>2025-03-23</td>
-                                    <td>$375,500</td>
-                                    <td>98.1%</td>
-                                    <td><span class="badge badge-success">Verified</span></td>
-                                    <td>
-                                        <button class="btn btn-sm btn-outline-secondary">View</button>
-                                        <button class="btn btn-sm btn-primary">Revaluate</button>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td>P-1004</td>
-                                    <td>101 Elm Rd, Downtown</td>
-                                    <td>Commercial</td>
-                                    <td>2025-03-22</td>
-                                    <td>$825,000</td>
-                                    <td>94.5%</td>
-                                    <td><span class="badge badge-warning">Review</span></td>
-                                    <td>
-                                        <button class="btn btn-sm btn-outline-secondary">View</button>
-                                        <button class="btn btn-sm btn-primary">Revaluate</button>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td>P-1005</td>
-                                    <td>202 Cedar Ln, Eastside</td>
-                                    <td>Residential</td>
-                                    <td>2025-03-21</td>
-                                    <td>$450,000</td>
-                                    <td>96.3%</td>
-                                    <td><span class="badge badge-success">Verified</span></td>
-                                    <td>
-                                        <button class="btn btn-sm btn-outline-secondary">View</button>
-                                        <button class="btn btn-sm btn-primary">Revaluate</button>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="card">
-                <div class="card-header">
-                    Agent Status
-                </div>
-                <div class="card-body">
-                    <div class="table-container">
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Agent ID</th>
-                                    <th>Type</th>
-                                    <th>Status</th>
-                                    <th>Jobs Processed</th>
-                                    <th>Success Rate</th>
-                                    <th>Last Active</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td>A-001</td>
-                                    <td>Regression</td>
-                                    <td><span class="badge badge-success">Online</span></td>
-                                    <td>1,245</td>
-                                    <td>99.2%</td>
-                                    <td>1 min ago</td>
-                                    <td>
-                                        <button class="btn btn-sm btn-outline-secondary">View Logs</button>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td>A-002</td>
-                                    <td>Ensemble</td>
-                                    <td><span class="badge badge-success">Online</span></td>
-                                    <td>955</td>
-                                    <td>98.7%</td>
-                                    <td>5 mins ago</td>
-                                    <td>
-                                        <button class="btn btn-sm btn-outline-secondary">View Logs</button>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td>A-003</td>
-                                    <td>GIS</td>
-                                    <td><span class="badge badge-danger">Offline</span></td>
-                                    <td>723</td>
-                                    <td>97.5%</td>
-                                    <td>2 hrs ago</td>
-                                    <td>
-                                        <button class="btn btn-sm btn-outline-secondary">View Logs</button>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td>A-004</td>
-                                    <td>Regression</td>
-                                    <td><span class="badge badge-warning">Maintenance</span></td>
-                                    <td>1,105</td>
-                                    <td>99.1%</td>
-                                    <td>45 mins ago</td>
-                                    <td>
-                                        <button class="btn btn-sm btn-outline-secondary">View Logs</button>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="card">
-                <div class="card-header">
-                    ETL Pipeline Status
-                </div>
-                <div class="card-body">
-                    <div class="table-container">
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Job ID</th>
-                                    <th>Type</th>
-                                    <th>Status</th>
-                                    <th>Start Time</th>
-                                    <th>Duration</th>
-                                    <th>Records Processed</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td>ETL-10045</td>
-                                    <td>Daily Import</td>
-                                    <td><span class="badge badge-success">Completed</span></td>
-                                    <td>2025-03-31 00:01</td>
-                                    <td>4m 32s</td>
-                                    <td>245</td>
-                                    <td>
-                                        <button class="btn btn-sm btn-outline-secondary">View Details</button>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td>ETL-10044</td>
-                                    <td>Market Data</td>
-                                    <td><span class="badge badge-success">Completed</span></td>
-                                    <td>2025-03-30 12:00</td>
-                                    <td>2m 15s</td>
-                                    <td>42</td>
-                                    <td>
-                                        <button class="btn btn-sm btn-outline-secondary">View Details</button>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td>ETL-10043</td>
-                                    <td>GIS Update</td>
-                                    <td><span class="badge badge-warning">Partial</span></td>
-                                    <td>2025-03-30 06:00</td>
-                                    <td>15m 7s</td>
-                                    <td>128/150</td>
-                                    <td>
-                                        <button class="btn btn-sm btn-outline-secondary">View Details</button>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+          )}
         </div>
-    </main>
+      );
+    };
     
-    <footer class="footer">
-        <div class="container">
-            <p>&copy; 2025 BCBS Property Valuation. All rights reserved.</p>
-        </div>
-    </footer>
+    // Render the Dashboard
+    ReactDOM.render(<Dashboard />, document.getElementById('dashboard-app'));
+  </script>
 </body>
 </html>

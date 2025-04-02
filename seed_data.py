@@ -1,528 +1,638 @@
 """
-Seed script for BCBS Values application.
+Seed script to add sample data to the BCBS Values database.
 
-This script populates the database with sample data for development and testing purposes.
+This script creates sample property data, valuations, and agent data
+for demonstration purposes.
 """
-import os
 import random
-import json
+import uuid
 from datetime import datetime, timedelta
-from werkzeug.security import generate_password_hash
-
 from app import app, db
-from models import (
-    User, Property, Valuation, Agent, AgentLog, ETLJob, ApiKey, PropertyImage, MarketTrend
-)
+from models import Property, PropertyValuation, PropertyFeature, ETLJob, Agent, AgentLog
 
 
-def create_users():
-    """Create sample users"""
-    print("Creating sample users...")
+def create_sample_properties(count=25):
+    """Create sample properties with randomized data."""
+    print(f"Creating {count} sample properties...")
     
-    # Admin user
-    admin = User(
-        username="admin",
-        email="admin@bcbsvalues.com",
-        password_hash=generate_password_hash("adminpassword"),
-        first_name="Admin",
-        last_name="User",
-        created_at=datetime.utcnow(),
-        last_login=datetime.utcnow(),
-        is_active=True,
-        is_admin=True
-    )
-    
-    # Regular user
-    user = User(
-        username="user",
-        email="user@bcbsvalues.com",
-        password_hash=generate_password_hash("userpassword"),
-        first_name="Demo",
-        last_name="User",
-        created_at=datetime.utcnow(),
-        last_login=datetime.utcnow(),
-        is_active=True,
-        is_admin=False
-    )
-    
-    db.session.add(admin)
-    db.session.add(user)
-    db.session.commit()
-    
-    print(f"Created {User.query.count()} users")
-    return admin, user
-
-
-def create_properties(owner):
-    """Create sample properties"""
-    print("Creating sample properties...")
-    
-    # Sample property data
-    sample_properties = [
-        {
-            "address": "123 Main St",
-            "city": "Seattle",
-            "state": "WA",
-            "zip_code": "98101",
-            "property_type": "residential",
-            "bedrooms": 3,
-            "bathrooms": 2.5,
-            "square_feet": 2200,
-            "lot_size": 0.25,
-            "year_built": 1998,
-            "last_sold_date": datetime(2020, 5, 15),
-            "last_sold_price": 750000,
-            "latitude": 47.6062,
-            "longitude": -122.3321,
-            "neighborhood": "Downtown",
-            "description": "Beautiful modern home in downtown Seattle with stunning views of the Space Needle.",
-            "features": "Hardwood floors, granite countertops, stainless steel appliances, deck, garden"
-        },
-        {
-            "address": "456 Oak Ave",
-            "city": "Seattle",
-            "state": "WA",
-            "zip_code": "98115",
-            "property_type": "residential",
-            "bedrooms": 4,
-            "bathrooms": 3,
-            "square_feet": 2800,
-            "lot_size": 0.3,
-            "year_built": 2005,
-            "last_sold_date": datetime(2021, 3, 10),
-            "last_sold_price": 950000,
-            "latitude": 47.6792,
-            "longitude": -122.3860,
-            "neighborhood": "Ravenna",
-            "description": "Spacious family home in the desirable Ravenna neighborhood, close to parks and schools.",
-            "features": "Open floor plan, chef's kitchen, master suite, finished basement, large backyard"
-        },
-        {
-            "address": "789 Elm St",
-            "city": "Bellevue",
-            "state": "WA",
-            "zip_code": "98004",
-            "property_type": "residential",
-            "bedrooms": 5,
-            "bathrooms": 4.5,
-            "square_feet": 3500,
-            "lot_size": 0.4,
-            "year_built": 2012,
-            "last_sold_date": datetime(2022, 1, 20),
-            "last_sold_price": 1250000,
-            "latitude": 47.6101,
-            "longitude": -122.2015,
-            "neighborhood": "Downtown Bellevue",
-            "description": "Luxury home in the heart of Bellevue with modern design and high-end finishes.",
-            "features": "Smart home technology, home theater, wine cellar, 3-car garage, rooftop terrace"
-        },
-        {
-            "address": "101 Pine Rd",
-            "city": "Kirkland",
-            "state": "WA",
-            "zip_code": "98033",
-            "property_type": "residential",
-            "bedrooms": 3,
-            "bathrooms": 2,
-            "square_feet": 1800,
-            "lot_size": 0.2,
-            "year_built": 1985,
-            "last_sold_date": datetime(2019, 9, 5),
-            "last_sold_price": 650000,
-            "latitude": 47.6769,
-            "longitude": -122.2060,
-            "neighborhood": "Juanita",
-            "description": "Charming rambler in Juanita with recent updates and a beautiful garden.",
-            "features": "Updated kitchen, new roof, fresh paint, fenced yard, deck"
-        },
-        {
-            "address": "202 Cedar Blvd",
-            "city": "Benton City",
-            "state": "WA",
-            "zip_code": "99320",
-            "property_type": "residential",
-            "bedrooms": 4,
-            "bathrooms": 3,
-            "square_feet": 2500,
-            "lot_size": 0.5,
-            "year_built": 2000,
-            "last_sold_date": datetime(2018, 7, 12),
-            "last_sold_price": 400000,
-            "latitude": 46.2630,
-            "longitude": -119.4872,
-            "neighborhood": "Red Mountain",
-            "description": "Spacious home with stunning views of Red Mountain vineyards in Benton City.",
-            "features": "Vaulted ceilings, gourmet kitchen, covered patio, wine room, 3-car garage"
-        },
-        {
-            "address": "303 Maple Dr",
-            "city": "Richland",
-            "state": "WA",
-            "zip_code": "99352",
-            "property_type": "residential",
-            "bedrooms": 3,
-            "bathrooms": 2.5,
-            "square_feet": 2200,
-            "lot_size": 0.3,
-            "year_built": 1995,
-            "last_sold_date": datetime(2020, 2, 28),
-            "last_sold_price": 380000,
-            "latitude": 46.2853,
-            "longitude": -119.2924,
-            "neighborhood": "Horn Rapids",
-            "description": "Well-maintained home in Horn Rapids with easy access to outdoor recreation.",
-            "features": "Open concept, granite counters, gas fireplace, covered patio, sprinkler system"
-        },
-        {
-            "address": "404 Birch Ln",
-            "city": "Kennewick",
-            "state": "WA",
-            "zip_code": "99336",
-            "property_type": "residential",
-            "bedrooms": 4,
-            "bathrooms": 3,
-            "square_feet": 2800,
-            "lot_size": 0.25,
-            "year_built": 2010,
-            "last_sold_date": datetime(2021, 5, 15),
-            "last_sold_price": 450000,
-            "latitude": 46.2087,
-            "longitude": -119.1651,
-            "neighborhood": "Southridge",
-            "description": "Modern family home in the Southridge area with mountain views.",
-            "features": "Bonus room, large kitchen island, walk-in closets, covered deck, landscaped yard"
-        },
-        {
-            "address": "505 Fir Ave",
-            "city": "Pasco",
-            "state": "WA",
-            "zip_code": "99301",
-            "property_type": "residential",
-            "bedrooms": 3,
-            "bathrooms": 2,
-            "square_feet": 1900,
-            "lot_size": 0.2,
-            "year_built": 2005,
-            "last_sold_date": datetime(2019, 11, 10),
-            "last_sold_price": 320000,
-            "latitude": 46.2395,
-            "longitude": -119.1005,
-            "neighborhood": "Road 68",
-            "description": "Lovely single-level home in the popular Road 68 area of Pasco.",
-            "features": "Tile floors, stainless appliances, fenced yard, garden beds, RV parking"
-        },
-        {
-            "address": "600 Commercial St",
-            "city": "Seattle",
-            "state": "WA",
-            "zip_code": "98109",
-            "property_type": "commercial",
-            "bedrooms": None,
-            "bathrooms": 4,
-            "square_feet": 5000,
-            "lot_size": 0.3,
-            "year_built": 2001,
-            "last_sold_date": datetime(2018, 4, 20),
-            "last_sold_price": 1800000,
-            "latitude": 47.6205,
-            "longitude": -122.3447,
-            "neighborhood": "South Lake Union",
-            "description": "Prime commercial space in South Lake Union with excellent visibility and foot traffic.",
-            "features": "Open floor plan, large windows, modern HVAC, secure entry, parking"
-        },
-        {
-            "address": "700 Industrial Pkwy",
-            "city": "Kennewick",
-            "state": "WA",
-            "zip_code": "99337",
-            "property_type": "industrial",
-            "bedrooms": None,
-            "bathrooms": 2,
-            "square_feet": 12000,
-            "lot_size": 2.5,
-            "year_built": 1995,
-            "last_sold_date": datetime(2017, 8, 15),
-            "last_sold_price": 1200000,
-            "latitude": 46.1841,
-            "longitude": -119.1371,
-            "neighborhood": "Industrial District",
-            "description": "Versatile industrial building with warehouse and office space in Kennewick.",
-            "features": "Loading docks, high ceilings, 3-phase power, climate controlled office, fenced yard"
-        }
+    # Neighborhoods in Benton County, WA
+    neighborhoods = [
+        "Meadow Springs", "South Richland", "Horn Rapids", "West Richland",
+        "Central Kennewick", "Southridge", "Canyon Lakes", "Columbia Park",
+        "Badger Mountain", "Queensgate", "Richland Heights", "Downtown Richland",
+        "Clearwater", "Amon Basin", "Rancho Reata", "Finley", "Rancho Reata",
+        "West Highlands", "Keene", "Inspiration Estates"
     ]
     
+    # Property types
+    property_types = ["Single Family", "Townhouse", "Condo", "Multi-Family", "Vacant Land"]
+    
+    # Street names
+    street_names = [
+        "Oak", "Maple", "Cedar", "Pine", "Elm", "Spruce", "Birch", "Willow",
+        "Cherry", "Sycamore", "Aspen", "Magnolia", "Dogwood", "Juniper",
+        "Walnut", "Chestnut", "Hickory", "Beech", "Cypress", "Redwood"
+    ]
+    
+    # Street suffixes
+    street_suffixes = ["St", "Ave", "Blvd", "Dr", "Ln", "Rd", "Way", "Pl", "Ct"]
+    
+    # Create properties
     properties = []
-    for prop_data in sample_properties:
+    for i in range(count):
+        # Generate a unique property ID
+        property_id = f"BC-{random.randint(10000, 99999)}"
+        
+        # Generate a random address
+        street_num = random.randint(100, 9999)
+        street_name = random.choice(street_names)
+        street_suffix = random.choice(street_suffixes)
+        address = f"{street_num} {street_name} {street_suffix}"
+        
+        # Randomly select city (most are in Richland or Kennewick)
+        city_weights = [0.45, 0.45, 0.05, 0.05]  # Richland, Kennewick, West Richland, Prosser
+        city = random.choices(
+            ["Richland", "Kennewick", "West Richland", "Prosser"],
+            weights=city_weights
+        )[0]
+        
+        # Zip codes for Benton County cities
+        zip_codes = {
+            "Richland": ["99352", "99354"],
+            "Kennewick": ["99336", "99337", "99338"],
+            "West Richland": ["99353"],
+            "Prosser": ["99350"]
+        }
+        zip_code = random.choice(zip_codes[city])
+        
+        # Randomize property details
+        neighborhood = random.choice(neighborhoods)
+        property_type = random.choice(property_types)
+        year_built = random.randint(1950, 2023) if property_type != "Vacant Land" else None
+        bedrooms = random.randint(2, 5) if property_type not in ["Vacant Land", "Condo"] else (1 if property_type == "Condo" else 0)
+        bathrooms = round(random.uniform(1.0, 4.0), 1) if property_type != "Vacant Land" else 0
+        square_feet = random.randint(1000, 4000) if property_type != "Vacant Land" else 0
+        lot_size = random.randint(3500, 25000)
+        
+        # Created dates between 1-12 months ago
+        days_ago = random.randint(30, 365)
+        created_at = datetime.utcnow() - timedelta(days=days_ago)
+        
+        # Updated dates between creation and now
+        update_days_ago = random.randint(0, days_ago - 1)
+        updated_at = datetime.utcnow() - timedelta(days=update_days_ago)
+        
+        # Last sale date (if any)
+        if random.random() > 0.3:  # 70% chance to have a last sale date
+            sale_days_ago = random.randint(days_ago, days_ago + 1095)  # Up to 3 years before creation
+            last_sale_date = datetime.utcnow() - timedelta(days=sale_days_ago)
+            last_sale_price = random.randint(250000, 800000)
+        else:
+            last_sale_date = None
+            last_sale_price = None
+        
+        # Create the property
         property = Property(
-            address=prop_data["address"],
-            city=prop_data["city"],
-            state=prop_data["state"],
-            zip_code=prop_data["zip_code"],
-            property_type=prop_data["property_type"],
-            bedrooms=prop_data["bedrooms"],
-            bathrooms=prop_data["bathrooms"],
-            square_feet=prop_data["square_feet"],
-            lot_size=prop_data["lot_size"],
-            year_built=prop_data["year_built"],
-            last_sold_date=prop_data["last_sold_date"],
-            last_sold_price=prop_data["last_sold_price"],
-            latitude=prop_data["latitude"],
-            longitude=prop_data["longitude"],
-            neighborhood=prop_data["neighborhood"],
-            description=prop_data["description"],
-            features=prop_data["features"],
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
-            owner_id=owner.id
+            property_id=property_id,
+            address=address,
+            city=city,
+            state="WA",
+            zip_code=zip_code,
+            neighborhood=neighborhood,
+            property_type=property_type,
+            year_built=year_built,
+            bedrooms=bedrooms,
+            bathrooms=bathrooms,
+            square_feet=square_feet,
+            lot_size=lot_size,
+            last_sale_date=last_sale_date,
+            last_sale_price=last_sale_price,
+            created_at=created_at,
+            updated_at=updated_at
         )
-        db.session.add(property)
+        
         properties.append(property)
     
+    # Save properties to database
+    db.session.add_all(properties)
     db.session.commit()
-    print(f"Created {len(properties)} properties")
+    
     return properties
 
 
-def create_agents():
-    """Create sample valuation agents"""
-    print("Creating sample agents...")
+def create_sample_valuations(properties):
+    """Create sample property valuations for given properties."""
+    print(f"Creating valuations for {len(properties)} properties...")
     
-    agent_types = ['regression', 'lightgbm', 'xgboost', 'ensemble', 'gis']
-    statuses = ['idle', 'processing', 'idle', 'idle', 'error']
-    
-    agents = []
-    for i, agent_type in enumerate(agent_types):
-        agent = Agent(
-            name=f"{agent_type.capitalize()} Agent",
-            agent_type=agent_type,
-            description=f"Agent for {agent_type} valuation method",
-            status=statuses[i],
-            model_version=f"1.{random.randint(0, 9)}.{random.randint(0, 9)}",
-            created_at=datetime.utcnow() - timedelta(days=random.randint(10, 100)),
-            last_active=datetime.utcnow() - timedelta(minutes=random.randint(5, 120)),
-            processing_count=random.randint(100, 1000),
-            success_count=random.randint(90, 950),
-            error_count=random.randint(0, 50),
-            average_confidence=random.uniform(0.7, 0.95),
-            configuration=json.dumps({
-                "parameters": {
-                    "learning_rate": 0.01,
-                    "max_depth": 6,
-                    "n_estimators": 100
-                }
-            })
-        )
-        db.session.add(agent)
-        agents.append(agent)
-    
-    db.session.commit()
-    
-    # Create some agent logs
-    for agent in agents:
-        log_levels = ['info', 'warning', 'error', 'debug']
-        for _ in range(random.randint(3, 10)):
-            log_level = random.choice(log_levels)
-            log = AgentLog(
-                agent_id=agent.id,
-                log_level=log_level,
-                message=f"Sample {log_level} log message for {agent.name}",
-                timestamp=datetime.utcnow() - timedelta(minutes=random.randint(5, 120)),
-                details=json.dumps({
-                    "request_id": f"req-{random.randint(1000, 9999)}",
-                    "property_id": random.randint(1, 10),
-                    "execution_time": f"{random.uniform(0.1, 5.0):.2f} seconds"
-                })
-            )
-            db.session.add(log)
-    
-    db.session.commit()
-    print(f"Created {len(agents)} agents with logs")
-    return agents
-
-
-def create_valuations(properties, user, agents):
-    """Create sample property valuations"""
-    print("Creating sample valuations...")
+    # Valuation methods
+    methods = [
+        "Linear Regression", "Random Forest", "Gradient Boosting", 
+        "Ridge Regression", "Elastic Net"
+    ]
     
     valuations = []
     for property in properties:
-        # Create 1-3 valuations for each property
-        for _ in range(random.randint(1, 3)):
-            agent = random.choice(agents)
+        # Number of valuations for this property (1-3)
+        num_valuations = random.randint(1, 3)
+        
+        for i in range(num_valuations):
+            # Valuation date
+            if i == 0:
+                # Most recent valuation (within last 30 days)
+                days_ago = random.randint(0, 30)
+            else:
+                # Older valuations (30-365 days ago)
+                days_ago = random.randint(30 + (i * 30), min(365, 30 + (i * 120)))
             
-            # Base value around the last sold price with some variation
-            base_value = property.last_sold_price if property.last_sold_price else 500000
-            estimated_value = base_value * random.uniform(0.9, 1.2)
+            valuation_date = datetime.utcnow() - timedelta(days=days_ago)
             
-            valuation = Valuation(
+            # Base estimated value
+            if property.property_type == "Vacant Land":
+                base_value = random.randint(50000, 300000)
+            elif property.property_type == "Condo":
+                base_value = random.randint(180000, 400000)
+            elif property.property_type == "Townhouse":
+                base_value = random.randint(250000, 450000)
+            elif property.property_type == "Multi-Family":
+                base_value = random.randint(400000, 900000)
+            else:  # Single Family
+                base_value = random.randint(300000, 800000)
+            
+            # Adjust for property attributes
+            if property.square_feet:
+                # $150-250 per square foot
+                sq_ft_value = property.square_feet * random.uniform(150, 250)
+                # Weight the base_value 40% and sq_ft_value 60%
+                estimated_value = (base_value * 0.4) + (sq_ft_value * 0.6)
+            else:
+                estimated_value = base_value
+            
+            # Add some randomness to make it look realistic
+            estimated_value = estimated_value * random.uniform(0.9, 1.1)
+            
+            # Each valuation is different (increase of 1-5% for newer valuations)
+            if i > 0:
+                estimated_value = estimated_value * (1 - (random.uniform(0.01, 0.05) * i))
+            
+            # Round to nearest 100
+            estimated_value = round(estimated_value / 100) * 100
+            
+            # Valuation method
+            valuation_method = random.choice(methods)
+            
+            # Confidence score (0.7 - 0.98)
+            confidence_score = random.uniform(0.7, 0.98)
+            
+            # Sample inputs used for valuation
+            inputs = {
+                "square_feet": property.square_feet,
+                "bedrooms": property.bedrooms,
+                "bathrooms": property.bathrooms,
+                "year_built": property.year_built,
+                "lot_size": property.lot_size,
+                "neighborhood_factor": random.uniform(0.9, 1.2),
+                "location_score": random.uniform(60, 95),
+                "market_trend": random.uniform(-0.02, 0.08)
+            }
+            
+            # Create the valuation
+            valuation = PropertyValuation(
                 property_id=property.id,
-                user_id=user.id,
-                agent_id=agent.id,
                 estimated_value=estimated_value,
-                confidence_score=random.uniform(0.6, 0.98),
-                valuation_date=datetime.utcnow() - timedelta(days=random.randint(0, 90)),
-                valuation_method=agent.agent_type,
-                model_version=agent.model_version,
-                adjusted_value=estimated_value * random.uniform(0.95, 1.05),
-                adjustment_factors=json.dumps({
-                    "location": random.uniform(-0.05, 0.1),
-                    "condition": random.uniform(-0.03, 0.05),
-                    "market_trend": random.uniform(-0.02, 0.08),
-                    "seasonal": random.uniform(-0.01, 0.02)
-                }),
-                comparable_properties=json.dumps([
-                    {"id": random.randint(1, 10), "address": f"{random.randint(100, 999)} Sample St", "similarity": random.uniform(0.7, 0.95)},
-                    {"id": random.randint(1, 10), "address": f"{random.randint(100, 999)} Example Ave", "similarity": random.uniform(0.7, 0.95)},
-                    {"id": random.randint(1, 10), "address": f"{random.randint(100, 999)} Test Blvd", "similarity": random.uniform(0.7, 0.95)}
-                ]),
-                metrics=json.dumps({
-                    "rmse": random.uniform(10000, 50000),
-                    "mae": random.uniform(8000, 35000),
-                    "r2": random.uniform(0.65, 0.9)
-                }),
-                notes=f"Sample valuation created by {agent.name}"
+                valuation_date=valuation_date,
+                valuation_method=valuation_method,
+                confidence_score=confidence_score,
+                inputs=inputs,
+                created_at=valuation_date
             )
-            db.session.add(valuation)
+            
             valuations.append(valuation)
     
+    # Save valuations to database
+    db.session.add_all(valuations)
     db.session.commit()
-    print(f"Created {len(valuations)} valuations")
+    
     return valuations
 
 
-def create_market_trends():
-    """Create sample market trend data"""
-    print("Creating sample market trends...")
+def create_sample_property_features(properties):
+    """Create sample property features for given properties."""
+    print(f"Creating features for {len(properties)} properties...")
     
-    # Sample neighborhoods
-    neighborhoods = [
-        {"name": "Downtown", "city": "Seattle", "state": "WA"},
-        {"name": "Ravenna", "city": "Seattle", "state": "WA"},
-        {"name": "Downtown Bellevue", "city": "Bellevue", "state": "WA"},
-        {"name": "Juanita", "city": "Kirkland", "state": "WA"},
-        {"name": "Red Mountain", "city": "Benton City", "state": "WA"},
-        {"name": "Horn Rapids", "city": "Richland", "state": "WA"},
-        {"name": "Southridge", "city": "Kennewick", "state": "WA"},
-        {"name": "Road 68", "city": "Pasco", "state": "WA"}
-    ]
-    
-    # Create trends for the last 6 months
-    trends = []
-    for month in range(6):
-        trend_date = datetime.now().replace(day=1) - timedelta(days=30 * month)
+    features = []
+    for property in properties:
+        # Skip features for vacant land
+        if property.property_type == "Vacant Land":
+            continue
         
-        for neighborhood in neighborhoods:
-            trend = MarketTrend(
-                neighborhood=neighborhood["name"],
-                city=neighborhood["city"],
-                state=neighborhood["state"],
-                trend_date=trend_date.date(),
-                median_price=random.randint(350000, 1200000),
-                average_price=random.randint(400000, 1300000),
-                price_per_sqft=random.randint(300, 800),
-                inventory_count=random.randint(5, 50),
-                days_on_market=random.randint(10, 60),
-                month_over_month=random.uniform(-0.03, 0.05),
-                year_over_year=random.uniform(0.02, 0.15),
-                property_type="residential"
+        # Common features
+        feature_list = []
+        
+        # Add features based on property type
+        if property.property_type in ["Single Family", "Townhouse"]:
+            # Building features
+            if random.random() > 0.5:
+                feature_list.append(("Garage Type", random.choice(["Attached", "Detached", "None"])))
+            
+            if random.random() > 0.3:
+                feature_list.append(("Garage Spaces", str(random.randint(1, 3))))
+            
+            if random.random() > 0.6:
+                feature_list.append(("Basement", random.choice(["Finished", "Unfinished", "Partial", "None"])))
+            
+            # Exterior features
+            if random.random() > 0.5:
+                feature_list.append(("Exterior Material", random.choice(["Vinyl", "Wood", "Brick", "Stucco", "Fiber Cement"])))
+            
+            if random.random() > 0.7:
+                feature_list.append(("Roof Type", random.choice(["Asphalt Shingle", "Metal", "Tile", "Slate"])))
+            
+            # Interior features
+            if random.random() > 0.4:
+                feature_list.append(("Heating Type", random.choice(["Forced Air", "Heat Pump", "Electric", "Gas"])))
+            
+            if random.random() > 0.6:
+                feature_list.append(("Cooling Type", random.choice(["Central Air", "Heat Pump", "None"])))
+            
+            # Lot features
+            if random.random() > 0.5:
+                feature_list.append(("Fence", random.choice(["Full", "Partial", "None"])))
+            
+            if random.random() > 0.7:
+                feature_list.append(("Pool", random.choice(["In-ground", "Above-ground", "None"])))
+            
+            if random.random() > 0.7:
+                feature_list.append(("View", random.choice(["Mountain", "Water", "City", "None"])))
+        
+        elif property.property_type == "Condo":
+            # Condo-specific features
+            if random.random() > 0.3:
+                feature_list.append(("Floor", str(random.randint(1, 20))))
+            
+            if random.random() > 0.5:
+                feature_list.append(("Unit Type", random.choice(["Corner", "Interior", "End"])))
+            
+            if random.random() > 0.6:
+                feature_list.append(("Parking", random.choice(["Assigned", "Garage", "Street", "None"])))
+            
+            if random.random() > 0.7:
+                feature_list.append(("Elevator", random.choice(["Yes", "No"])))
+            
+            if random.random() > 0.5:
+                feature_list.append(("HOA Fee", f"${random.randint(150, 700)}/month"))
+        
+        elif property.property_type == "Multi-Family":
+            # Multi-family specific features
+            if random.random() > 0.3:
+                feature_list.append(("Units", str(random.randint(2, 8))))
+            
+            if random.random() > 0.5:
+                feature_list.append(("Unit Mix", random.choice(["All 1 BR", "1-2 BR Mix", "Various Sizes"])))
+            
+            if random.random() > 0.6:
+                feature_list.append(("Parking", random.choice(["Assigned", "Open", "Street", "Garage"])))
+            
+            if random.random() > 0.7:
+                feature_list.append(("Laundry", random.choice(["In-unit", "Common Area", "Hookups Only"])))
+        
+        # Create the features
+        for name, value in feature_list:
+            feature = PropertyFeature(
+                property_id=property.id,
+                feature_name=name,
+                feature_value=value,
+                created_at=property.created_at
             )
-            db.session.add(trend)
-            trends.append(trend)
+            features.append(feature)
     
+    # Save features to database
+    db.session.add_all(features)
     db.session.commit()
-    print(f"Created {len(trends)} market trends")
-    return trends
+    
+    return features
 
 
-def create_etl_jobs():
-    """Create sample ETL job records"""
+def create_sample_etl_jobs():
+    """Create sample ETL job data."""
     print("Creating sample ETL jobs...")
     
-    job_types = ['import', 'transform', 'export', 'validate']
-    sources = ['mls', 'tax_records', 'census_data', 'zillow', 'redfin']
-    statuses = ['completed', 'running', 'failed', 'pending']
+    # ETL job types
+    job_types = ["Extract", "Transform", "Load", "Full ETL"]
     
+    # Data sources
+    sources = ["MLS", "NARRPR", "PACS"]
+    
+    # Job names
+    job_names = [
+        "MLS Data Import", "NARRPR Property Data Sync", "PACS Assessment Import",
+        "Property Geocoding", "School District Assignment", "Neighborhood Mapping"
+    ]
+    
+    # Status options
+    statuses = ["completed", "running", "failed"]
+    # Weight toward completed (70% completed, 20% running, 10% failed)
+    status_weights = [0.7, 0.2, 0.1]
+    
+    # Create ETL jobs
     jobs = []
-    for i in range(10):
+    for i in range(20):  # Create 20 sample ETL jobs
+        # Job details
+        job_name = random.choice(job_names)
         job_type = random.choice(job_types)
-        status = random.choice(statuses)
-        start_time = datetime.utcnow() - timedelta(days=random.randint(0, 30))
+        source = random.choice(sources) if random.random() > 0.3 else None
         
-        total_records = random.randint(1000, 10000) if status != 'pending' else None
-        records_processed = random.randint(0, total_records) if total_records and status == 'running' else \
-                           total_records if status == 'completed' else \
-                           random.randint(0, total_records // 2) if status == 'failed' else 0
+        # Timing
+        # Most recent jobs in the last 14 days
+        days_ago = random.randint(0, 14) 
+        start_time = datetime.utcnow() - timedelta(days=days_ago, hours=random.randint(0, 23))
         
-        end_time = start_time + timedelta(minutes=random.randint(10, 120)) if status in ['completed', 'failed'] else None
+        # Status
+        status = random.choices(statuses, weights=status_weights)[0]
         
+        # For completed or failed jobs, add an end time
+        if status != "running":
+            # Job took between 5 minutes and 4 hours
+            minutes_taken = random.randint(5, 240)
+            end_time = start_time + timedelta(minutes=minutes_taken)
+        else:
+            end_time = None
+        
+        # For completed jobs, add records processed
+        if status == "completed":
+            records_processed = random.randint(50, 5000)
+            records_failed = random.randint(0, int(records_processed * 0.05))  # Up to 5% failed
+        elif status == "running":
+            records_processed = random.randint(10, 1000)
+            records_failed = random.randint(0, int(records_processed * 0.02))
+        else:  # failed
+            records_processed = random.randint(0, 500)
+            records_failed = random.randint(1, 100)
+        
+        # Error message for failed jobs
+        error_message = None
+        if status == "failed":
+            error_messages = [
+                "Connection timeout to data source",
+                "Invalid API response format",
+                "Authentication failed",
+                "Malformed data in source file",
+                "Duplicate entry violation",
+                "Memory allocation error",
+                "Network connection lost"
+            ]
+            error_message = random.choice(error_messages)
+        
+        # Create the ETL job
         job = ETLJob(
+            job_name=job_name,
             job_type=job_type,
-            source=random.choice(sources),
-            status=status,
+            source=source,
             start_time=start_time,
             end_time=end_time,
+            status=status,
             records_processed=records_processed,
-            total_records=total_records,
-            success_count=records_processed if status == 'completed' else random.randint(0, records_processed) if records_processed else 0,
-            error_count=0 if status == 'completed' else random.randint(1, 100) if status == 'failed' else random.randint(0, 10),
-            error_details=json.dumps({"error": "Sample error message", "location": "sample_file.py:123"}) if status == 'failed' else None,
-            configuration=json.dumps({
-                "batch_size": 100,
-                "timeout": 3600,
-                "retry_count": 3
-            })
+            records_failed=records_failed,
+            error_message=error_message
         )
-        db.session.add(job)
+        
         jobs.append(job)
     
+    # Save ETL jobs to database
+    db.session.add_all(jobs)
     db.session.commit()
-    print(f"Created {len(jobs)} ETL jobs")
+    
     return jobs
 
 
-def create_api_keys(user):
-    """Create sample API keys"""
-    print("Creating sample API keys...")
+def create_sample_agents():
+    """Create sample agent data."""
+    print("Creating sample agents...")
     
-    # Create one active API key for the user
-    api_key = ApiKey(
-        key="sample_api_key_for_testing_only",
-        name="Test API Key",
-        user_id=user.id,
-        created_at=datetime.utcnow(),
-        expires_at=datetime.utcnow() + timedelta(days=365),
-        last_used=datetime.utcnow() - timedelta(days=1),
-        is_active=True,
-        permissions="read"
-    )
+    # Agent types
+    agent_types = [
+        "DataCollector", "PropertyAnalyzer", "ValuationEngine",
+        "MarketTrends", "SpatialAnalysis", "ETLManager"
+    ]
     
-    db.session.add(api_key)
+    # Create agent records
+    agents = []
+    for agent_type in agent_types:
+        # Create a unique agent ID
+        agent_id = str(uuid.uuid4())
+        
+        # Generate agent name based on type
+        if agent_type == "DataCollector":
+            agent_name = "BCBS Data Collector"
+        elif agent_type == "PropertyAnalyzer":
+            agent_name = "BCBS Property Analyzer"
+        elif agent_type == "ValuationEngine":
+            agent_name = "BCBS Valuation Engine"
+        elif agent_type == "MarketTrends":
+            agent_name = "BCBS Market Trend Agent"
+        elif agent_type == "SpatialAnalysis":
+            agent_name = "BCBS GIS Analysis Agent"
+        else:
+            agent_name = "BCBS ETL Manager"
+        
+        # Randomize status (biased toward idle)
+        status_choices = ["idle", "running", "error"]
+        status_weights = [0.6, 0.3, 0.1]
+        status = random.choices(status_choices, weights=status_weights)[0]
+        
+        # Last heartbeat
+        if status == "idle" or status == "running":
+            # Recent heartbeat for active agents
+            minutes_ago = random.randint(0, 30)
+            last_heartbeat = datetime.utcnow() - timedelta(minutes=minutes_ago)
+        else:
+            # Older heartbeat for error agents
+            hours_ago = random.randint(2, 48)
+            last_heartbeat = datetime.utcnow() - timedelta(hours=hours_ago)
+        
+        # Current task for running agents
+        current_task = None
+        if status == "running":
+            tasks = [
+                "Fetching MLS data", "Processing property records",
+                "Analyzing market trends", "Running valuation models",
+                "Updating spatial data", "Assigning neighborhood scores"
+            ]
+            current_task = random.choice(tasks)
+        
+        # Queue size
+        queue_size = 0
+        if status == "running":
+            queue_size = random.randint(1, 10)
+        elif status == "idle":
+            # Occasionally idle agents have a queue
+            if random.random() > 0.7:
+                queue_size = random.randint(1, 3)
+        
+        # Success rate
+        if status == "error":
+            success_rate = random.uniform(70.0, 90.0)
+        else:
+            success_rate = random.uniform(95.0, 100.0)
+        
+        # Error count
+        if status == "error":
+            error_count = random.randint(3, 20)
+        else:
+            error_count = random.randint(0, 2)
+        
+        # Created date
+        days_ago = random.randint(30, 365)
+        created_at = datetime.utcnow() - timedelta(days=days_ago)
+        
+        # Updated date
+        if status == "running" or status == "idle":
+            updated_at = last_heartbeat
+        else:
+            updated_at = datetime.utcnow() - timedelta(hours=random.randint(2, 48))
+        
+        # Create the agent
+        agent = Agent(
+            agent_id=agent_id,
+            agent_name=agent_name,
+            agent_type=agent_type,
+            status=status,
+            last_heartbeat=last_heartbeat,
+            current_task=current_task,
+            queue_size=queue_size,
+            success_rate=success_rate,
+            error_count=error_count,
+            created_at=created_at,
+            updated_at=updated_at
+        )
+        
+        agents.append(agent)
+    
+    # Save agents to database
+    db.session.add_all(agents)
     db.session.commit()
-    print(f"Created sample API key")
-    return api_key
+    
+    return agents
 
 
-def seed_database():
-    """Main function to seed the database with sample data"""
-    print("Starting database seeding...")
+def create_sample_agent_logs(agents):
+    """Create sample agent logs."""
+    print(f"Creating logs for {len(agents)} agents...")
     
-    # Check if database already has data
-    if User.query.count() > 0:
-        print("Database already has data. Skipping seeding.")
-        return
+    logs = []
+    for agent in agents:
+        # Number of logs for this agent (5-20)
+        num_logs = random.randint(5, 20)
+        
+        for i in range(num_logs):
+            # Log timestamp
+            hours_ago = random.randint(0, 24 * 14)  # Up to 14 days ago
+            timestamp = datetime.utcnow() - timedelta(hours=hours_ago)
+            
+            # Log level
+            levels = ["info", "warning", "error", "success"]
+            level_weights = [0.7, 0.1, 0.05, 0.15]  # Mostly info logs
+            level = random.choices(levels, weights=level_weights)[0]
+            
+            # Log message based on agent type and level
+            if level == "info":
+                if agent.agent_type == "DataCollector":
+                    messages = [
+                        "Starting data collection from MLS",
+                        "Processing property batch",
+                        "Downloaded 214 new property records",
+                        "Connecting to NARRPR API",
+                        "Synchronizing property data"
+                    ]
+                elif agent.agent_type == "PropertyAnalyzer":
+                    messages = [
+                        "Analyzing property features",
+                        "Computing comparables for property BC-34567",
+                        "Updating property metrics",
+                        "Classifying property types",
+                        "Generating property summaries"
+                    ]
+                elif agent.agent_type == "ValuationEngine":
+                    messages = [
+                        "Starting valuation cycle",
+                        "Training model with latest data",
+                        "Loaded 5 valuation models",
+                        "Executing batch valuations",
+                        "Model performance: RMSE = 24563.21"
+                    ]
+                else:
+                    messages = [
+                        "Agent initialized",
+                        "Checking for new tasks",
+                        "Processing queue items",
+                        "Idle, waiting for tasks",
+                        "Heartbeat sent"
+                    ]
+            elif level == "warning":
+                messages = [
+                    "API rate limit approaching",
+                    "Slow response from data source",
+                    "Missing data for property BC-45678",
+                    "Model convergence taking longer than expected",
+                    "High memory usage detected"
+                ]
+            elif level == "error":
+                messages = [
+                    "Connection failed after 3 retries",
+                    "API authentication error",
+                    "Database query timeout",
+                    "Failed to process property record",
+                    "Model training failed: insufficient data"
+                ]
+            else:  # success
+                messages = [
+                    "Successfully processed 125 properties",
+                    "Valuation batch completed",
+                    "Model training finished with 0.92 accuracy",
+                    "ETL process completed successfully",
+                    "All tasks in queue completed"
+                ]
+            
+            message = random.choice(messages)
+            
+            # Create the log
+            log = AgentLog(
+                agent_id=agent.id,
+                level=level,
+                message=message,
+                timestamp=timestamp
+            )
+            
+            logs.append(log)
     
-    # Create sample data
-    admin, user = create_users()
-    properties = create_properties(user)
-    agents = create_agents()
-    valuations = create_valuations(properties, user, agents)
-    market_trends = create_market_trends()
-    etl_jobs = create_etl_jobs()
-    api_key = create_api_keys(user)
+    # Save logs to database
+    db.session.add_all(logs)
+    db.session.commit()
     
-    print("Database seeding completed successfully!")
+    return logs
+
+
+def main():
+    """Main function to create all sample data."""
+    with app.app_context():
+        # Check if we already have data
+        existing_properties = Property.query.count()
+        if existing_properties > 0:
+            print(f"Database already contains {existing_properties} properties.")
+            confirm = input("Do you want to proceed and add more sample data? (y/n): ")
+            if confirm.lower() != 'y':
+                print("Exiting without changes.")
+                return
+        
+        # Create the sample data
+        properties = create_sample_properties(25)
+        create_sample_valuations(properties)
+        create_sample_property_features(properties)
+        create_sample_etl_jobs()
+        agents = create_sample_agents()
+        create_sample_agent_logs(agents)
+        
+        print("Sample data creation complete!")
 
 
 if __name__ == "__main__":
-    with app.app_context():
-        seed_database()
+    main()

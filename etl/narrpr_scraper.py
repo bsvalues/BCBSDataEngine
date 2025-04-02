@@ -8,7 +8,6 @@ import time
 import json
 import logging
 import random
-import platform
 import pandas as pd
 from datetime import datetime
 
@@ -207,36 +206,10 @@ class NARRPRScraper:
         driver = None
         
         try:
-            # Setup driver logs
-            log_path = os.path.join(os.getcwd(), "selenium_narrpr.log")
-            chrome_options.add_argument(f"--log-path={log_path}")
-            chrome_options.add_argument("--log-level=0")  # INFO level
-            
-            # Initialize the driver with detailed exception handling
+            # Initialize the driver
             logger.info("Initializing Chrome driver for NARRPR scraping")
-            try:
-                webdriver_path = ChromeDriverManager().install()
-                logger.debug(f"ChromeDriver installed at: {webdriver_path}")
-                service = Service(webdriver_path)
-                driver = selenium.webdriver.Chrome(service=service, options=chrome_options)
-                logger.info("Chrome WebDriver successfully initialized")
-            except Exception as driver_error:
-                error_msg = f"Failed to initialize Chrome WebDriver: {str(driver_error)}"
-                logger.critical(error_msg, exc_info=True)
-                
-                # Try to get more detailed error information
-                error_details = {
-                    "error_type": type(driver_error).__name__,
-                    "error_message": str(driver_error),
-                    "chrome_options": chrome_options.arguments,
-                    "system_info": {
-                        "platform": platform.platform(),
-                        "python_version": platform.python_version(),
-                        "machine": platform.machine()
-                    }
-                }
-                logger.error(f"WebDriver error details: {json.dumps(error_details)}")
-                raise ValueError(f"WebDriver initialization failed: {str(driver_error)}") from driver_error
+            service = Service(ChromeDriverManager().install())
+            driver = selenium.webdriver.Chrome(service=service, options=chrome_options)
             
             # Navigate to NARRPR login page
             login_url = "https://www.narrpr.com/login"

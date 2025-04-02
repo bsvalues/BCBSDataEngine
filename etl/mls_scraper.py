@@ -117,91 +117,16 @@ class MLSScraper:
             params (dict): Parameters for the API request
             
         Returns:
-            dict: JSON response from the API or None if request failed
-            
-        Raises:
-            ConnectionError: When network connectivity issues occur after retries
-            TimeoutError: When API request takes too long to complete after retries
-            ValueError: For authentication or data format issues
+            dict: JSON response from the API
         """
         url = f"{self.base_url}/{endpoint}"
-        max_retries = 3
-        retry_count = 0
-        retry_delay = 2  # Initial delay in seconds
         
-        while retry_count < max_retries:
-            try:
-                logger.debug(f"Making API request to {url} (attempt {retry_count + 1}/{max_retries})")
-                response = requests.get(url, params=params, timeout=30)
-                
-                # Check for specific HTTP status codes and handle accordingly
-                if response.status_code == 401 or response.status_code == 403:
-                    error_msg = f"Authentication failed (status code: {response.status_code}). Verify MLS_API_KEY is valid."
-                    logger.error(error_msg)
-                    raise ValueError(error_msg)
-                
-                elif response.status_code == 404:
-                    logger.warning(f"Endpoint not found: {url}")
-                    return None
-                
-                elif response.status_code == 429:
-                    retry_count += 1
-                    wait_time = retry_delay * retry_count
-                    logger.warning(f"Rate limit exceeded (429). Waiting {wait_time}s before retry...")
-                    time.sleep(wait_time)
-                    continue
-                
-                # For all other non-success status codes
-                response.raise_for_status()
-                
-                # Parse JSON response
-                try:
-                    data = response.json()
-                    logger.debug(f"Successfully retrieved data from {endpoint}")
-                    return data
-                except ValueError as json_err:
-                    error_msg = f"Invalid JSON response from MLS API: {str(json_err)}"
-                    logger.error(error_msg)
-                    # Include response content for debugging (truncated if too long)
-                    content_preview = str(response.content)[:200] + "..." if len(response.content) > 200 else str(response.content)
-                    logger.debug(f"Response content preview: {content_preview}")
-                    return None
-                    
-            except requests.exceptions.Timeout:
-                retry_count += 1
-                wait_time = retry_delay * retry_count
-                logger.warning(f"Request timed out. Retrying in {wait_time}s ({retry_count}/{max_retries})...")
-                time.sleep(wait_time)
-                
-            except requests.exceptions.ConnectionError as e:
-                retry_count += 1
-                wait_time = retry_delay * retry_count
-                logger.warning(f"Connection error: {str(e)}. Retrying in {wait_time}s ({retry_count}/{max_retries})...")
-                time.sleep(wait_time)
-            
-            except requests.exceptions.RequestException as e:
-                # Log the error with traceback for debugging
-                logger.error(f"API request to MLS failed: {str(e)}", exc_info=True)
-                
-                # For certain severe errors, don't retry
-                if "SSLError" in str(e) or "ProxyError" in str(e):
-                    logger.error(f"Severe connection error, not retrying: {str(e)}")
-                    if "SSLError" in str(e):
-                        error_msg = "SSL certificate verification failed. Check network or proxy settings."
-                    else:
-                        error_msg = "Proxy error occurred. Check network configuration."
-                    logger.error(error_msg)
-                    return None
-                
-                # For other errors, retry
-                retry_count += 1
-                wait_time = retry_delay * retry_count
-                logger.warning(f"Retrying in {wait_time}s ({retry_count}/{max_retries})...")
-                time.sleep(wait_time)
-        
-        # If we've exhausted all retries, log a critical error
-        if retry_count >= max_retries:
-            logger.critical(f"Failed to connect to MLS API after {max_retries} attempts. Check connectivity and API status.")
+        try:
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"API request to MLS failed: {str(e)}")
             return None
     
     def transform_and_load(self, data, db):

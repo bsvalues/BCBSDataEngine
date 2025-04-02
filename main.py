@@ -1,7 +1,7 @@
-import app
+"""
+Main entry point for the BCBS Values application.
+"""
+from app import app
 
 if __name__ == "__main__":
-    # This file is used to start the BCBS Values Platform dashboard
-    # It will be called by the workflow task
-    print("Starting BCBS Values Platform Dashboard...")
-    print("===========================================")
+    app.run(host="0.0.0.0", port=5002, debug=True)
