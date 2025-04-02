@@ -1,142 +1,134 @@
-name: BCBS Values CI
+name: BCBS Values CI/CD Pipeline
 
-# Defines when this workflow will run
+# Trigger the workflow on pushes to main branch and pull requests to any branch
 on:
   push:
-    branches: [ main ]  # Run on pushes to main branch
+    branches: [ main ]
   pull_request:
-    branches: [ main ]  # Run on PRs targeting main branch
-  workflow_dispatch:    # Allow manual triggering of the workflow
+    branches: [ '*' ]
 
 jobs:
   test:
-    name: Run Tests
-    runs-on: ubuntu-latest  # Use the latest Ubuntu runner
-
-    services:
-      # Set up PostgreSQL service container
-      postgres:
-        image: postgres:14
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: test_bcbs
-        ports:
-          - 5432:5432
-        # Set health checks to wait until postgres has started
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
+    # Run on the latest Ubuntu runner
+    runs-on: ubuntu-latest
+    
+    # Define environment variables available to all steps
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      # Default database URL for tests (will be overridden by test fixtures)
+      DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+    
     steps:
       # Check out the repository code
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v3
-
-      # Set up Python environment
-      - name: Set up Python
+      
+      # Set up Python environment with specified version
+      - name: Set up Python 3.11
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'  # Use the latest stable Python version
-          cache: 'pip'  # Cache pip dependencies
-
-      # Install dependencies
-      - name: Install dependencies
+          python-version: '3.11'
+          cache: 'pip' # Cache pip dependencies for faster builds
+      
+      # Install system dependencies required for some Python packages
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpq-dev postgresql-client libgomp1
+          # libgomp1 is required for LightGBM
+      
+      # Install Python dependencies from requirements.txt
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          # Install development dependencies for testing
-          pip install pytest pytest-cov
-
-      # Set up environment variables
-      - name: Set up environment variables
-        # Use GitHub Secrets to set environment variables securely
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_bcbs
-          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_bcbs
-          SESSION_SECRET: ${{ secrets.SESSION_SECRET || 'test-session-secret' }}
-          NARRPR_USERNAME: ${{ secrets.NARRPR_USERNAME || 'test-username' }}
-          NARRPR_PASSWORD: ${{ secrets.NARRPR_PASSWORD || 'test-password' }}
-          PACS_API_KEY: ${{ secrets.PACS_API_KEY || 'test-api-key' }}
-          BCBS_VALUES_API_KEY: ${{ secrets.BCBS_VALUES_API_KEY || 'test-api-key' }}
-        run: |
-          echo "Environment variables set for testing"
-          # Create database tables if needed
-          python -c "from models import Base; from sqlalchemy import create_engine; engine = create_engine('$DATABASE_URL'); Base.metadata.create_all(engine)"
-
-      # Run unit and integration tests with pytest
-      - name: Run tests
-        run: |
-          # Run all tests with coverage report
-          python -m pytest tests/ -v --cov=. --cov-report=xml
-
-      # Upload test coverage report as artifact
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v3
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install -e .; fi
+          # Install additional testing dependencies
+          pip install pytest pytest-cov coverage
+      
+      # Set up PostgreSQL service container for integration tests
+      - name: Set up PostgreSQL
+        uses: harmon758/postgresql-action@v1
         with:
-          name: coverage-report
-          path: coverage.xml
-          
-      # Run integration tests specifically (including test_integration_advanced.py)
+          postgresql version: '14'
+          postgresql db: 'bcbs_test'
+          postgresql user: 'postgres'
+          postgresql password: 'postgres'
+      
+      # Load secrets into environment variables
+      - name: Load environment variables
+        run: |
+          echo "NARRPR_USERNAME=${{ secrets.NARRPR_USERNAME }}" >> $GITHUB_ENV
+          echo "NARRPR_PASSWORD=${{ secrets.NARRPR_PASSWORD }}" >> $GITHUB_ENV
+          echo "PACS_API_KEY=${{ secrets.PACS_API_KEY }}" >> $GITHUB_ENV
+          echo "TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bcbs_test" >> $GITHUB_ENV
+          echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/bcbs_test" >> $GITHUB_ENV
+      
+      # Verify test database connection
+      - name: Verify database connection
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -c "\l" bcbs_test
+      
+      # Create test database schema
+      - name: Create database schema
+        run: |
+          # Create tables using SQLAlchemy models
+          python -c "from app import app; from db.models import *; app.app_context().push(); db.create_all()"
+      
+      # Run unit tests with pytest
+      - name: Run unit tests
+        run: |
+          python -m pytest tests/ -v --exclude-integration
+      
+      # Run integration tests
       - name: Run integration tests
         run: |
           python -m pytest tests/test_integration_advanced.py -v
-        # This step will ensure the integration tests are run separately and visibly in CI logs
-
-      # If tests pass, collect and upload key configuration files as artifacts
-      - name: Collect configuration artifacts
-        if: success()
+      
+      # Generate test coverage report
+      - name: Generate coverage report
         run: |
-          # Create a directory for artifacts
-          mkdir -p artifacts
-          # Copy key configuration files
-          cp configs/module_config.json artifacts/ || echo "module_config.json not found"
-          cp configs/database_config.json artifacts/ || echo "database_config.json not found"
-          cp configs/etl_config.json artifacts/ || echo "etl_config.json not found"
-          
-          # Create a summary file with build information
-          echo "Build completed successfully at $(date)" > artifacts/build_info.txt
-          echo "Commit: ${{ github.sha }}" >> artifacts/build_info.txt
-          echo "Branch: ${{ github.ref }}" >> artifacts/build_info.txt
-
-      # Upload configuration artifacts
-      - name: Upload configuration artifacts
+          python -m pytest --cov=. --cov-report=xml
+      
+      # Upload test coverage to Codecov (optional)
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ./coverage.xml
+          fail_ci_if_error: false
+      
+      # Upload configuration artifacts if tests pass
+      - name: Upload artifacts
         if: success()
         uses: actions/upload-artifact@v3
         with:
-          name: config-artifacts
-          path: artifacts/
-
-  # Optional job to deploy if tests pass (only on main branch)
+          name: configuration-files
+          path: |
+            configs/module_config.json
+            configs/database_config.json
+            configs/etl_config.json
+          retention-days: 7
+      
   deploy:
-    name: Deploy
-    needs: test  # This job depends on the test job passing
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'  # Only run on push to main
+    # This job only runs if tests pass and we're on the main branch
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v3
-        
-      # Download the artifacts from the test job
+      
+      # Download artifacts from test job
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
-          name: config-artifacts
-          path: artifacts
+          name: configuration-files
+          path: configs
       
-      # Set up deployment (this is a placeholder - customize for your deployment process)
-      - name: Deploy to production
+      # Here you would add deployment steps for your specific environment
+      # For example, deploying to a server, Heroku, AWS, etc.
+      - name: Prepare for deployment
         run: |
-          echo "Deploying to production environment"
+          echo "Preparing for deployment to production environment"
           # Add your deployment commands here
-          # For example, deploying to a hosting service or container registry
-          
-      # Notify of successful deployment
-      - name: Notify deployment status
-        if: success()
-        run: |
-          echo "Deployment completed successfully"
-          # Add notification commands (e.g., Slack webhook, email notification)

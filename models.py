@@ -1,153 +1,162 @@
 """
-Database models for the BCBS Values application.
-"""
-import json
-from datetime import datetime
-from typing import Dict, List, Optional, Union
+Database models for the property valuation system.
 
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text, ForeignKey, JSON
+This module uses SQLAlchemy declarative base from db package to ensure
+consistency between the Flask app and FastAPI.
+"""
+from sqlalchemy import Column, Integer, String, Float, DateTime, Text, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 
-from app import db
+# Import Base from db package
+from db import Base
 
-
-class Property(db.Model):
-    """Model representing a real estate property."""
+class Property(Base):
+    """
+    Property model representing real estate properties.
+    """
     __tablename__ = 'properties'
     
+    # Primary key
     id = Column(Integer, primary_key=True)
-    property_id = Column(String(20), unique=True, nullable=False, index=True)
-    address = Column(String(255), nullable=False)
-    city = Column(String(100), nullable=False)
-    state = Column(String(50), nullable=False)
-    zip_code = Column(String(20), nullable=False)
-    neighborhood = Column(String(100), index=True)
-    property_type = Column(String(50), index=True)
-    bedrooms = Column(Integer)
-    bathrooms = Column(Float)
-    square_feet = Column(Float)
-    year_built = Column(Integer)
-    lot_size = Column(Float)
+    
+    # Relationships
+    valuations = relationship("PropertyValuation", backref="property", cascade="all, delete-orphan")
+    
+    # Identifiers
+    mls_id = Column(String(50))
+    listing_id = Column(String(50))
+    property_id = Column(String(50))
+    parcel_id = Column(String(50))
+    apn = Column(String(50))
+    
+    # Location information
+    address = Column(String(255))
+    city = Column(String(100))
+    county = Column(String(100))
+    state = Column(String(50))
+    zip_code = Column(String(20))
+    neighborhood = Column(String(100))
     latitude = Column(Float)
     longitude = Column(Float)
-    last_sale_date = Column(DateTime)
-    last_sale_price = Column(Float)
+    
+    # Property characteristics
+    property_type = Column(String(50))
+    bedrooms = Column(Float)
+    bathrooms = Column(Float)
+    total_rooms = Column(Integer)
+    square_feet = Column(Float)
+    lot_size = Column(Float)
+    year_built = Column(Integer)
+    stories = Column(Float)
+    basement = Column(String(50))
+    garage = Column(String(50))
+    garage_spaces = Column(Integer)
+    pool = Column(String(10))
+    view = Column(String(50))
+    construction_type = Column(String(50))
+    roof_type = Column(String(50))
+    foundation_type = Column(String(50))
+    
+    # Valuation information
+    list_price = Column(Float)
     estimated_value = Column(Float)
-    valuation_date = Column(DateTime)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_sale_price = Column(Float)
+    last_sale_date = Column(DateTime)
+    land_value = Column(Float)
+    improvement_value = Column(Float)
+    total_value = Column(Float)
+    assessment_year = Column(Integer)
     
-    # Relationships
-    valuations = relationship("PropertyValuation", back_populates="property", cascade="all, delete-orphan")
-    features = relationship("PropertyFeature", back_populates="property", cascade="all, delete-orphan")
+    # Listing information
+    listing_date = Column(DateTime)
+    status = Column(String(50))
+    days_on_market = Column(Integer)
+    listing_agent = Column(String(100))
+    listing_office = Column(String(100))
     
-    @property
-    def latest_valuation(self):
-        """Get the most recent valuation for this property."""
-        if self.valuations:
-            return sorted(self.valuations, key=lambda v: v.valuation_date, reverse=True)[0]
-        return None
+    # Data source and import information
+    data_source = Column(String(50))
+    import_date = Column(DateTime)
+    
+    def __repr__(self):
+        """String representation of a Property object."""
+        return f"<Property(id={self.id}, address='{self.address}', city='{self.city}', state='{self.state}')>"
 
 
-class PropertyValuation(db.Model):
-    """Model representing a property valuation."""
+class ValidationResult(Base):
+    """
+    Validation result model for storing data validation history.
+    """
+    __tablename__ = 'validation_results'
+    
+    # Primary key
+    id = Column(Integer, primary_key=True)
+    
+    # Timestamps
+    timestamp = Column(DateTime)
+    
+    # Validation status and results
+    status = Column(String(20))
+    results = Column(Text)
+    
+    def __repr__(self):
+        """String representation of a ValidationResult object."""
+        return f"<ValidationResult(id={self.id}, timestamp='{self.timestamp}', status='{self.status}')>"
+
+
+class PropertyValuation(Base):
+    """
+    Property valuation model for storing valuation results from the various models.
+    """
     __tablename__ = 'property_valuations'
     
+    # Primary key
     id = Column(Integer, primary_key=True)
-    property_id = Column(Integer, ForeignKey('properties.id'), nullable=False, index=True)
-    estimated_value = Column(Float, nullable=False)
-    valuation_date = Column(DateTime, default=datetime.utcnow, nullable=False)
-    valuation_method = Column(String(50), nullable=False)
+    
+    # Foreign key to Property
+    property_id = Column(Integer, ForeignKey('properties.id'))
+    
+    # Valuation timestamp
+    valuation_date = Column(DateTime)
+    
+    # Core valuation data
+    estimated_value = Column(Float)
     confidence_score = Column(Float)
-    adj_r2_score = Column(Float)
-    rmse = Column(Float)
-    mae = Column(Float)
-    inputs = Column(JSON)
-    gis_adjustments = Column(JSON)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    prediction_interval_low = Column(Float)
+    prediction_interval_high = Column(Float)
     
-    # Relationships
-    property = relationship("Property", back_populates="valuations")
-
-
-class PropertyFeature(db.Model):
-    """Model representing additional property features."""
-    __tablename__ = 'property_features'
+    # Model metadata
+    model_name = Column(String(100))
+    model_version = Column(String(50))
+    model_r2_score = Column(Float)
     
-    id = Column(Integer, primary_key=True)
-    property_id = Column(Integer, ForeignKey('properties.id'), nullable=False, index=True)
-    feature_name = Column(String(100), nullable=False)
-    feature_value = Column(Float)
-    feature_text = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # Feature importance and contribution data
+    feature_importance = Column(JSON)  # Stores feature importance as JSON
+    top_features = Column(Text)        # Comma-separated list of top features
     
-    # Relationships
-    property = relationship("Property", back_populates="features")
-
-
-class User(db.Model):
-    """Model representing a user of the application."""
-    __tablename__ = 'users'
+    # Comparables used
+    comparable_properties = Column(JSON)  # IDs of comparable properties used in valuation
     
-    id = Column(Integer, primary_key=True)
-    username = Column(String(64), unique=True, nullable=False)
-    email = Column(String(120), unique=True, nullable=False)
-    password_hash = Column(String(256))
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    last_login = Column(DateTime)
-
-
-class ETLJob(db.Model):
-    """Model representing an ETL job for data ingestion."""
-    __tablename__ = 'etl_jobs'
+    # Valuation factors
+    location_factor = Column(Float)    # How much location contributed to value
+    size_factor = Column(Float)        # How much size contributed to value
+    condition_factor = Column(Float)   # How much condition contributed to value
+    market_factor = Column(Float)      # How much market trends contributed to value
     
-    id = Column(Integer, primary_key=True)
-    job_id = Column(String(36), unique=True, nullable=False)
-    job_type = Column(String(50), nullable=False)
-    status = Column(String(20), nullable=False, default='pending')  # pending, running, completed, failed
-    started_at = Column(DateTime)
-    completed_at = Column(DateTime)
-    records_processed = Column(Integer, default=0)
-    records_created = Column(Integer, default=0)
-    records_updated = Column(Integer, default=0)
-    records_failed = Column(Integer, default=0)
-    error_message = Column(Text)
-    source_info = Column(JSON)
-
-
-class Agent(db.Model):
-    """Model representing a valuation agent (service)."""
-    __tablename__ = 'agents'
+    # Raw model outputs
+    raw_model_outputs = Column(JSON)   # Additional model-specific outputs
     
-    id = Column(Integer, primary_key=True)
-    agent_id = Column(String(36), unique=True, nullable=False)
-    agent_name = Column(String(100), nullable=False)
-    agent_type = Column(String(50), nullable=False)  # valuation, gis, etc.
-    status = Column(String(20), nullable=False, default='idle')  # idle, busy, error, offline
-    last_heartbeat = Column(DateTime)
-    current_task = Column(String(255))
-    queue_size = Column(Integer, default=0)
-    success_rate = Column(Float, default=1.0)
-    error_count = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    # Relationships
-    logs = relationship("AgentLog", back_populates="agent", cascade="all, delete-orphan",
-                        order_by="desc(AgentLog.timestamp)")
+    def __repr__(self):
+        """String representation of a PropertyValuation object."""
+        return f"<PropertyValuation(id={self.id}, property_id={self.property_id}, value=${self.estimated_value:,.2f}, date='{self.valuation_date}')>"
 
-
-class AgentLog(db.Model):
-    """Model representing logs from a valuation agent."""
-    __tablename__ = 'agent_logs'
+# Function to initialize models with a Flask-SQLAlchemy instance if needed
+def init_models(database):
+    """
+    Initialize models for use with Flask-SQLAlchemy.
+    This is only used for Flask app integration.
     
-    id = Column(Integer, primary_key=True)
-    agent_id = Column(Integer, ForeignKey('agents.id'), nullable=False, index=True)
-    level = Column(String(10), nullable=False, default='info')  # info, warning, error, debug
-    message = Column(Text, nullable=False)
-    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
-    details = Column(JSON)
-    
-    # Relationships
-    agent = relationship("Agent", back_populates="logs")
+    Returns:
+        tuple: Property, ValidationResult, PropertyValuation classes
+    """
+    return Property, ValidationResult, PropertyValuation

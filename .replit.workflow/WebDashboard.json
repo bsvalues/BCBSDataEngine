@@ -1,9 +1,0 @@
-{
-  "id": "WebDashboard",
-  "title": "BCBS Dashboard",
-  "description": "Benton County Building Services Dashboard",
-  "language": "python3",
-  "run": {
-    "command": "python simple_http_server.py"
-  }
-}

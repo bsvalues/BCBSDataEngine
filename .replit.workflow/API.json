@@ -1,23 +1,18 @@
 {
-  "id": "API",
   "name": "API",
-  "icon": "🔌",
-  "description": "Real estate valuation API server",
-  "documentation": "FastAPI server for BCBS Property Valuation System",
-  "type": "script",
-  "run_command": [
-    "python",
-    "run_api.py"
-  ],
+  "run_command": "./start_api_server.sh",
   "entrypoint": "api.py",
-  "public_port": 5001,
-  "preferred_port": 5001,
-  "restart_policy": "on-failure",
-  "categories": [
-    "api"
-  ],
-  "dependencies": [
-    "fastapi",
-    "uvicorn"
-  ]
+  "language": "python3",
+  "environment": "python3",
+  "ports": {
+    "5000": {
+      "name": "API",
+      "description": "BCBS Values RESTful API"
+    }
+  },
+  "secrets": {
+    "BCBS_VALUES_API_KEY": "Production API key for authentication"
+  },
+  "hidden": false,
+  "exec_mode": "terminal"
 }

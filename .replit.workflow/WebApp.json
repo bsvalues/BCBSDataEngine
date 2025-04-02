@@ -1,32 +1,18 @@
 {
   "name": "WebApp",
-  "description": "Run the web application server",
-  "run": "bash run_dashboard.sh",
-  "language": "bash",
-  "onBoot": false,
-  "isActive": true,
-  "terminals": [
-    {
-      "name": "Dashboard",
-      "shellId": "bash",
-      "location": "TERMINAL",
-      "workingDirectory": "/",
-      "hideExitButton": false
+  "run_command": "python -c \"import os; from app import app; app.run(host='0.0.0.0', port=5002, debug=True)\"",
+  "entrypoint": "app.py",
+  "language": "python3",
+  "environment": "python3",
+  "ports": {
+    "5002": {
+      "name": "Web UI",
+      "description": "BCBS Values Web Application"
     }
-  ],
-  "restartOn": {
-    "fileChange": true,
-    "fileCreate": true,
-    "fileDelete": true
   },
-  "parameters": {},
-  "ports": [
-    {
-      "description": "Web user interface",
-      "label": "WebApp",
-      "port": 5002,
-      "export": true,
-      "protocol": "http"
-    }
-  ]
+  "secrets": {
+    "SESSION_SECRET": "Session secret for securing user sessions"
+  },
+  "hidden": false,
+  "exec_mode": "terminal"
 }

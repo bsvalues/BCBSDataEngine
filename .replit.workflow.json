@@ -1,14 +1,25 @@
 {
-  "version": 1,
-  "workflowConfig": {
-    "environments": [
-      {
-        "name": "Dashboard",
-        "description": "Serve the Dashboard Demo",
-        "modules": ["python-3.10"],
-        "run": "/mnt/nixmodules/nix/store/83mqxa6p0r3f1fh6f70737ifah5ik7qp-python-wrapped-0.1.0/bin/python3.10 start_http_server.py",
-        "port": 8080
-      }
-    ]
-  }
+  "workflows": [
+    {
+      "name": "API",
+      "path": ".replit.workflow/API.json",
+      "environment": "python3"
+    },
+    {
+      "name": "WebApp",
+      "path": ".replit.workflow/WebApp.json",
+      "environment": "python3"
+    },
+    {
+      "name": "ValuationAPI",
+      "path": ".replit.workflow/ValuationAPI.json",
+      "environment": "python3"
+    },
+    {
+      "name": "EnhancedAPI",
+      "path": ".replit.workflow/EnhancedAPI.json",
+      "environment": "python3"
+    }
+  ],
+  "autosaves": ["*.py", "*.js", "*.html", "*.css", "*.json"]
 }
