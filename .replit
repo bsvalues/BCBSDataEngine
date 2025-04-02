@@ -72,7 +72,7 @@ mode = "sequential"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python3 app_minimal.py"
+args = "/mnt/nixmodules/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.10-env/bin/python3 app_minimal.py"
 
 [[workflows.workflow]]
 name = "Project"
