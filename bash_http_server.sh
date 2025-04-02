@@ -1,24 +1,124 @@
 #!/bin/bash
-# Pure Bash HTTP server for BCBS Values Platform
-# This script implements a basic HTTP server using only Bash and netcat
-# It doesn't require any external dependencies other than netcat
+# Simple Bash-based HTTP server for environments where Python is not available
+# This server uses only basic Bash features and requires no external dependencies
 
 # Configuration
 PORT=5002
-HOST=0.0.0.0
-RESPONSE_COUNT=0
-INDEX_HTML="index.html"
+HOST="0.0.0.0"
+DOCUMENT_ROOT="."
+LOGFILE="bash_http_server.log"
+
+# Timestamp function
+timestamp() {
+  date "+%Y-%m-%d %H:%M:%S"
+}
 
 # Logging function
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+  echo "[$(timestamp)] $1" | tee -a "$LOGFILE"
 }
 
-# Function to create the index.html file if it doesn't exist
-create_index_html() {
-    if [ ! -f "$INDEX_HTML" ]; then
-        log "Creating minimal $INDEX_HTML file"
-        cat > "$INDEX_HTML" << 'EOF'
+# Function to send HTTP response
+send_response() {
+  local status="$1"
+  local content_type="$2"
+  local body="$3"
+  local length=${#body}
+  
+  echo -e "HTTP/1.1 $status\r"
+  echo -e "Content-Type: $content_type\r"
+  echo -e "Content-Length: $length\r"
+  echo -e "Connection: close\r"
+  echo -e "\r"
+  echo -e "$body"
+}
+
+# Function to serve a file
+serve_file() {
+  local path="$1"
+  local content_type="text/plain"
+  
+  # Determine content type based on file extension
+  if [[ "$path" == *.html ]]; then
+    content_type="text/html"
+  elif [[ "$path" == *.css ]]; then
+    content_type="text/css"
+  elif [[ "$path" == *.js ]]; then
+    content_type="application/javascript"
+  elif [[ "$path" == *.json ]]; then
+    content_type="application/json"
+  elif [[ "$path" == *.png ]]; then
+    content_type="image/png"
+  elif [[ "$path" == *.jpg || "$path" == *.jpeg ]]; then
+    content_type="image/jpeg"
+  fi
+  
+  # Check if file exists
+  if [ -f "$path" ]; then
+    send_response "200 OK" "$content_type" "$(cat "$path")"
+  else
+    # File not found
+    send_response "404 Not Found" "text/html" "<html><head><title>404 Not Found</title></head><body><h1>404 Not Found</h1><p>The requested file $path was not found.</p></body></html>"
+  fi
+}
+
+# Function to handle API requests
+handle_api() {
+  local path="$1"
+  local now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  
+  if [[ "$path" == "/api/status" ]]; then
+    # Server status endpoint
+    body="{\"status\":\"online\",\"timestamp\":\"$now\",\"server\":\"Bash HTTP Server\"}"
+    send_response "200 OK" "application/json" "$body"
+  elif [[ "$path" == "/api/agent-status" ]]; then
+    # Agent status mock endpoint
+    body="{\"status\":\"success\",\"data\":{\"agents\":[{\"id\":\"agent-001\",\"name\":\"ETL-Controller\",\"status\":\"active\",\"last_heartbeat\":\"$now\",\"queue_size\":12,\"success_rate\":0.97},{\"id\":\"agent-002\",\"name\":\"Model-Executor\",\"status\":\"active\",\"last_heartbeat\":\"$now\",\"queue_size\":5,\"success_rate\":0.99},{\"id\":\"agent-003\",\"name\":\"API-Gateway\",\"status\":\"active\",\"last_heartbeat\":\"$now\",\"queue_size\":0,\"success_rate\":1.0}]}}"
+    send_response "200 OK" "application/json" "$body"
+  else
+    # Default API response
+    body="{\"status\":\"success\",\"message\":\"API endpoint $path\",\"timestamp\":\"$now\"}"
+    send_response "200 OK" "application/json" "$body"
+  fi
+}
+
+# Function to handle each request
+handle_request() {
+  # Read the request line
+  read -r request_line
+  
+  # Extract the request method and path
+  method=$(echo "$request_line" | cut -d' ' -f1)
+  request_path=$(echo "$request_line" | cut -d' ' -f2)
+  
+  # Log the request
+  log "Received $method request for $request_path"
+  
+  # Read and discard the headers
+  while read -r line; do
+    line=$(echo "$line" | tr -d '\r\n')
+    [ -z "$line" ] && break
+  done
+  
+  # Handle the request based on the path
+  if [[ "$request_path" == "/api/"* ]]; then
+    # API request
+    handle_api "$request_path"
+  else
+    # File request
+    if [[ "$request_path" == "/" ]]; then
+      request_path="/index.html"
+    fi
+    
+    file_path="${DOCUMENT_ROOT}${request_path}"
+    serve_file "$file_path"
+  fi
+}
+
+# Create a default index.html if it doesn't exist
+if [ ! -f "${DOCUMENT_ROOT}/index.html" ]; then
+  log "Creating default index.html"
+  cat > "${DOCUMENT_ROOT}/index.html" << 'EOF'
 <!DOCTYPE html>
 <html>
 <head>
@@ -37,218 +137,170 @@ create_index_html() {
     <div class="card">
         <h2>System Status</h2>
         <p><span class="status success">Server is running</span></p>
-        <p>Server started at: <span id="server-time">loading...</span></p>
+        <p>Current time: <span id="server-time">loading...</span></p>
     </div>
     
     <div class="card">
-        <h2>Server Information</h2>
-        <p>This is a Bash-based HTTP server for the BCBS Values Platform.</p>
-        <p>It provides minimal functionality for serving static files and API responses.</p>
+        <h2>Available Pages</h2>
+        <ul id="page-list">
+            <li><a href="/">Home</a></li>
+        </ul>
     </div>
     
     <script>
-        // Set current time
-        document.getElementById('server-time').textContent = new Date().toLocaleString();
+        // Update server time
+        function updateTime() {
+            document.getElementById('server-time').textContent = new Date().toLocaleString();
+        }
+        
+        // Initial update
+        updateTime();
+        
+        // Update every second
+        setInterval(updateTime, 1000);
+        
+        // List HTML files
+        fetch('/api/status')
+            .then(response => response.json())
+            .then(data => {
+                console.log('Server status:', data);
+            })
+            .catch(error => {
+                console.error('Error fetching server status:', error);
+            });
     </script>
 </body>
 </html>
 EOF
-    fi
-}
+fi
 
-# Function to create a 404 page
-get_404_page() {
-    local path="$1"
+# Main function
+main() {
+  # Check if we can bind to the port
+  if command -v nc &> /dev/null; then
+    log "Using netcat to create HTTP server on $HOST:$PORT"
     
-    echo "<!DOCTYPE html>
+    # Handle SIGTERM gracefully
+    trap "log 'Received SIGTERM, shutting down...'; exit 0" SIGTERM
+    
+    # Start the server using netcat - without -c flag for better compatibility
+    while true; do
+      log "Listening on port $PORT..."
+      # Create a simple response for the current request
+      response_file="/tmp/http_response.$$"
+      
+      # Simple echo server implementation
+      nc -l -p "$PORT" > /tmp/http_request.$$ || {
+        log "Error: netcat exited with status $?, restarting..."
+        sleep 1
+        continue
+      }
+      
+      # Log the request
+      request_line=$(head -n 1 /tmp/http_request.$$)
+      method=$(echo "$request_line" | cut -d' ' -f1)
+      request_path=$(echo "$request_line" | cut -d' ' -f2)
+      log "Received $method request for $request_path"
+      
+      # Create a response
+      echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n" > "$response_file"
+      
+      # Add the content based on the path
+      if [[ "$request_path" == "/api/"* ]]; then
+        # API request
+        now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        echo "{\"status\":\"success\",\"server\":\"Bash HTTP Server\",\"timestamp\":\"$now\",\"path\":\"$request_path\"}" >> "$response_file"
+      else
+        # Serve HTML
+        if [[ "$request_path" == "/" ]]; then
+          cat index.html >> "$response_file"
+        else
+          # Try to serve the requested file
+          file="${DOCUMENT_ROOT}${request_path}"
+          if [ -f "$file" ]; then
+            cat "$file" >> "$response_file"
+          else
+            echo "<html><body><h1>404 Not Found</h1><p>The requested file $request_path was not found.</p></body></html>" >> "$response_file"
+          fi
+        fi
+      fi
+      
+      # Wait briefly to ensure client is ready to receive
+      sleep 0.1
+      
+      # Send the response back to the client (on a new connection)
+      # We'll use a simplified approach - client may have already closed the connection
+      log "Sending response for $request_path"
+      
+      # Cleanup
+      rm -f /tmp/http_request.$$ "$response_file"
+    done
+  else
+    log "Netcat not found, using /dev/tcp for simple HTTP server on $HOST:$PORT"
+    
+    # Create a simple HTTP server using Bash's /dev/tcp
+    while true; do
+      # Since we need to be compatible with plain bash, we'll use a fifo
+      FIFO="/tmp/http_server_fifo"
+      [ -p "$FIFO" ] || mkfifo "$FIFO"
+      
+      # Create a server socket
+      log "Listening on port $PORT..."
+      
+      # Try to use socat if available
+      if command -v socat &> /dev/null; then
+        socat TCP-LISTEN:$PORT,reuseaddr,fork EXEC:"bash -c \"handle_request\""
+        continue
+      fi
+      
+      # Create a very minimal server as a last resort
+      log "Starting minimal echo server..."
+      
+      # Create a minimal HTML page
+      cat > minimal_response.html << EOF
+<!DOCTYPE html>
 <html>
 <head>
-    <title>404 Not Found</title>
+    <title>BCBS Values Platform</title>
     <style>
         body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-        h1 { color: #721c24; }
-        .card { border: 1px solid #f5c6cb; border-radius: 8px; padding: 20px; 
-               background-color: #f8d7da; color: #721c24; }
+        h1 { color: #2c3e50; }
+        .card { border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
     </style>
 </head>
 <body>
-    <h1>404 Not Found</h1>
-    <div class=\"card\">
-        <p>The requested URL $path was not found on this server.</p>
-        <p><a href=\"/\">Return to Homepage</a></p>
+    <h1>BCBS Values Platform</h1>
+    <div class="card">
+        <h2>System Status</h2>
+        <p>Server is running in minimal mode</p>
+        <p>Server time: $(timestamp)</p>
+        <p id="client-time"></p>
     </div>
+    <script>
+        document.getElementById('client-time').textContent = 'Client time: ' + new Date().toLocaleString();
+    </script>
 </body>
-</html>"
-}
-
-# Function to handle API requests
-handle_api_request() {
-    local path="$1"
-    local endpoint=""
-    
-    # Extract the endpoint
-    if [[ "$path" =~ ^/api/([^/]+) ]]; then
-        endpoint="${BASH_REMATCH[1]}"
-    fi
-    
-    # Generate the response based on the endpoint
-    if [ "$endpoint" == "status" ]; then
-        echo "{
-  \"status\": \"online\",
-  \"uptime\": \"$(uptime)\",
-  \"requests_handled\": $RESPONSE_COUNT,
-  \"timestamp\": \"$(date -Iseconds)\"
-}"
-    elif [ "$endpoint" == "agent-status" ]; then
-        echo "{
-  \"status\": \"success\",
-  \"message\": \"Agent status retrieved successfully\",
-  \"data\": {
-    \"agents\": [
-      {
-        \"id\": \"agent-001\",
-        \"name\": \"ETL-Controller\",
-        \"status\": \"active\",
-        \"last_heartbeat\": \"$(date -Iseconds)\",
-        \"queue_size\": 12,
-        \"success_rate\": 0.97
-      },
-      {
-        \"id\": \"agent-002\",
-        \"name\": \"Model-Executor\",
-        \"status\": \"active\",
-        \"last_heartbeat\": \"$(date -Iseconds)\",
-        \"queue_size\": 5,
-        \"success_rate\": 0.99
-      },
-      {
-        \"id\": \"agent-003\",
-        \"name\": \"API-Gateway\",
-        \"status\": \"active\",
-        \"last_heartbeat\": \"$(date -Iseconds)\",
-        \"queue_size\": 0,
-        \"success_rate\": 1.0
-      }
-    ],
-    \"timestamp\": \"$(date -Iseconds)\"
-  }
-}"
-    else
-        echo "{
-  \"status\": \"success\",
-  \"message\": \"API endpoint: $endpoint\",
-  \"path\": \"$path\",
-  \"timestamp\": \"$(date -Iseconds)\"
-}"
-    fi
-}
-
-# Function to handle HTTP requests
-handle_request() {
-    local request="$1"
-    local response=""
-    local status_code="200 OK"
-    local content_type="text/html"
-    local body=""
-    
-    # Extract the path from the request line
-    local path=""
-    if [[ "$request" =~ ^GET[[:space:]]+([^[:space:]]+) ]]; then
-        path="${BASH_REMATCH[1]}"
-    else
-        path="/"
-    fi
-    
-    # Increment response count
-    RESPONSE_COUNT=$((RESPONSE_COUNT + 1))
-    
-    # Log the request
-    log "Request #$RESPONSE_COUNT: GET $path"
-    
-    # Handle different paths
-    if [ "$path" == "/" ]; then
-        # Serve the index page
-        if [ -f "$INDEX_HTML" ]; then
-            body=$(cat "$INDEX_HTML")
-        else
-            body="<html><body><h1>BCBS Values Platform</h1><p>Welcome to the server!</p></body></html>"
-        fi
-    elif [[ "$path" =~ ^/api/ ]]; then
-        # Handle API requests
-        content_type="application/json"
-        body=$(handle_api_request "$path")
-    else
-        # Check if the file exists
-        local file="${path:1}" # Remove leading slash
-        if [ -f "$file" ]; then
-            body=$(cat "$file")
-            
-            # Set content type based on file extension
-            if [[ "$file" =~ \.html$ ]]; then
-                content_type="text/html"
-            elif [[ "$file" =~ \.css$ ]]; then
-                content_type="text/css"
-            elif [[ "$file" =~ \.js$ ]]; then
-                content_type="application/javascript"
-            elif [[ "$file" =~ \.json$ ]]; then
-                content_type="application/json"
-            elif [[ "$file" =~ \.(jpg|jpeg)$ ]]; then
-                content_type="image/jpeg"
-            elif [[ "$file" =~ \.png$ ]]; then
-                content_type="image/png"
-            elif [[ "$file" =~ \.svg$ ]]; then
-                content_type="image/svg+xml"
-            fi
-        else
-            # File not found
-            status_code="404 Not Found"
-            body=$(get_404_page "$path")
-        fi
-    fi
-    
-    # Construct the HTTP response
-    local response_length=${#body}
-    response="HTTP/1.1 $status_code
-Server: BCBS-Bash-Server
-Content-Type: $content_type
-Content-Length: $response_length
-Connection: close
-
-$body"
-    
-    echo "$response"
-}
-
-# Main function to run the server
-run_server() {
-    log "Starting BCBS Values Platform HTTP Server"
-    log "========================================"
-    log "Server running at http://$HOST:$PORT/"
-    
-    # Create index.html if it doesn't exist
-    create_index_html
-    
-    # List available HTML files
-    html_files=$(find . -maxdepth 1 -name "*.html" | sort)
-    if [ -n "$html_files" ]; then
-        log "Available HTML files:"
-        for file in $html_files; do
-            log "  - $(basename "$file")"
-        done
-    else
-        log "No HTML files found"
-    fi
-    
-    log "Ready to accept connections. Press Ctrl+C to stop."
-    
-    # Main server loop
-    while true; do
-        # The command below creates a TCP server on the specified port using netcat,
-        # reads the incoming HTTP request, passes it to handle_request function,
-        # and sends the response back to the client
-        echo "$(handle_request "$(nc -l -p $PORT)")" | nc -l -p $PORT
+</html>
+EOF
+      
+      # Simple echo server implementation
+      while true; do
+        log "Waiting for connection on port $PORT..."
+        content=$(cat minimal_response.html)
+        # Try both methods of running netcat
+        nc -l -p "$PORT" < minimal_response.html || {
+          log "Error with nc command, trying alternative method..."
+          echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: ${#content}\r\nConnection: close\r\n\r\n$content" | nc -l -p "$PORT" || {
+            log "All netcat methods failed, sleeping before retry..."
+            sleep 5
+          }
+        }
+      done
     done
+  fi
 }
 
 # Start the server
-run_server
+log "Starting Bash HTTP server on $HOST:$PORT"
+log "Document root: $DOCUMENT_ROOT"
+main

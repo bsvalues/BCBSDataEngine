@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BCBS Values Platform</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        h1 { color: #2c3e50; }
+        .card { border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <h1>BCBS Values Platform</h1>
+    <div class="card">
+        <h2>System Status</h2>
+        <p>Server is running in minimal mode</p>
+        <p>Server time: 2025-04-02 00:15:04</p>
+        <p id="client-time"></p>
+    </div>
+    <script>
+        document.getElementById('client-time').textContent = 'Client time: ' + new Date().toLocaleString();
+    </script>
+</body>
+</html>

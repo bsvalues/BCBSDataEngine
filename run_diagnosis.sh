@@ -1,1 +1,1 @@
-python_workflow_wrapper.sh
+minimal_server.sh
