@@ -1,5 +1,7 @@
 {pkgs}: {
   deps = [
+    pkgs.busybox
+    pkgs.netcat
     pkgs.gcc
     pkgs.opencl-headers
     pkgs.ocl-icd

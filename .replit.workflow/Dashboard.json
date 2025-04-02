@@ -1,0 +1,11 @@
+{
+  "writable": true,
+  "restart": true,
+  "restartable": true,
+  "executablePath": "./run_dashboard_server.sh",
+  "name": "Dashboard",
+  "language": "sh",
+  "interactiveTerminal": true,
+  "persistentInteractiveTerminal": true,
+  "hotReload": false
+}

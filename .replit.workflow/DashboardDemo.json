@@ -1,22 +1,30 @@
 {
-  "displayName": "Dashboard Demo",
-  "description": "Starts a simple HTTP server for the dashboard demo",
-  "icon": "chart-bar",
-  "colorIndex": 5,
-  "entrypoint": "simple_http_server.js",
-  "ignorePorts": false,
-  "detached": true,
-  "terminalDarkTheme": true,
-  "interpreter": {
-    "type": "node",
-    "module": {}
+  "name": "DashboardDemo",
+  "description": "Web Dashboard Demo",
+  "run": "./bash_http_server.sh",
+  "language": "bash",
+  "onBoot": false,
+  "isActive": true,
+  "terminals": [
+    {
+      "name": "Dashboard",
+      "shellId": "bash",
+      "location": "TERMINAL",
+      "workingDirectory": "/",
+      "hideExitButton": false
+    }
+  ],
+  "restartOn": {
+    "fileChange": true,
+    "fileCreate": true,
+    "fileDelete": true
   },
+  "parameters": {},
   "ports": [
     {
-      "internalPort": 5002,
-      "externalPort": 5002,
       "description": "Web user interface",
-      "label": "DashboardDemo",
+      "label": "WebApp",
+      "port": 5002,
       "export": true
     }
   ]

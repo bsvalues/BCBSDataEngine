@@ -1,29 +1,65 @@
-#!/usr/bin/env python3
-import http.server
-import socketserver
+#!/usr/bin/env python
+"""
+Flask Server for the BCBS Values Dashboard
+This server uses Flask to serve the dashboard and handle API requests.
+"""
+
 import os
+import sys
+import logging
+from flask import Flask, send_file, jsonify, request
 
-# Set port for the HTTP server
-PORT = 5000
+# Configure logging
+logging.basicConfig(level=logging.DEBUG, 
+                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-# Set the directory to serve files from (current directory)
-DIRECTORY = os.path.dirname(os.path.abspath(__file__))
+# Create the Flask app
+app = Flask(__name__)
 
-class Handler(http.server.SimpleHTTPRequestHandler):
-    def __init__(self, *args, **kwargs):
-        # Change directory to where the script is located
-        os.chdir(DIRECTORY)
-        super().__init__(*args, **kwargs)
+# Set the secret key
+app.secret_key = os.environ.get("SESSION_SECRET", "development_key")
 
-    def end_headers(self):
-        # Add CORS headers to allow cross-origin requests
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
-        self.send_header("Access-Control-Allow-Headers", "X-Requested-With, Content-Type, X-API-KEY")
-        super().end_headers()
+# Constants
+DEFAULT_PAGE = 'dashboard_static.html'
+PORT = 5002
 
-# Create the HTTP server with the custom handler
-with socketserver.TCPServer(("0.0.0.0", PORT), Handler) as httpd:
-    print(f"Serving dashboard at http://0.0.0.0:{PORT}/dashboard_demo.html")
-    # Start serving requests
-    httpd.serve_forever()
+@app.route('/')
+def index():
+    """Serve the default dashboard page."""
+    logger.info(f"Serving default dashboard page: {DEFAULT_PAGE}")
+    return send_file(DEFAULT_PAGE)
+
+@app.route('/<path:path>')
+def serve_file(path):
+    """Serve any file in the current directory."""
+    logger.info(f"Serving file: {path}")
+    try:
+        return send_file(path)
+    except Exception as e:
+        logger.error(f"Error serving file {path}: {str(e)}")
+        return jsonify({"error": f"File not found or could not be served: {str(e)}"}), 404
+
+@app.errorhandler(404)
+def page_not_found(e):
+    """Handle 404 errors."""
+    logger.warning(f"404 error: {request.path}")
+    return jsonify({"error": "Page not found"}), 404
+
+@app.errorhandler(500)
+def server_error(e):
+    """Handle 500 errors."""
+    logger.error(f"500 error: {str(e)}")
+    return jsonify({"error": "Internal server error"}), 500
+
+if __name__ == '__main__':
+    logger.info(f"Starting Flask server on http://0.0.0.0:{PORT}/")
+    logger.info(f"Default page: {DEFAULT_PAGE}")
+    
+    # Verify that the default page exists
+    if not os.path.exists(DEFAULT_PAGE):
+        logger.warning(f"WARNING: Default page '{DEFAULT_PAGE}' not found in current directory.")
+        logger.info(f"Current directory contains: {', '.join(os.listdir('.'))}")
+    
+    # Run the Flask app
+    app.run(host='0.0.0.0', port=PORT, debug=True)

@@ -1,23 +1,32 @@
 {
-  "displayName": "Web Application",
-  "description": "Starts the BCBS Values web application",
-  "icon": "server",
-  "colorIndex": 3,
-  "entrypoint": "start_webapp.py",
-  "ignorePorts": false,
-  "detached": true,
-  "terminalDarkTheme": true,
-  "interpreter": {
-    "type": "python3",
-    "module": {}
+  "name": "WebApp",
+  "description": "Run the web application server",
+  "run": "bash run_dashboard.sh",
+  "language": "bash",
+  "onBoot": false,
+  "isActive": true,
+  "terminals": [
+    {
+      "name": "Dashboard",
+      "shellId": "bash",
+      "location": "TERMINAL",
+      "workingDirectory": "/",
+      "hideExitButton": false
+    }
+  ],
+  "restartOn": {
+    "fileChange": true,
+    "fileCreate": true,
+    "fileDelete": true
   },
+  "parameters": {},
   "ports": [
     {
-      "internalPort": 5002,
-      "externalPort": 5002,
       "description": "Web user interface",
       "label": "WebApp",
-      "export": true
+      "port": 5002,
+      "export": true,
+      "protocol": "http"
     }
   ]
 }

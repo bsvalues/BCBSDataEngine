@@ -5,9 +5,9 @@
       {
         "name": "Dashboard",
         "description": "Serve the Dashboard Demo",
-        "modules": ["nodejs-20"],
-        "run": "node simple_http_server.js",
-        "port": 5000
+        "modules": ["python-3.10"],
+        "run": "/mnt/nixmodules/nix/store/83mqxa6p0r3f1fh6f70737ifah5ik7qp-python-wrapped-0.1.0/bin/python3.10 start_http_server.py",
+        "port": 8080
       }
     ]
   }

@@ -1,76 +1,101 @@
+/**
+ * Simple HTTP Server for BCBS Dashboard
+ * This server works with Node.js only
+ */
+
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-// Define common MIME types
-const mimeTypes = {
-    '.html': 'text/html',
-    '.css': 'text/css',
-    '.js': 'application/javascript',
-    '.json': 'application/json',
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.gif': 'image/gif',
-    '.svg': 'image/svg+xml',
-    '.ico': 'image/x-icon'
+// Constants
+const PORT = 5002;
+const DEFAULT_PAGE = 'dashboard_static.html';
+const ERROR_PAGE = '404.html';
+
+// MIME types for different file extensions
+const MIME_TYPES = {
+  '.html': 'text/html',
+  '.css': 'text/css',
+  '.js': 'application/javascript',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.txt': 'text/plain'
 };
 
-// Create HTTP server
+/**
+ * Create and start the HTTP server
+ */
 const server = http.createServer((req, res) => {
-    console.log(`Request: ${req.method} ${req.url}`);
-    
-    // Handle root URL
-    let filePath = req.url === '/' ? './dashboard_static.html' : '.' + req.url;
-    
-    // Handle /interactive-dashboard route
-    if (req.url === '/interactive-dashboard') {
-        filePath = './templates/reactive_dashboard.html';
-    }
-    
-    // Handle /dashboard route
-    if (req.url === '/dashboard') {
-        filePath = './dashboard_static.html';
-    }
-    
-    // Handle /demo route
-    if (req.url === '/demo') {
-        filePath = './dashboard_demo.html';
-    }
-
-    // Get file extension
-    const extname = path.extname(filePath);
-    const contentType = mimeTypes[extname] || 'application/octet-stream';
-
-    // Read the file
-    fs.readFile(filePath, (err, content) => {
-        if (err) {
-            if (err.code === 'ENOENT') {
-                // If file not found, try to serve 404.html
-                fs.readFile('./404.html', (err, content) => {
-                    if (err) {
-                        // If 404.html doesn't exist, send basic 404 response
-                        res.writeHead(404);
-                        res.end('404 Not Found');
-                    } else {
-                        res.writeHead(404, { 'Content-Type': 'text/html' });
-                        res.end(content, 'utf-8');
-                    }
-                });
-            } else {
-                // For other errors, send 500 response
-                res.writeHead(500);
-                res.end(`Server Error: ${err.code}`);
-            }
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  
+  // Get the requested path
+  let filePath = req.url;
+  
+  // Handle root request
+  if (filePath === '/') {
+    filePath = `/${DEFAULT_PAGE}`;
+  }
+  
+  // Remove query string if present
+  filePath = filePath.split('?')[0];
+  
+  // Convert URL path to file path
+  filePath = path.join(process.cwd(), filePath);
+  
+  // Get file extension to determine content type
+  const extname = path.extname(filePath).toLowerCase();
+  const contentType = MIME_TYPES[extname] || 'application/octet-stream';
+  
+  // Check if the file exists
+  fs.readFile(filePath, (err, content) => {
+    if (err) {
+      // File not found
+      console.log(`File not found: ${filePath}`);
+      
+      // Try to serve the error page
+      const errorPagePath = path.join(process.cwd(), ERROR_PAGE);
+      fs.readFile(errorPagePath, (err2, errorContent) => {
+        if (err2) {
+          // No error page, send simple 404 response
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.end('404 Not Found');
         } else {
-            // File found, serve it
-            res.writeHead(200, { 'Content-Type': contentType });
-            res.end(content, 'utf-8');
+          // Send error page
+          res.writeHead(404, { 'Content-Type': 'text/html' });
+          res.end(errorContent);
         }
-    });
+      });
+    } else {
+      // Success - send file content
+      res.writeHead(200, { 'Content-Type': contentType });
+      res.end(content);
+    }
+  });
 });
 
-// Set server port and start listening
-const PORT = process.env.PORT || 5002;
+// Start the server and listen on the specified port
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running at http://0.0.0.0:${PORT}/`);
+  console.log(`Server running at http://0.0.0.0:${PORT}/`);
+  console.log(`Serving files from ${process.cwd()}`);
+  console.log(`Default page: ${DEFAULT_PAGE}`);
+  console.log('Press Ctrl+C to stop the server');
+});
+
+// Handle server errors
+server.on('error', (err) => {
+  console.error('Server error:', err);
+});
+
+// Handle process termination
+process.on('SIGINT', () => {
+  console.log('\nShutting down server...');
+  server.close(() => {
+    console.log('Server stopped');
+    process.exit(0);
+  });
 });

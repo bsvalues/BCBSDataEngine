@@ -1,0 +1,24 @@
+run = ["sh", "-c", "python -m flask --app serve_dashboard run --host 0.0.0.0 --port 5002"]
+language = "python3"
+entrypoint = "serve_dashboard.py"
+modules = ["python-3.10"]
+
+[env]
+PYTHONPATH = "."
+FLASK_APP = "serve_dashboard"
+
+[nix]
+channel = "stable-22_11"
+
+[ports]
+# Port definition with proper syntax
+[[ports]]
+localPort = 5002
+externalPort = 80
+name = "WebApp"
+
+[debugger]
+support = true
+
+[multiplayer]
+transport = "mp_transport"

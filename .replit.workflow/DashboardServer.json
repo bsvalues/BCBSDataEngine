@@ -1,0 +1,13 @@
+{
+  "name": "Dashboard Server",
+  "command": "/mnt/nixmodules/nix/store/wfxq6w9bkp5dcfr8yb6789b0w7128gnb-nodejs-20.18.1/bin/node simple_http_server.js",
+  "runAtStart": true,
+  "restartOn": {
+    "files": ["simple_http_server.js"],
+    "filePatterns": ["*.js", "*.html", "*.css"],
+    "interval": 1000
+  },
+  "isBackground": true,
+  "waitForOutput": "Server running at",
+  "env": {}
+}
