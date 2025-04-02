@@ -151,11 +151,11 @@ mode = "sequential"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd tests && pytest test_basic.py test_core.py test_environment.py"
+args = "python -m pytest tests/test_basic.py tests/test_core.py tests/test_environment.py"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd .. && python app_minimal.py"
+args = "python app_minimal.py"
 
 [deployment]
 run = ["sh", "-c", "./run_diagnosis.sh"]
