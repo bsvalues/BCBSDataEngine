@@ -1,22 +1,24 @@
 {
-  "name": "Start",
-  "language": "python3",
-  "run": "python -m flask --app start_webapp run --host 0.0.0.0 --port 5002",
-  "templates": [],
-  "nix": {
-    "channel": "stable-22_11"
+  "displayName": "Web Application",
+  "description": "Starts the BCBS Values web application",
+  "icon": "server",
+  "colorIndex": 3,
+  "entrypoint": "start_webapp.py",
+  "ignorePorts": false,
+  "detached": true,
+  "terminalDarkTheme": true,
+  "interpreter": {
+    "type": "python3",
+    "command": "/nix/store/jm41cmdxm4rk2yz6wnbd1zhp1wdj65mi-python3-3.11.6/bin/python3",
+    "module": {}
   },
-  "backgroundProcesses": [],
   "ports": [
     {
-      "port": 5002,
       "internalPort": 5002,
-      "name": "WebApp",
-      "description": "Dashboard demo web interface",
-      "isProduction": false,
-      "isProdExposed": false,
-      "isDev": true,
-      "isDevExposed": true
+      "externalPort": 5002,
+      "description": "Web user interface",
+      "label": "WebApp",
+      "export": true
     }
   ]
 }

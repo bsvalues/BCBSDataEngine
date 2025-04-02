@@ -3,7 +3,7 @@
   "description": "Starts the BCBS Values web application",
   "icon": "server",
   "colorIndex": 3,
-  "entrypoint": "main.py",
+  "entrypoint": "start_webapp.py",
   "ignorePorts": false,
   "detached": true,
   "terminalDarkTheme": true,

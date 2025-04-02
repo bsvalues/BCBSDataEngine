@@ -2,73 +2,75 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-// Create a simple HTTP server
-const server = http.createServer((req, res) => {
-  console.log(`Request for ${req.url}`);
-  
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, X-API-KEY');
-  
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
-  
-  let filePath = '.' + req.url;
-  if (filePath === './') {
-    filePath = './dashboard_demo.html'; // Serve dashboard_demo.html as the default
-  }
-  
-  // Get the extension of the requested file
-  const extname = String(path.extname(filePath)).toLowerCase();
-  
-  // Define content types for different file extensions
-  const contentTypes = {
+// Define common MIME types
+const mimeTypes = {
     '.html': 'text/html',
-    '.js': 'text/javascript',
     '.css': 'text/css',
+    '.js': 'application/javascript',
     '.json': 'application/json',
     '.png': 'image/png',
-    '.jpg': 'image/jpg',
+    '.jpg': 'image/jpeg',
     '.gif': 'image/gif',
-    '.svg': 'image/svg+xml'
-  };
-  
-  const contentType = contentTypes[extname] || 'text/plain';
-  
-  // Read the file
-  fs.readFile(filePath, (error, content) => {
-    if (error) {
-      if (error.code === 'ENOENT') {
-        // Page not found
-        console.log(`File not found: ${filePath}`);
-        fs.readFile('./404.html', (err, content) => {
-          res.writeHead(404, { 'Content-Type': 'text/html' });
-          res.end(content, 'utf-8');
-        });
-      } else {
-        // Server error
-        console.error(`Server error: ${error.code}`);
-        res.writeHead(500);
-        res.end(`Server Error: ${error.code}`);
-      }
-    } else {
-      // Success
-      res.writeHead(200, { 'Content-Type': contentType });
-      res.end(content, 'utf-8');
+    '.svg': 'image/svg+xml',
+    '.ico': 'image/x-icon'
+};
+
+// Create HTTP server
+const server = http.createServer((req, res) => {
+    console.log(`Request: ${req.method} ${req.url}`);
+    
+    // Handle root URL
+    let filePath = req.url === '/' ? './dashboard_static.html' : '.' + req.url;
+    
+    // Handle /interactive-dashboard route
+    if (req.url === '/interactive-dashboard') {
+        filePath = './templates/reactive_dashboard.html';
     }
-  });
+    
+    // Handle /dashboard route
+    if (req.url === '/dashboard') {
+        filePath = './dashboard_static.html';
+    }
+    
+    // Handle /demo route
+    if (req.url === '/demo') {
+        filePath = './dashboard_demo.html';
+    }
+
+    // Get file extension
+    const extname = path.extname(filePath);
+    const contentType = mimeTypes[extname] || 'application/octet-stream';
+
+    // Read the file
+    fs.readFile(filePath, (err, content) => {
+        if (err) {
+            if (err.code === 'ENOENT') {
+                // If file not found, try to serve 404.html
+                fs.readFile('./404.html', (err, content) => {
+                    if (err) {
+                        // If 404.html doesn't exist, send basic 404 response
+                        res.writeHead(404);
+                        res.end('404 Not Found');
+                    } else {
+                        res.writeHead(404, { 'Content-Type': 'text/html' });
+                        res.end(content, 'utf-8');
+                    }
+                });
+            } else {
+                // For other errors, send 500 response
+                res.writeHead(500);
+                res.end(`Server Error: ${err.code}`);
+            }
+        } else {
+            // File found, serve it
+            res.writeHead(200, { 'Content-Type': contentType });
+            res.end(content, 'utf-8');
+        }
+    });
 });
 
-// Set the port
-const PORT = 5000;
-
-// Start the server
-server.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}/`);
-  console.log(`Access the dashboard at http://localhost:${PORT}/dashboard_demo.html`);
+// Set server port and start listening
+const PORT = process.env.PORT || 5002;
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running at http://0.0.0.0:${PORT}/`);
 });

@@ -1,22 +1,23 @@
 {
-  "name": "DashboardDemo",
-  "language": "python3",
-  "run": "python serve_dashboard.py",
-  "templates": [],
-  "nix": {
-    "channel": "stable-22_11"
+  "displayName": "Dashboard Demo",
+  "description": "Starts a simple HTTP server for the dashboard demo",
+  "icon": "chart-bar",
+  "colorIndex": 5,
+  "entrypoint": "simple_http_server.js",
+  "ignorePorts": false,
+  "detached": true,
+  "terminalDarkTheme": true,
+  "interpreter": {
+    "type": "node",
+    "module": {}
   },
-  "backgroundProcesses": [],
   "ports": [
     {
-      "port": 5000,
-      "internalPort": 5000,
-      "name": "DashboardDemo",
-      "description": "Dashboard demo web interface",
-      "isProduction": false,
-      "isProdExposed": false,
-      "isDev": true,
-      "isDevExposed": true
+      "internalPort": 5002,
+      "externalPort": 5002,
+      "description": "Web user interface",
+      "label": "DashboardDemo",
+      "export": true
     }
   ]
 }
