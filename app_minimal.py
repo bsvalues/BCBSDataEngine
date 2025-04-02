@@ -1,9 +1,9 @@
-
 from flask import Flask, jsonify
 import logging
+import os # Added back since os is not used in edited code, but may be used in original code
 from datetime import datetime
 
-# Configure logging
+# Configure logging (from original code)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -20,11 +20,11 @@ def health_check():
 def index():
     return "System Operational"
 
-@app.errorhandler(404)
+@app.errorhandler(404) # Added back from original code
 def not_found(error):
     return jsonify({"error": "Not found"}), 404
 
-@app.errorhandler(500)
+@app.errorhandler(500) # Added back from original code
 def server_error(error):
     return jsonify({"error": "Internal server error"}), 500
 
