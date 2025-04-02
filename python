@@ -1,0 +1,19 @@
+#!/bin/bash
+# This is a specialized Python wrapper to fix the workflow
+# It redirects Python commands to our workflow script
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Python command wrapper executed" >&2
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Arguments: $@" >&2
+
+if [ -x "./workflow_runner.sh" ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Redirecting to workflow_runner.sh" >&2
+    exec ./workflow_runner.sh "$@"
+fi
+
+if [ -x "./python_workflow_wrapper.sh" ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Redirecting to python_workflow_wrapper.sh" >&2
+    exec ./python_workflow_wrapper.sh "$@"
+fi
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: No valid workflow script found!" >&2
+exit 1

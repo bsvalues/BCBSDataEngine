@@ -1,74 +1,74 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# This script is a specialized entry point for the Replit Workflow runner
+# It attempts to locate either Python or netcat and use them to start a simple HTTP server
 
-# Simplified workflow runner that doesn't try to use python directly
-echo "Starting BCBS Values Platform..."
+# Logging function
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >&2
+}
 
-# Create a very minimal Node.js server script
-cat > minimal_server.js << 'EOF'
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
+# Start banner
+log "Starting BCBS Values Platform Workflow Server"
+log "==========================================="
 
-const PORT = 5000;
-const MIME_TYPES = {
-  '.html': 'text/html',
-  '.css': 'text/css',
-  '.js': 'text/javascript',
-  '.json': 'application/json',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.svg': 'image/svg+xml'
-};
+# Look for Python executable in common locations
+PYTHON_PATHS=(
+    "/usr/bin/python3"
+    "/usr/local/bin/python3"
+    "/usr/bin/python"
+    "/usr/local/bin/python"
+    "/mnt/nixmodules/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.10-env/bin/python3"
+)
 
-const server = http.createServer((req, res) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-  
-  // Convert URL to file path
-  let filePath = '.' + req.url;
-  if (filePath === './') {
-    filePath = './index.html';
-  }
-  
-  // Get file extension
-  const extname = path.extname(filePath);
-  let contentType = MIME_TYPES[extname] || 'application/octet-stream';
-  
-  // Read the file
-  fs.readFile(filePath, (err, content) => {
-    if (err) {
-      if (err.code === 'ENOENT') {
-        // Page not found - try to serve static_fallback.html
-        fs.readFile('./static_fallback.html', (err, content) => {
-          if (err) {
-            res.writeHead(404);
-            res.end('Page not found');
-          } else {
-            res.writeHead(200, { 'Content-Type': 'text/html' });
-            res.end(content, 'utf-8');
-          }
-        });
-      } else {
-        // Server error
-        res.writeHead(500);
-        res.end(`Server Error: ${err.code}`);
-      }
-    } else {
-      // Success
-      res.writeHead(200, { 'Content-Type': contentType });
-      res.end(content, 'utf-8');
-    }
-  });
-});
+for PYTHON_PATH in "${PYTHON_PATHS[@]}"; do
+    if [ -x "$PYTHON_PATH" ]; then
+        log "Found Python at $PYTHON_PATH"
+        if [ -f "simple_http_server.py" ]; then
+            log "Starting server with simple_http_server.py"
+            exec "$PYTHON_PATH" simple_http_server.py
+        else
+            log "Starting server with built-in HTTP server module"
+            exec "$PYTHON_PATH" -m http.server 5002 --bind 0.0.0.0
+        fi
+    fi
+done
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`BCBS Values Platform server running at http://0.0.0.0:${PORT}/`);
-  console.log('Available pages:');
-  console.log(`- Home: http://0.0.0.0:${PORT}/`);
-  console.log(`- Dashboard: http://0.0.0.0:${PORT}/dashboard.html`);
-  console.log(`- Static Fallback: http://0.0.0.0:${PORT}/static_fallback.html`);
-});
+# If we get here, Python couldn't be found or started
+log "Python not found, trying to start HTTP server with Bash..."
+
+# Check for Bash HTTP server script
+if [ -f "bash_http_server.sh" ] && [ -x "bash_http_server.sh" ]; then
+    log "Found bash_http_server.sh, executing..."
+    exec ./bash_http_server.sh
+fi
+
+# If we get here, all attempts failed
+log "ERROR: All server startup methods failed!"
+log "Working directory contents:"
+ls -la
+
+# Create error HTML as a last resort
+cat > error.html << 'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BCBS Values Platform - Server Error</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        h1 { color: #721c24; }
+        .card { border: 1px solid #f5c6cb; border-radius: 8px; padding: 20px; background-color: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <h1>Server Error</h1>
+    <div class="card">
+        <p>The BCBS Values Platform server failed to start properly.</p>
+        <p>Please check the server logs for more information.</p>
+        <p>Time of error: <script>document.write(new Date().toLocaleString())</script></p>
+    </div>
+</body>
+</html>
 EOF
 
-# Try to run with node
-echo "Attempting to start Node.js server..."
-node minimal_server.js
+log "Server failed to start. Error page created."
+exit 1

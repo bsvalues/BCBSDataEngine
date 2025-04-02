@@ -1,0 +1,36 @@
+{
+  "WebApp": {
+    "name": "WebApp",
+    "description": "Web application server for BCBS Values Platform",
+    "priority": "high",
+    "command": "./run_webapp.sh",
+    "port": 5002,
+    "environment": {
+      "PYTHONPATH": ".",
+      "PYTHONUNBUFFERED": "1",
+      "SERVER_MODE": "production"
+    },
+    "dependencies": [],
+    "monitoring": {
+      "enable_logs": true,
+      "crash_recovery": true,
+      "auto_restart": true
+    }
+  },
+  "TestWorkflow": {
+    "name": "TestWorkflow",
+    "description": "Run workflow tests for BCBS Values Platform",
+    "priority": "medium",
+    "command": "/mnt/nixmodules/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.10-env/bin/python3 test_workflow.py",
+    "environment": {
+      "PYTHONPATH": ".",
+      "TEST_MODE": "true"
+    },
+    "dependencies": [],
+    "monitoring": {
+      "enable_logs": true,
+      "crash_recovery": false,
+      "auto_restart": false
+    }
+  }
+}

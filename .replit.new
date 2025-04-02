@@ -1,0 +1,90 @@
+run = ["sh", "-c", "./run_webapp.sh"]
+language = "python3"
+entrypoint = "main.py"
+modules = ["nodejs-20", "python-3.11"]
+
+[env]
+PYTHONPATH = "."
+FLASK_APP = "start_webapp"
+
+[nix]
+channel = "stable-22_11"
+
+# Fix the ports section to use an array format instead of object
+[[ports]]
+port = 5002
+export = true
+label = "WebApp"
+description = "Web user interface"
+
+[[ports]]
+port = 5001
+export = true
+label = "API"
+description = "API Server"
+
+[debugger]
+support = true
+
+[multiplayer]
+transport = "mp_transport"
+
+[workflows]
+runButton = "WebApp"
+
+# Consolidated WebApp workflow definition
+[[workflows.workflow]]
+name = "WebApp"
+author = "bcbs_team"
+mode = "sequential"
+
+[workflows.workflow.metadata]
+description = "Starts the BCBS Values Platform web application"
+version = "2.0.0"
+priority = "high"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "./run_webapp.sh"
+
+[[workflows.workflow]]
+name = "TestWorkflow"
+author = "bcbs_team"
+mode = "sequential"
+
+[workflows.workflow.metadata]
+description = "Runs workflow tests to validate environment"
+version = "1.0.0"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "/mnt/nixmodules/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.10-env/bin/python3 test_workflow.py"
+
+[[workflows.workflow]]
+name = "BasicAPI"
+author = "bcbs_team"
+mode = "sequential"
+
+[workflows.workflow.metadata]
+description = "Starts the basic API server"
+version = "1.0.0"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "/mnt/nixmodules/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.10-env/bin/python3 basic_api.py"
+
+[[workflows.workflow]]
+name = "DiagnosticServer"
+author = "bcbs_team"
+mode = "sequential"
+
+[workflows.workflow.metadata]
+description = "Runs diagnostic tools for troubleshooting"
+version = "1.0.0"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "/mnt/nixmodules/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.10-env/bin/python3 diagnose_env.py"
+
+[deployment]
+run = ["sh", "-c", "./run_webapp.sh"]
