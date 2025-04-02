@@ -30,7 +30,7 @@ support = true
 transport = "mp_transport"
 
 [workflows]
-runButton = "SystemVerification"
+runButton = "CoreWorkflow"
 
 [[workflows.workflow]]
 name = "WebApp"
@@ -130,6 +130,19 @@ args = "/mnt/nixmodules/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "/mnt/nixmodules/nix/store/fj3r91wy2ggvriazbkl24vyarny6qb1s-python3-3.11.10-env/bin/python3 app_minimal.py"
+
+[[workflows.workflow]]
+name = "CoreWorkflow"
+author = 37274620
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python3 -m unittest tests/test_core.py"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python3 app_minimal.py"
 
 [deployment]
 run = ["sh", "-c", "./run_diagnosis.sh"]
