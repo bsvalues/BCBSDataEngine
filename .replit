@@ -30,6 +30,7 @@ support = true
 transport = "mp_transport"
 
 [workflows]
+runButton = "Run"
 
 [[workflows.workflow]]
 name = "WebApp"
@@ -71,7 +72,7 @@ mode = "sequential"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python start_webapp.py"
+args = "python3 app_minimal.py"
 
 [[workflows.workflow]]
 name = "Project"
