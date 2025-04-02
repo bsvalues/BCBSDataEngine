@@ -30,7 +30,7 @@ support = true
 transport = "mp_transport"
 
 [workflows]
-runButton = "CoreWorkflow"
+runButton = "TestAndRun"
 
 [[workflows.workflow]]
 name = "WebApp"
@@ -139,6 +139,19 @@ mode = "sequential"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python3 -m unittest tests/test_core.py"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python3 app_minimal.py"
+
+[[workflows.workflow]]
+name = "TestAndRun"
+author = 37274620
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python3 run_test_suite.py"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
